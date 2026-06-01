@@ -11066,51 +11066,16 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
                 // ── HTML: 直接渲染 ─────────────────────────────────
                 if (lang === 'html') {
-                    // ★ 注入 video 時機修正 + 相機橋接 patch
-                    var videoPatch = '<script>'
-                        + '(function(){'
-                        // 修正：攔截 getUserMedia，確保使用正確的 constraints
-                        + 'var _origGUM = navigator.mediaDevices && navigator.mediaDevices.getUserMedia'
-                        + '  ? navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices) : null;'
-                        + 'if(_origGUM && navigator.mediaDevices){'
-                        + '  navigator.mediaDevices.getUserMedia = function(constraints){'
-                        + '    // 確保 video constraints 包含 facingMode'
-                        + '    if(constraints && constraints.video === true){'
-                        + '      constraints.video = {facingMode:{ideal:"environment"}};'
-                        + '    }'
-                        + '    return _origGUM(constraints);'
-                        + '  };'
-                        + '}'
-                        // 修正：video 元素的 play() 後正確等待 loadedmetadata
-                        + 'var _origPlay = HTMLVideoElement.prototype.play;'
-                        + 'HTMLVideoElement.prototype.play = function(){'
-                        + '  var v = this;'
-                        + '  var p = _origPlay.call(v);'
-                        + '  if(p && p.then){'
-                        + '    p.then(function(){'
-                        + '      v._isPlaying = true;'
-                        + '      v.dispatchEvent(new Event("nova-ready"));'
-                        + '    }).catch(function(){});'
-                        + '  }'
-                        + '  return p;'
-                        + '};'
-                        // 安全的 drawImage wrapper：確認 videoWidth > 0 才執行
-                        + 'var _origDrawImage = CanvasRenderingContext2D.prototype.drawImage;'
-                        + 'CanvasRenderingContext2D.prototype.drawImage = function(src){'
-                        + '  if(src instanceof HTMLVideoElement && (src.videoWidth===0 || src.readyState < 2)){'
-                        + '    return;' // 視訊未就緒，跳過這次繪製
-                        + '  }'
-                        + '  return _origDrawImage.apply(this, arguments);'
-                        + '};'
-                        + '})();'
-                        + '<\/script>';
-                    // 插入 patch 到 <head> 後
-                    if (_code.toLowerCase().indexOf('<head>') !== -1) {
-                        doc = _code.replace(/<head>/i, '<head>' + videoPatch);
-                    } else if (_code.toLowerCase().indexOf('<html>') !== -1) {
-                        doc = _code.replace(/<html>/i, '<html>' + videoPatch);
+                    // ★ 若程式碼本身沒有宣告 <!DOCTYPE 或 <html，代表是片段，
+                    //   注入深色底色基底避免白底白字問題
+                    var _hasFullDoc = /<!DOCTYPE|<html/i.test(_code);
+                    if (!_hasFullDoc) {
+                        doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                            + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                            + '<style>*{box-sizing:border-box}body{margin:0;background:#1e293b;color:#e2e8f0;font-family:sans-serif}</style>'
+                            + '</head><body>' + _code + '</body></html>';
                     } else {
-                        doc = videoPatch + _code;
+                        doc = _code;
                     }
 
                 // ── CSS: 包成 HTML ────────────────────────────────
@@ -11190,108 +11155,95 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                 } else if (['python','py'].indexOf(lang) !== -1) {
                     var hasInput = /\binput\s*\(/.test(_code);
                     var hasMatplotlib = /matplotlib|plt\.|pyplot/.test(_code);
-                    var safeCode = _code.replace(/\\/g,'\\\\').replace(/`/g,'\\`');
-
+                    // input() 透過 py.globals.set 注入，不需要在原始碼替換
+                    var processedCode = _code;
+                    // 若有 matplotlib，加入轉 base64 圖片的 patch
                     if (hasMatplotlib) {
-                        // matplotlib 仍需 Pyodide
-                        var pkgs = '"matplotlib","numpy"';
-                        doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
-                            + '<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:13px}'
-                            + '#status{padding:10px 16px;background:#0f172a;border-bottom:1px solid #1e293b;color:#38bdf8;display:flex;align-items:center;gap:8px;font-size:12px;position:sticky;top:0}'
-                            + '#output{padding:16px;white-space:pre-wrap;line-height:1.8;word-break:break-all}'
-                            + '.err{color:#f87171;background:#1c0a0a;padding:8px;border-radius:6px;border-left:3px solid #f87171;margin:4px 0}'
-                            + 'img{border-radius:8px;margin-top:8px;max-width:100%}'
-                            + '</style></head><body>'
-                            + '<div id="status"><span id="sp">⏳</span><span id="st">載入 Pyodide (需網路，請稍候)...</span></div>'
-                            + '<div id="output"></div>'
-                            + '<script>'
-                            + 'var pyCode=`' + safeCode + '`;'
-                            + 'var out=document.getElementById("output"),st=document.getElementById("st"),sp=document.getElementById("sp");'
-                            + 'function clr(){if(out.querySelector("span"))out.innerHTML="";}' 
-                            + 'function ap(t,cls){clr();var d=document.createElement("div");if(cls)d.className=cls;d.textContent=t;out.appendChild(d);}'
-                            + 'function getMsg(e){return e&&e.message?e.message:e&&e.toString&&e.toString()!=="[object Object]"?e.toString():String(e);}'
-                            + 'var s=document.createElement("script");'
-                            + 's.src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js";'
-                            + 's.onload=function(){st.textContent="初始化...";'
-                            + 'loadPyodide({indexURL:"https://cdn.jsdelivr.net/pyodide/v0.27.5/full/",stdout:function(t){clr();var d=document.createElement("div");d.textContent=t;out.appendChild(d);},stderr:function(t){clr();var d=document.createElement("div");d.className="err";d.textContent=t;out.appendChild(d);}}).then(async function(py){'
-                            + 'sp.textContent="▶";st.textContent="載入 matplotlib...";await py.loadPackage(["matplotlib","numpy"]);st.textContent="執行中...";'
-                            + 'py.globals.set("input",function(msg){var r=window.prompt(msg||"");return (r!==null&&r!==undefined)?r:"";});'
-                            + 'try{await py.runPythonAsync(pyCode);sp.textContent="✅";st.textContent="執行完成";if(!out.children.length)ap("（無輸出）");}'
-                            + 'catch(ex){sp.textContent="❌";st.textContent="錯誤";ap(getMsg(ex),"err");}'
-                            + '}).catch(function(ex){sp.textContent="❌";st.textContent="載入失敗";ap(getMsg(ex),"err");});};'
-                            + 's.onerror=function(){sp.textContent="❌";st.textContent="Pyodide 載入失敗（請檢查網路）";};'
-                            + 'document.head.appendChild(s);'
-                            + '<\/script></body></html>';
-                    } else {
-                        // ★ 一般 Python：改用 Skulpt（輕量，~500KB，秒速載入）
-                        doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
-                            + '<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:13px}'
-                            + '#status{padding:10px 16px;background:#0f172a;border-bottom:1px solid #1e293b;color:#38bdf8;display:flex;align-items:center;gap:8px;font-size:12px;position:sticky;top:0}'
-                            + '#output{padding:16px;white-space:pre-wrap;line-height:1.8;word-break:break-all;min-height:calc(100vh - 44px)}'
-                            + '.err{color:#f87171;background:#1c0a0a;padding:8px;border-radius:6px;border-left:3px solid #f87171;margin:4px 0}'
-                            + (hasInput ? '#inp-area{padding:10px 14px;background:#0f1e0f;border-top:1px solid #1a3a1a;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
-                                + '#inp-label{color:#4ade80;font-size:12px;flex:0 0 100%;margin-bottom:4px}'
-                                + '#inp-box{flex:1;padding:7px 10px;background:#0d1117;border:1px solid #4ade80;border-radius:8px;color:#e6edf3;font-size:13px;outline:none}'
-                                + '#inp-btn{padding:7px 14px;background:#4ade80;color:#0d1117;border:none;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer}' : '')
-                            + '</style></head><body>'
-                            + '<div id="status"><span id="sp">⏳</span><span id="st">載入 Python (Skulpt)...</span></div>'
-                            + (hasInput ? '<div id="inp-area" style="display:none"><div id="inp-label">請輸入：</div><input id="inp-box" type="text" placeholder="輸入後按送出"><button id="inp-btn">送出</button></div>' : '')
-                            + '<div id="output"></div>'
-                            + '<script>'
-                            + 'var pyCode=`' + safeCode + '`;'
-                            + 'var out=document.getElementById("output");'
-                            + 'var st=document.getElementById("st"),sp=document.getElementById("sp");'
-                            + 'var inputQueue=[],inputResolve=null;'
-                            // input UI 事件
-                            + (hasInput ? 'function submitInput(){'
-                                + 'var box=document.getElementById("inp-box");'
-                                + 'var val=box?box.value:"";'
-                                + 'if(box)box.value="";'
-                                + 'var area=document.getElementById("inp-area");if(area)area.style.display="none";'
-                                + 'if(inputResolve){inputResolve(val);inputResolve=null;}'
-                                + '}'
-                                + 'window.addEventListener("DOMContentLoaded",function(){'
-                                + 'var btn=document.getElementById("inp-btn");'
-                                + 'var box=document.getElementById("inp-box");'
-                                + 'if(btn)btn.onclick=submitInput;'
-                                + 'if(box)box.onkeydown=function(e){if(e.key==="Enter")submitInput();};'
-                                + '});' : '')
-                            + 'function builtinRead(x){'
-                            + 'if(Sk.builtinFiles===undefined||Sk.builtinFiles["files"][x]===undefined)'
-                            + 'throw "File not found: "+x;'
-                            + 'return Sk.builtinFiles["files"][x];}'
-                            // 載入 Skulpt
-                            + 'function loadScript(src,cb){'
-                            + 'var s=document.createElement("script");s.src=src;s.onload=cb;s.onerror=function(){sp.textContent="❌";st.textContent="Skulpt 載入失敗（請檢查網路）";};document.head.appendChild(s);}'
-                            + 'loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt.min.js",function(){'
-                            + 'loadScript("https://cdn.jsdelivr.net/npm/skulpt@1.2.0/dist/skulpt-stdlib.js",function(){'
-                            + 'sp.textContent="▶";st.textContent="執行中...";'
-                            + 'Sk.configure({'
-                            + 'output:function(text){var d=document.createElement("span");d.textContent=text;out.appendChild(d);},'
-                            + 'read:builtinRead,'
-                            + 'inputfun:function(prompt){'
-                            + 'return new Promise(function(resolve){'
-                            + 'var area=document.getElementById("inp-area");'
-                            + 'var label=document.getElementById("inp-label");'
-                            + 'if(area){area.style.display="flex";}if(label)label.textContent=prompt||"請輸入：";'
-                            + 'inputResolve=resolve;'
-                            + 'var box=document.getElementById("inp-box");if(box)box.focus();'
-                            + '});}'
-                            + '});'
-                            + 'Sk.misceval.asyncToPromise(function(){'
-                            + 'return Sk.importMainWithBody("<stdin>",false,pyCode,true);'
-                            + '}).then(function(){'
-                            + 'sp.textContent="✅";st.textContent="執行完成";'
-                            + 'if(!out.textContent.trim()){'
-                            + 'var d=document.createElement("div");d.style.color="#475569";d.textContent="（執行完畢，無輸出）";out.appendChild(d);}'
-                            + '}).catch(function(e){'
-                            + 'sp.textContent="❌";st.textContent="執行錯誤";'
-                            + 'var d=document.createElement("div");d.className="err";'
-                            + 'd.textContent=e.toString?e.toString():(e.args?e.args.v[0].v:String(e));'
-                            + 'out.appendChild(d);});'
-                            + '});});'
-                            + '<\/script></body></html>';
+                        processedCode = 'import io, base64\n'
+                            + 'import matplotlib\nmatplotlib.use("Agg")\n'
+                            + processedCode
+                            + '\n\nimport matplotlib.pyplot as _plt\n'
+                            + '_buf = io.BytesIO()\n'
+                            + '_plt.savefig(_buf, format="png", bbox_inches="tight", dpi=120)\n'
+                            + '_buf.seek(0)\n'
+                            + '_b64 = base64.b64encode(_buf.read()).decode()\n'
+                            + 'from js import document as _doc\n'
+                            + '_img = _doc.createElement("img")\n'
+                            + '_img.src = "data:image/png;base64," + _b64\n'
+                            + '_img.style.maxWidth = "100%"\n'
+                            + '_doc.getElementById("output").appendChild(_img)\n';
                     }
+                    var safeCode = processedCode.replace(/\\/g,'\\\\').replace(/`/g,'\\`');
+                    var pkgs = hasMatplotlib ? '"matplotlib","numpy"' : '""';
+                    doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                        + '<style>*{box-sizing:border-box;margin:0;padding:0}'
+                        + 'body{background:#0d1117;color:#e6edf3;font-family:monospace;font-size:13px}'
+                        + '#status{padding:10px 16px;background:#0f172a;border-bottom:1px solid #1e293b;'
+                        + 'color:#38bdf8;display:flex;align-items:center;gap:8px;font-size:12px;position:sticky;top:0}'
+                        + '#output{padding:16px;white-space:pre-wrap;line-height:1.8;word-break:break-all}'
+                        + '.err{color:#f87171;background:#1c0a0a;padding:8px 12px;border-radius:8px;border-left:3px solid #f87171;margin:4px 0}'
+                        + 'img{border-radius:8px;margin-top:8px;box-shadow:0 4px 20px rgba(0,0,0,.5)}'
+                        + (hasInput ? '#hint{padding:8px 16px;color:#fbbf24;font-size:11px;background:#1c1500;border-top:1px solid #292000}' : '')
+                        + '</style></head><body>'
+                        + '<div id="status"><span id="sp">⏳</span><span id="st">載入 Python (Pyodide)...</span></div>'
+                        + (hasInput ? '<div id="hint">⚠️ 此程式使用 input()，將以對話框輸入</div>' : '')
+                        + '<div id="output"><div id="py-init-msg" style="color:#475569">⏳ 正在載入 Python 環境（首次需時約 10-30 秒）...</div></div>'
+                        + '<script>'
+                        + 'var pyCode=`' + safeCode + '`;'
+                        + 'var out=document.getElementById("output");'
+                        + 'var st=document.getElementById("st");'
+                        + 'var sp=document.getElementById("sp");'
+                        + 'function clr(){out.innerHTML="";}' 
+                        + 'function ap(t,cls){clr();var d=document.createElement("div");if(cls)d.className=cls;d.textContent=t;out.appendChild(d);}'
+                        + 'function getMsg(e){return e&&e.message?e.message:e&&e.toString&&e.toString()!=="[object Object]"?e.toString():String(e);}'
+                        + 'var s=document.createElement("script");'
+                        + 's.src="https://cdn.jsdelivr.net/pyodide/v0.27.5/full/pyodide.js";'
+                        + 's.onload=function(){'
+                        + '  st.textContent="初始化...";'
+                        + '  loadPyodide({'
+                        + '    indexURL:"https://cdn.jsdelivr.net/pyodide/v0.27.5/full/",'
+                        + '    stdout:function(t){clr();var d=document.createElement("div");d.textContent=t;out.appendChild(d);},'
+                        + '    stderr:function(t){clr();var d=document.createElement("div");d.className="err";d.textContent=t;out.appendChild(d);},'
+                        + '    stdin:function(){return "";}' 
+                        + '  }).then(async function(py){'
+                        + '    sp.textContent="▶";'
+                        + (hasMatplotlib ? 'st.textContent="載入 matplotlib...";await py.loadPackage(["matplotlib","numpy"]);' : '')
+                        + '    st.textContent="執行中...";'
+                        + '    // ★ 把 JS 的 prompt() 注入到 Python 命名空間'
+                        + '    py.globals.set("input", function(msg) {'
+                        + '      return window.prompt(msg || "") || "";'
+                        + '    });'
+                        + '    try{'
+                        + '      var _hasOutput=false;'
+                        + '      var _origStdout=py.runPython("import sys;sys.stdout");'
+                        + '      await py.runPythonAsync(pyCode);'
+                        + '      sp.textContent="✅";st.textContent="執行完成";'
+                        + '      if(!out.children.length){ap("（執行完畢，無輸出）");}' 
+                        + '    }catch(ex){sp.textContent="❌";st.textContent="執行錯誤";ap(getMsg(ex),"err");}'
+                        + '  }).catch(function(ex){sp.textContent="❌";st.textContent="載入失敗";ap(getMsg(ex),"err");});'
+                        + '};'
+                        + 's.onerror=function(){sp.textContent="❌";st.textContent="無法載入 Pyodide（需要網路連線）";};'
+                        + 'document.head.appendChild(s);'
+                        + '<\/script></body></html>';
+
+                // ── 其他語言: 顯示原始碼 ─────────────────────────
+                } else {
+                    var esc = _code.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    doc = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+                        + '<style>body{margin:0;background:#0d1117;color:#e6edf3;font-family:monospace;font-size:13px;line-height:1.7}'
+                        + '.banner{padding:12px 16px;background:#1e293b;border-bottom:1px solid #334155;color:#94a3b8;font-size:12px}'
+                        + 'pre{margin:0;padding:16px;white-space:pre-wrap;word-break:break-all}</style></head><body>'
+                        + '<div class="banner">⚠️ ' + _lang.toUpperCase() + ' 需要後端環境，Canvas 顯示原始碼供參考</div>'
+                        + '<pre>' + esc + '</pre></body></html>';
+                }
+
+                fr.srcdoc = doc;
+                fr.onload = function() {
+                    const el2 = loading();
+                    if (el2) el2.style.display = 'none';
+                    if (status()) status().textContent = _lang.toUpperCase() + ' · 渲染完成 ' + new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+                };
+            }
 
             // ── 公開 API ─────────────────────────────────────────
             return {
@@ -11616,8 +11568,9 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
         <div style="flex:1;overflow:hidden;position:relative;">
             <!-- iframe 預覽（安全沙盒） -->
             <iframe id="nova-canvas-iframe"
-                    sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals allow-downloads" allow="camera;microphone;accelerometer;gyroscope"
-                    style="width:100%;height:100%;border:none;background:#fff;display:block;"
+                    sandbox="allow-scripts allow-forms allow-pointer-lock allow-popups allow-modals allow-same-origin"
+                    allow="camera;microphone"
+                    style="width:100%;height:100%;border:none;background:#0d1117;display:block;"
                     title="Canvas 預覽"></iframe>
 
             <!-- 原始碼檢視 -->
