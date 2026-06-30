@@ -97,7 +97,10 @@
 // ============================================================
 
 const GEMINI_KEY = () => localStorage.getItem('nova_key_gemini') || '';
-const EMBED_MODEL = 'text-embedding-004';
+const EMBED_MODEL = 'gemini-embedding-2'; // 最新多模態嵌入模型（text-embedding-004 已下架）
+const EMBED_OUTPUT_DIM = 768; // 截斷維度，兼顧精度與儲存/運算效能（須與主程式查詢端一致）
+// 注意：gemini-embedding-2 不支援 taskType 參數，需改用提示前綴指定任務類型，
+// 且與 gemini-embedding-001 的向量空間不相容，不可混用。
 const DB_NAME = 'nova_kb_db';
 const DB_VERSION = 1;
 const CHUNK_SIZE = 900;      // 每個分段的字元數
@@ -313,7 +316,17 @@ async function extractFileText(file) {
 }
 
 // ---------- Gemini Embedding ----------
-async function embedBatch(texts, taskType) {
+// 文件用前綴格式："title: {title} | text: {content}"（無標題用 "title: none"）
+function formatDocumentText(text, title) {
+    const t = title || 'none';
+    return `title: ${t} | text: ${text}`;
+}
+// 查詢用前綴格式（檢索情境）："task: search result | query: {content}"
+function formatQueryText(text) {
+    return `task: search result | query: ${text}`;
+}
+
+async function embedBatch(texts) {
     const key = GEMINI_KEY();
     if (!key) throw new Error('缺少 Gemini API Key');
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${key}`;
@@ -321,7 +334,7 @@ async function embedBatch(texts, taskType) {
         requests: texts.map(t => ({
             model: `models/${EMBED_MODEL}`,
             content: { parts: [{ text: t }] },
-            taskType: taskType || 'RETRIEVAL_DOCUMENT'
+            outputDimensionality: EMBED_OUTPUT_DIM
         }))
     };
     const res = await fetch(url, {
@@ -337,8 +350,8 @@ async function embedBatch(texts, taskType) {
     return (data.embeddings || []).map(e => e.values);
 }
 
-async function embedSingle(text, taskType) {
-    const r = await embedBatch([text], taskType);
+async function embedSingle(text) {
+    const r = await embedBatch([text]);
     return r[0];
 }
 
@@ -401,7 +414,8 @@ async function handleKbFiles(fileList) {
             let completedChunks = 0;
             for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
                 const batch = pieces.slice(i, i + EMBED_BATCH);
-                const vectors = await embedBatch(batch, 'RETRIEVAL_DOCUMENT');
+                const formattedBatch = batch.map(t => formatDocumentText(t, file.name));
+                const vectors = await embedBatch(formattedBatch);
                 for (let j = 0; j < batch.length; j++) {
                     const chunk = {
                         id: docId + '_c' + (i + j),
@@ -508,7 +522,7 @@ async function testKbSearch() {
             resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料（尚未匯入任何文件）</div>';
             return;
         }
-        const qVec = await embedSingle(q, 'RETRIEVAL_QUERY');
+        const qVec = await embedSingle(formatQueryText(q));
         const scored = chunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
             .sort((a, b) => b.score - a.score)
             .slice(0, 5);

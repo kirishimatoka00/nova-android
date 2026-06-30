@@ -12357,7 +12357,9 @@ window.startMultiAgentResearch = async function() {
         // ════════════════════════════════════════════════════════════
         const NOVA_KB_DB_NAME = 'nova_kb_db';
         const NOVA_KB_DB_VERSION = 1;
-        const NOVA_KB_EMBED_MODEL = 'text-embedding-004';
+        const NOVA_KB_EMBED_MODEL = 'gemini-embedding-2'; // 最新多模態嵌入模型（text-embedding-004 已下架）
+        const NOVA_KB_EMBED_OUTPUT_DIM = 768; // 須與 knowledgebank.html 的 EMBED_OUTPUT_DIM 一致，否則向量維度不匹配
+        // 注意：gemini-embedding-2 不支援 taskType 參數，改用提示前綴 "task: search result | query: ..." 指定任務類型
         const NOVA_KB_TOP_K = 5;
         const NOVA_KB_THRESHOLD = 0.55;
         let _novaKbDb = null;
@@ -12407,13 +12409,14 @@ window.startMultiAgentResearch = async function() {
             const key = appState.keys.gemini;
             if (!key) return null;
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_KB_EMBED_MODEL}:embedContent?key=${key}`;
+            const prefixedQuery = `task: search result | query: ${queryText}`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: `models/${NOVA_KB_EMBED_MODEL}`,
-                    content: { parts: [{ text: queryText }] },
-                    taskType: 'RETRIEVAL_QUERY'
+                    content: { parts: [{ text: prefixedQuery }] },
+                    outputDimensionality: NOVA_KB_EMBED_OUTPUT_DIM
                 })
             });
             if (!res.ok) return null;
