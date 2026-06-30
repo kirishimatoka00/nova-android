@@ -6319,7 +6319,39 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
             reader.onload = async (evt) => {
                 let data;
                 try {
-                    data = JSON.parse(evt.target.result);
+                    let rawText = evt.target.result;
+                    // 移除 BOM
+                    if (rawText.charCodeAt(0) === 0xFEFF) rawText = rawText.slice(1);
+                    const trimmed = rawText.trimStart();
+
+                    if (trimmed.startsWith('data:')) {
+                        // 情況 A：data URI (data:application/json;base64,eyJ...)
+                        const b64Part = trimmed.split(',')[1] || '';
+                        const binStr = atob(b64Part);
+                        const bytes = new Uint8Array(binStr.length);
+                        for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+                        rawText = new TextDecoder('utf-8').decode(bytes);
+                    } else if (trimmed[0] !== '{' && trimmed[0] !== '[') {
+                        // 情況 B：Capacitor Filesystem 寫入時可能將內容以 base64 字串原樣寫入磁碟
+                        // （與主程式「還原備份」需要相容處理的狀況相同），需解碼還原成原始 JSON 文字
+                        const base64Re = /[A-Za-z0-9+/]+=*/g;
+                        const chunks = trimmed.match(base64Re) || [];
+                        const dec = new TextDecoder('utf-8');
+                        const parts = [];
+                        for (let ci = 0; ci < chunks.length; ci++) {
+                            try {
+                                const bin = atob(chunks[ci]);
+                                const bytes = new Uint8Array(bin.length);
+                                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                                parts.push(dec.decode(bytes, { stream: ci < chunks.length - 1 }));
+                            } catch (e) { /* 略過非法 chunk */ }
+                        }
+                        parts.push(dec.decode());
+                        rawText = parts.join('');
+                    }
+                    // 情況 C：rawText 已是純 JSON，直接往下走
+
+                    data = JSON.parse(rawText);
                 } catch (parseErr) {
                     showToast(`❌ 還原失敗：檔案格式損毀，無法解析（${parseErr.message}）`, 6000);
                     e.target.value = '';
