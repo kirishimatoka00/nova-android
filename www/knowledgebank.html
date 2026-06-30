@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>NOVA 向量資料庫</title>
+<link rel="stylesheet" href="./vendor/tailwind.css">
+<script src="./vendor/phosphor-loader.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- PDF / DOCX / XLSX 解析函式庫 (本機未內建向量資料庫所需的解析器，故透過 CDN 載入) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  body{font-family:'Inter','Noto Sans TC',sans-serif;background:#0f172a;}
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-thumb{background:#334155;border-radius:3px;}
+  .spin{animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .progress-bar-inner{transition:width .25s ease;}
+</style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen flex flex-col">
+
+  <!-- 頂部列 -->
+  <div class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center gap-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+    <a href="./index.html" class="p-2 -ml-2 rounded-full hover:bg-slate-800 active:scale-90 transition-transform">
+      <i class="ph-bold ph-arrow-left text-xl"></i>
+    </a>
+    <div class="flex items-center gap-2">
+      <i class="ph-bold ph-database text-emerald-400 text-2xl"></i>
+      <h1 class="text-lg font-bold tracking-wide">向量資料庫</h1>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="kb-key-status" class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">檢查金鑰中...</span>
+    </div>
+  </div>
+
+  <div class="flex-1 overflow-y-auto px-4 py-4 space-y-5 max-w-2xl mx-auto w-full pb-24">
+
+    <!-- 知識庫問答模式 開關卡片 -->
+    <div class="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 to-slate-900 p-4 shadow-lg shadow-emerald-500/5">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="font-bold text-emerald-300 flex items-center gap-2"><i class="ph-bold ph-magic-wand"></i> 知識庫問答模式</div>
+          <p class="text-xs text-slate-400 mt-1 leading-relaxed">開啟後，主畫面 AI 會優先比對此向量資料庫的內容作答；若無相關資料，將先回覆「向量資料庫無相關資料」，再自動聯網搜尋。</p>
+        </div>
+        <button id="kb-mode-toggle" onclick="toggleKbMode()" class="shrink-0 w-14 h-8 rounded-full bg-slate-700 relative transition-colors duration-200 active:scale-95">
+          <span id="kb-mode-knob" class="absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform duration-200"></span>
+        </button>
+      </div>
+      <div id="kb-mode-status-text" class="mt-3 text-xs font-bold text-slate-500">目前狀態：關閉</div>
+    </div>
+
+    <!-- 上傳區 -->
+    <div>
+      <label class="font-bold text-sm text-slate-300 mb-2 flex items-center gap-2"><i class="ph-bold ph-upload-simple text-blue-400"></i> 匯入文件</label>
+      <label for="kb-file-input" id="kb-drop-zone" class="block border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-900/60">
+        <i class="ph-bold ph-file-plus text-3xl text-slate-500 mb-2 block"></i>
+        <div class="text-sm text-slate-300 font-medium">點擊或拖放檔案到此處</div>
+        <div class="text-[11px] text-slate-500 mt-1">支援 .txt .md .csv .pdf .docx .xlsx</div>
+      </label>
+      <input id="kb-file-input" type="file" multiple class="hidden" accept=".txt,.md,.csv,.pdf,.docx,.xlsx,text/plain" onchange="handleKbFiles(this.files)">
+    </div>
+
+    <!-- 處理進度 -->
+    <div id="kb-progress-box" class="hidden rounded-xl border border-blue-500/30 bg-slate-900 p-3 space-y-2"></div>
+
+    <!-- 文件清單 -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="font-bold text-sm text-slate-300 flex items-center gap-2"><i class="ph-bold ph-stack text-violet-400"></i> 已建立索引的文件</label>
+        <button onclick="clearAllKb()" class="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1"><i class="ph-bold ph-trash"></i> 清空全部</button>
+      </div>
+      <div id="kb-doc-list" class="space-y-2"></div>
+      <div id="kb-doc-empty" class="text-xs text-slate-500 text-center py-6 border border-dashed border-slate-800 rounded-xl">尚未匯入任何文件</div>
+    </div>
+
+    <!-- 測試搜尋 -->
+    <div>
+      <label class="font-bold text-sm text-slate-300 mb-2 flex items-center gap-2"><i class="ph-bold ph-magnifying-glass text-amber-400"></i> 測試向量搜尋</label>
+      <div class="flex gap-2">
+        <input id="kb-test-query" type="text" placeholder="輸入問題測試檢索結果..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-amber-500">
+        <button onclick="testKbSearch()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-bold active:scale-95 transition-transform">搜尋</button>
+      </div>
+      <div id="kb-test-result" class="mt-3 space-y-2"></div>
+    </div>
+
+  </div>
+
+<script>
+// ============================================================
+// NOVA 向量資料庫 (knowledgebank.html)
+// 與 index.html 共用同一個 Capacitor WebView 來源 (origin)，
+// 因此可直接讀取 localStorage 內既有的 Gemini API Key，
+// 不需要使用者另外輸入金鑰。
+// ============================================================
+
+const GEMINI_KEY = () => localStorage.getItem('nova_key_gemini') || '';
+const EMBED_MODEL = 'text-embedding-004';
+const DB_NAME = 'nova_kb_db';
+const DB_VERSION = 1;
+const CHUNK_SIZE = 900;      // 每個分段的字元數
+const CHUNK_OVERLAP = 150;   // 分段重疊字元數
+const EMBED_BATCH = 16;      // 每次批次送出嵌入的分段數
+
+let kbDb = null;
+
+// ---------- IndexedDB ----------
+function openKbDb() {
+    return new Promise((resolve, reject) => {
+        if (kbDb) return resolve(kbDb);
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('documents')) {
+                db.createObjectStore('documents', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('chunks')) {
+                const store = db.createObjectStore('chunks', { keyPath: 'id' });
+                store.createIndex('docId', 'docId', { unique: false });
+            }
+        };
+        req.onsuccess = (e) => { kbDb = e.target.result; resolve(kbDb); };
+        req.onerror = (e) => reject(e.target.error);
+    });
+}
+
+function dbPut(storeName, value) {
+    return openKbDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        tx.objectStore(storeName).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+    }));
+}
+
+function dbGetAll(storeName) {
+    return openKbDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+    }));
+}
+
+function dbDeleteByDocId(docId) {
+    return openKbDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(['documents', 'chunks'], 'readwrite');
+        tx.objectStore('documents').delete(docId);
+        const idx = tx.objectStore('chunks').index('docId');
+        const cursorReq = idx.openCursor(IDBKeyRange.only(docId));
+        cursorReq.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) { cursor.delete(); cursor.continue(); }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+    }));
+}
+
+function dbClearAll() {
+    return openKbDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(['documents', 'chunks'], 'readwrite');
+        tx.objectStore('documents').clear();
+        tx.objectStore('chunks').clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+    }));
+}
+
+// ---------- 知識庫問答模式 開關 ----------
+function refreshKbModeUI() {
+    const on = localStorage.getItem('nova_kb_mode') === 'on';
+    const knob = document.getElementById('kb-mode-knob');
+    const toggle = document.getElementById('kb-mode-toggle');
+    const text = document.getElementById('kb-mode-status-text');
+    if (on) {
+        toggle.classList.add('bg-emerald-500');
+        toggle.classList.remove('bg-slate-700');
+        knob.style.transform = 'translateX(24px)';
+        text.textContent = '目前狀態：已啟動（主畫面 AI 將優先比對此資料庫）';
+        text.classList.remove('text-slate-500');
+        text.classList.add('text-emerald-400');
+    } else {
+        toggle.classList.remove('bg-emerald-500');
+        toggle.classList.add('bg-slate-700');
+        knob.style.transform = 'translateX(0)';
+        text.textContent = '目前狀態：關閉';
+        text.classList.add('text-slate-500');
+        text.classList.remove('text-emerald-400');
+    }
+}
+function toggleKbMode() {
+    const on = localStorage.getItem('nova_kb_mode') === 'on';
+    localStorage.setItem('nova_kb_mode', on ? 'off' : 'on');
+    refreshKbModeUI();
+}
+
+// ---------- 金鑰狀態 ----------
+function refreshKeyStatus() {
+    const el = document.getElementById('kb-key-status');
+    if (GEMINI_KEY()) {
+        el.textContent = '✅ Gemini 金鑰已連動';
+        el.className = 'text-[10px] px-2 py-1 rounded-full bg-emerald-900/40 text-emerald-400 border border-emerald-700/50';
+    } else {
+        el.textContent = '⚠️ 尚未設定 Gemini 金鑰';
+        el.className = 'text-[10px] px-2 py-1 rounded-full bg-red-900/40 text-red-400 border border-red-700/50';
+    }
+}
+
+// ---------- 文字切割 ----------
+function chunkText(text) {
+    const clean = (text || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+    if (!clean) return [];
+    const chunks = [];
+    let start = 0;
+    while (start < clean.length) {
+        let end = Math.min(start + CHUNK_SIZE, clean.length);
+        // 嘗試在句界（換行/句號）附近收尾，避免硬切斷句子
+        if (end < clean.length) {
+            const lastBreak = clean.lastIndexOf('\n', end);
+            const lastPeriod = Math.max(clean.lastIndexOf('。', end), clean.lastIndexOf('. ', end));
+            const breakPoint = Math.max(lastBreak, lastPeriod);
+            if (breakPoint > start + CHUNK_SIZE * 0.5) end = breakPoint + 1;
+        }
+        const piece = clean.slice(start, end).trim();
+        if (piece) chunks.push(piece);
+        if (end >= clean.length) break;
+        start = end - CHUNK_OVERLAP;
+        if (start < 0) start = 0;
+    }
+    return chunks;
+}
+
+// ---------- 各檔案類型文字擷取 ----------
+async function extractFileText(file) {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.txt') || name.endsWith('.md') || name.endsWith('.csv') || file.type.startsWith('text/')) {
+        return await file.text();
+    }
+    if (name.endsWith('.pdf')) {
+        const buf = await file.arrayBuffer();
+        if (window.pdfjsLib && pdfjsLib.GlobalWorkerOptions) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        let full = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            full += content.items.map(it => it.str).join(' ') + '\n\n';
+        }
+        return full;
+    }
+    if (name.endsWith('.docx')) {
+        const buf = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer: buf });
+        return result.value || '';
+    }
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        let full = '';
+        wb.SheetNames.forEach(sn => {
+            full += `\n\n【工作表：${sn}】\n`;
+            full += XLSX.utils.sheet_to_csv(wb.Sheets[sn]);
+        });
+        return full;
+    }
+    // 其他類型嘗試以純文字讀取
+    return await file.text().catch(() => '');
+}
+
+// ---------- Gemini Embedding ----------
+async function embedBatch(texts, taskType) {
+    const key = GEMINI_KEY();
+    if (!key) throw new Error('缺少 Gemini API Key');
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:batchEmbedContents?key=${key}`;
+    const body = {
+        requests: texts.map(t => ({
+            model: `models/${EMBED_MODEL}`,
+            content: { parts: [{ text: t }] },
+            taskType: taskType || 'RETRIEVAL_DOCUMENT'
+        }))
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`嵌入請求失敗 (${res.status}): ${errText.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    return (data.embeddings || []).map(e => e.values);
+}
+
+async function embedSingle(text, taskType) {
+    const r = await embedBatch([text], taskType);
+    return r[0];
+}
+
+function cosineSim(a, b) {
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    if (na === 0 || nb === 0) return 0;
+    return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+// ---------- 進度 UI ----------
+function setProgress(label, pct) {
+    const box = document.getElementById('kb-progress-box');
+    box.classList.remove('hidden');
+    box.innerHTML = `
+        <div class="flex items-center justify-between text-xs text-slate-300">
+            <span class="flex items-center gap-2"><i class="ph-bold ph-circle-notch spin text-blue-400"></i>${label}</span>
+            <span class="text-slate-500">${pct}%</span>
+        </div>
+        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div class="progress-bar-inner h-full bg-gradient-to-r from-blue-500 to-emerald-400" style="width:${pct}%"></div>
+        </div>`;
+}
+function hideProgress() {
+    document.getElementById('kb-progress-box').classList.add('hidden');
+}
+
+// ---------- 匯入流程 ----------
+async function handleKbFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    if (!GEMINI_KEY()) {
+        alert('⚠️ 尚未設定 Gemini API Key，請先回到主畫面的設定頁輸入金鑰。');
+        return;
+    }
+    const files = Array.from(fileList);
+    for (let fi = 0; fi < files.length; fi++) {
+        const file = files[fi];
+        try {
+            setProgress(`正在解析「${file.name}」...`, 5);
+            const rawText = await extractFileText(file);
+            if (!rawText || !rawText.trim()) {
+                setProgress(`「${file.name}」沒有可讀取的文字內容，已略過`, 100);
+                await new Promise(r => setTimeout(r, 800));
+                continue;
+            }
+            const pieces = chunkText(rawText);
+            if (pieces.length === 0) continue;
+
+            const docId = 'doc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            const docMeta = {
+                id: docId,
+                name: file.name,
+                size: file.size,
+                chunkCount: pieces.length,
+                addedAt: Date.now()
+            };
+
+            // 批次送出嵌入向量
+            let completedChunks = 0;
+            for (let i = 0; i < pieces.length; i += EMBED_BATCH) {
+                const batch = pieces.slice(i, i + EMBED_BATCH);
+                const vectors = await embedBatch(batch, 'RETRIEVAL_DOCUMENT');
+                for (let j = 0; j < batch.length; j++) {
+                    const chunk = {
+                        id: docId + '_c' + (i + j),
+                        docId,
+                        docName: file.name,
+                        text: batch[j],
+                        vector: vectors[j]
+                    };
+                    await dbPut('chunks', chunk);
+                }
+                completedChunks += batch.length;
+                const pct = Math.round((completedChunks / pieces.length) * 100);
+                setProgress(`正在向量化「${file.name}」(${completedChunks}/${pieces.length} 段)`, pct);
+            }
+
+            await dbPut('documents', docMeta);
+            setProgress(`✅ 「${file.name}」已完成索引 (${pieces.length} 段)`, 100);
+            await new Promise(r => setTimeout(r, 500));
+        } catch (err) {
+            console.error(err);
+            alert(`處理「${file.name}」時發生錯誤：${err.message}`);
+        }
+    }
+    hideProgress();
+    document.getElementById('kb-file-input').value = '';
+    renderDocList();
+}
+
+// 拖放支援
+(function setupDragDrop() {
+    const zone = document.getElementById('kb-drop-zone');
+    ['dragenter', 'dragover'].forEach(evt => zone.addEventListener(evt, (e) => {
+        e.preventDefault(); zone.classList.add('border-blue-500');
+    }));
+    ['dragleave', 'drop'].forEach(evt => zone.addEventListener(evt, (e) => {
+        e.preventDefault(); zone.classList.remove('border-blue-500');
+    }));
+    zone.addEventListener('drop', (e) => {
+        if (e.dataTransfer.files && e.dataTransfer.files.length) handleKbFiles(e.dataTransfer.files);
+    });
+})();
+
+// ---------- 文件清單 ----------
+async function renderDocList() {
+    const docs = await dbGetAll('documents');
+    const listEl = document.getElementById('kb-doc-list');
+    const emptyEl = document.getElementById('kb-doc-empty');
+    docs.sort((a, b) => b.addedAt - a.addedAt);
+    if (docs.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        return;
+    }
+    emptyEl.classList.add('hidden');
+    listEl.innerHTML = docs.map(d => `
+        <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
+            <i class="ph-bold ph-file-text text-blue-400 text-xl shrink-0"></i>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium truncate">${escapeHtml(d.name)}</div>
+                <div class="text-[11px] text-slate-500">${d.chunkCount} 段向量 · ${formatBytes(d.size)} · ${new Date(d.addedAt).toLocaleString()}</div>
+            </div>
+            <button onclick="deleteKbDoc('${d.id}')" class="p-2 rounded-lg hover:bg-red-900/30 text-red-400 active:scale-90 transition-transform shrink-0">
+                <i class="ph-bold ph-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function deleteKbDoc(docId) {
+    if (!confirm('確定要刪除這份文件的所有向量索引嗎？')) return;
+    await dbDeleteByDocId(docId);
+    renderDocList();
+}
+
+async function clearAllKb() {
+    if (!confirm('確定要清空整個向量資料庫嗎？此動作無法復原。')) return;
+    await dbClearAll();
+    renderDocList();
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function formatBytes(bytes) {
+    if (!bytes) return '0 KB';
+    const kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    return (kb / 1024).toFixed(1) + ' MB';
+}
+
+// ---------- 測試搜尋 ----------
+async function testKbSearch() {
+    const q = document.getElementById('kb-test-query').value.trim();
+    if (!q) return;
+    if (!GEMINI_KEY()) { alert('⚠️ 尚未設定 Gemini API Key'); return; }
+    const resultEl = document.getElementById('kb-test-result');
+    resultEl.innerHTML = '<div class="text-xs text-slate-500 flex items-center gap-2"><i class="ph-bold ph-circle-notch spin"></i> 搜尋中...</div>';
+    try {
+        const chunks = await dbGetAll('chunks');
+        if (chunks.length === 0) {
+            resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料（尚未匯入任何文件）</div>';
+            return;
+        }
+        const qVec = await embedSingle(q, 'RETRIEVAL_QUERY');
+        const scored = chunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5);
+        if (scored.length === 0 || scored[0].score < 0.55) {
+            resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料</div>';
+            return;
+        }
+        resultEl.innerHTML = scored.map(c => `
+            <div class="bg-slate-900 border border-slate-800 rounded-lg p-3">
+                <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                    <span class="truncate">${escapeHtml(c.docName)}</span>
+                    <span class="text-emerald-400 font-bold">${(c.score * 100).toFixed(1)}%</span>
+                </div>
+                <div class="text-xs text-slate-300 leading-relaxed line-clamp-4">${escapeHtml(c.text.slice(0, 280))}${c.text.length > 280 ? '...' : ''}</div>
+            </div>
+        `).join('');
+    } catch (e) {
+        resultEl.innerHTML = `<div class="text-xs text-red-400">搜尋失敗：${escapeHtml(e.message)}</div>`;
+    }
+}
+
+// ---------- 初始化 ----------
+window.addEventListener('DOMContentLoaded', () => {
+    refreshKbModeUI();
+    refreshKeyStatus();
+    renderDocList();
+});
+</script>
+</body>
+</html>
