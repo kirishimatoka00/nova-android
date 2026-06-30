@@ -915,6 +915,18 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="flex items-center justify-between">
+                                    <div class="w-full">
+                                        <label class="block text-xs text-emerald-400 font-bold flex items-center gap-1"><i class="ph-fill ph-database"></i> 向量資料庫（NOVA_VectorDB）</label>
+                                        <p class="text-[10px] text-slate-500 mt-1">「向量資料庫」內已匯入文件的索引與向量，與一般對話備份分開儲存。可在此完整備份或還原，預設存於 <code class="bg-slate-800 px-1 rounded">Documents/NOVA_Backups/</code> 與主程式備份相同的資料夾。</p>
+                                        <input type="file" id="nova-kb-import-input" accept=".json" class="hidden" onchange="window.importKbBackup && window.importKbBackup(event)">
+                                        <div class="flex gap-2 mt-2">
+                                            <button onclick="window.exportKbBackup && window.exportKbBackup()" class="px-2 py-1 text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white rounded-md">📤 完整備份</button>
+                                            <button onclick="document.getElementById('nova-kb-import-input').click()" class="px-2 py-1 text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded-md">📥 讀取備份</button>
+                                        </div>
+                                        <p id="nova-kb-backup-status" class="text-[10px] text-slate-500 mt-1"></p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -6209,6 +6221,152 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
             };
             reader.readAsArrayBuffer(file); // ★ ArrayBuffer 避免大檔一次性字串化 OOM
         };
+
+        // ════════════════════════════════════════════════════════════
+        // ★ 向量資料庫 完整備份 / 還原
+        // 與一般對話備份分開儲存，預設存於與主程式備份相同的資料夾
+        // Documents/NOVA_Backups/。資料來源為共用的 IndexedDB (nova_kb_db)。
+        // ════════════════════════════════════════════════════════════
+        window.exportKbBackup = async function() {
+            const statusEl = document.getElementById('nova-kb-backup-status');
+            const _setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+            try {
+                _setStatus('⏳ 讀取向量資料庫中...');
+                const [docs, chunks] = await Promise.all([novaKbGetAllDocs(), novaKbGetAllChunks()]);
+
+                if (!docs.length && !chunks.length) {
+                    showToast('⚠️ 向量資料庫目前是空的，沒有可備份的內容');
+                    _setStatus('');
+                    return;
+                }
+
+                const now = new Date();
+                const pad = n => String(n).padStart(2, '0');
+                const dateStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                const fileName = `NOVA_VectorDB_Backup_${dateStr}.json`;
+
+                const backupObj = {
+                    _type: 'nova_kb_backup',
+                    _version: 1,
+                    _exportedAt: now.toISOString(),
+                    embedModel: (typeof NOVA_KB_EMBED_MODEL !== 'undefined') ? NOVA_KB_EMBED_MODEL : '',
+                    embedOutputDim: (typeof NOVA_KB_EMBED_OUTPUT_DIM !== 'undefined') ? NOVA_KB_EMBED_OUTPUT_DIM : '',
+                    documents: docs,
+                    chunks: chunks
+                };
+                const jsonStr = JSON.stringify(backupObj);
+
+                const CapFS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+
+                if (CapFS) {
+                    _setStatus('⏳ 寫入備份檔...');
+                    const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
+                    try {
+                        // 先寫入 CACHE，再搬到公開 Documents/NOVA_Backups/（與主程式備份同一資料夾）
+                        await CapFS.writeFile({ path: fileName, data: b64, directory: 'CACHE', recursive: true, encoding: 'base64' });
+                        let finalUri = null;
+                        let _moved = false;
+                        try {
+                            const copyResult = await CapFS.copy({
+                                from: fileName,
+                                to: `NOVA_Backups/${fileName}`,
+                                directory: 'CACHE',
+                                toDirectory: 'DOCUMENTS'
+                            });
+                            finalUri = copyResult.uri;
+                            try { await CapFS.deleteFile({ path: fileName, directory: 'CACHE' }); } catch(e) {}
+                            _moved = true;
+                        } catch (moveErr) {
+                            // DOCUMENTS 寫入失敗（例如權限問題）→ 保留 CACHE 版本
+                        }
+                        const _savePath = _moved
+                            ? (finalUri ? finalUri.replace(/\/[^\/]+$/, '/') : 'Documents/NOVA_Backups/')
+                            : '應用程式快取（內部儲存搬移失敗，檔案仍可用）';
+                        showToast(`✅ 向量資料庫已備份（${docs.length} 份文件、${chunks.length} 段向量）\n📂 ${_savePath}`, 6000);
+                        _setStatus(`✅ 上次備份：${now.toLocaleString()}（${docs.length} 份文件）`);
+                    } catch (err) {
+                        console.error('[NOVA] 向量資料庫備份失敗:', err);
+                        showToast('❌ 向量資料庫備份失敗：' + (err.message || err));
+                        _setStatus('❌ 備份失敗');
+                    }
+                    return;
+                }
+
+                // 瀏覽器 fallback：直接下載
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fileName;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast(`✅ 向量資料庫已匯出（${docs.length} 份文件、${chunks.length} 段向量）`);
+                _setStatus(`✅ 上次備份：${now.toLocaleString()}（${docs.length} 份文件）`);
+            } catch (err) {
+                console.error('[NOVA] 向量資料庫備份失敗:', err);
+                showToast('❌ 向量資料庫備份失敗：' + (err.message || err));
+                _setStatus('');
+            }
+        };
+
+        window.importKbBackup = function(e) {
+            const file = e.target.files[0]; if (!file) return;
+            const statusEl = document.getElementById('nova-kb-backup-status');
+            const _setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
+            const _sizeMB = (file.size / 1024 / 1024).toFixed(1);
+            showToast(`⏳ 正在還原向量資料庫（${_sizeMB}MB）...`, 4000);
+
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+                let data;
+                try {
+                    data = JSON.parse(evt.target.result);
+                } catch (parseErr) {
+                    alert(`還原失敗：檔案格式損毀，無法解析\n錯誤：${parseErr.message}`);
+                    e.target.value = '';
+                    return;
+                }
+                try {
+                    const docs = data.documents || [];
+                    const chunks = data.chunks || [];
+                    if (!docs.length && !chunks.length) {
+                        alert('還原失敗：此檔案不包含任何向量資料庫內容');
+                        e.target.value = '';
+                        return;
+                    }
+
+                    // 維度檢查：若備份檔的嵌入模型/維度與目前設定不同，提醒使用者（仍允許還原，但檢索可能失效）
+                    const curModel = (typeof NOVA_KB_EMBED_MODEL !== 'undefined') ? NOVA_KB_EMBED_MODEL : '';
+                    if (data.embedModel && curModel && data.embedModel !== curModel) {
+                        const proceed = confirm(`⚠️ 此備份使用的嵌入模型為「${data.embedModel}」，與目前程式使用的「${curModel}」不同，向量空間可能不相容，檢索結果可能不準確。\n\n仍要繼續還原嗎？`);
+                        if (!proceed) { e.target.value = ''; return; }
+                    }
+
+                    _setStatus(`⏳ 還原中（0/${docs.length + chunks.length}）...`);
+                    let done = 0;
+                    const total = docs.length + chunks.length;
+                    for (const doc of docs) {
+                        await novaKbPut('documents', doc);
+                        done++;
+                        if (done % 10 === 0) _setStatus(`⏳ 還原中（${done}/${total}）...`);
+                    }
+                    for (const chunk of chunks) {
+                        await novaKbPut('chunks', chunk);
+                        done++;
+                        if (done % 30 === 0) _setStatus(`⏳ 還原中（${done}/${total}）...`);
+                    }
+
+                    showToast(`✅ 向量資料庫還原成功（${docs.length} 份文件、${chunks.length} 段向量）`, 6000);
+                    _setStatus(`✅ 已還原 ${docs.length} 份文件（${new Date().toLocaleString()}）`);
+                    e.target.value = '';
+                } catch (err) {
+                    alert('還原失敗：' + (err.message || err));
+                    console.error('[NOVA] 向量資料庫還原失敗:', err);
+                    _setStatus('❌ 還原失敗');
+                }
+            };
+            reader.readAsText(file);
+        };
+
         async function getCityName(lat, lon) {
             try {
                 // ✅ zoom=14 → 取得區/鄉鎮級（如新莊區），而非 zoom=10 的縣市級
@@ -12423,6 +12581,26 @@ window.startMultiAgentResearch = async function() {
                     req.onsuccess = () => resolve(req.result || []);
                     req.onerror = (e) => reject(e.target.error);
                 } catch (e) { resolve([]); }
+            }));
+        }
+
+        function novaKbGetAllDocs() {
+            return novaKbOpenDb().then(db => new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction('documents', 'readonly');
+                    const req = tx.objectStore('documents').getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = (e) => reject(e.target.error);
+                } catch (e) { resolve([]); }
+            }));
+        }
+
+        function novaKbPut(storeName, value) {
+            return novaKbOpenDb().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(storeName, 'readwrite');
+                tx.objectStore(storeName).put(value);
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e.target.error);
             }));
         }
 
