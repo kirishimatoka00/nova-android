@@ -1506,6 +1506,11 @@
                                 <i class="ph-bold ph-presentation-chart text-xl"></i><span class="text-[10px] font-bold">簡報生成</span>
                             </a>
 
+                            <!-- ★ 向量資料庫按鈕 -->
+                            <a href="./knowledgebank.html" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors active:scale-95 shadow-lg shadow-emerald-500/10">
+                                <i class="ph-bold ph-database text-xl"></i><span class="text-[10px] font-bold">向量資料庫</span>
+                            </a>
+
                             <label for="chat-file-input" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 cursor-pointer text-slate-300 transition-colors active:scale-95">
                                 <i class="ph-bold ph-paperclip text-2xl text-blue-400"></i><span class="text-[10px] font-bold">多檔上傳</span>
                             </label>
@@ -12345,6 +12350,105 @@ window.startMultiAgentResearch = async function() {
 
         
         // --- 核心訊息發送與處理邏輯 ---
+        // ════════════════════════════════════════════════════════════
+        // ★ 向量資料庫 (Vector Knowledge Base) RAG 檢索模組
+        // 與 knowledgebank.html 共用同一個 IndexedDB ('nova_kb_db')
+        // 及同一把 localStorage 內的 Gemini 金鑰 (nova_key_gemini)。
+        // ════════════════════════════════════════════════════════════
+        const NOVA_KB_DB_NAME = 'nova_kb_db';
+        const NOVA_KB_DB_VERSION = 1;
+        const NOVA_KB_EMBED_MODEL = 'text-embedding-004';
+        const NOVA_KB_TOP_K = 5;
+        const NOVA_KB_THRESHOLD = 0.55;
+        let _novaKbDb = null;
+
+        function isKbModeOn() {
+            return localStorage.getItem('nova_kb_mode') === 'on';
+        }
+
+        function novaKbOpenDb() {
+            return new Promise((resolve, reject) => {
+                if (_novaKbDb) return resolve(_novaKbDb);
+                let req;
+                try { req = indexedDB.open(NOVA_KB_DB_NAME, NOVA_KB_DB_VERSION); }
+                catch (e) { return reject(e); }
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
+                    if (!db.objectStoreNames.contains('chunks')) {
+                        const store = db.createObjectStore('chunks', { keyPath: 'id' });
+                        store.createIndex('docId', 'docId', { unique: false });
+                    }
+                };
+                req.onsuccess = (e) => { _novaKbDb = e.target.result; resolve(_novaKbDb); };
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        function novaKbGetAllChunks() {
+            return novaKbOpenDb().then(db => new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction('chunks', 'readonly');
+                    const req = tx.objectStore('chunks').getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = (e) => reject(e.target.error);
+                } catch (e) { resolve([]); }
+            }));
+        }
+
+        function novaKbCosineSim(a, b) {
+            let dot = 0, na = 0, nb = 0;
+            for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+            if (na === 0 || nb === 0) return 0;
+            return dot / (Math.sqrt(na) * Math.sqrt(nb));
+        }
+
+        async function novaKbEmbedQuery(queryText) {
+            const key = appState.keys.gemini;
+            if (!key) return null;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_KB_EMBED_MODEL}:embedContent?key=${key}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: `models/${NOVA_KB_EMBED_MODEL}`,
+                    content: { parts: [{ text: queryText }] },
+                    taskType: 'RETRIEVAL_QUERY'
+                })
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.embedding ? data.embedding.values : null;
+        }
+
+        // 回傳 { found: boolean, context: string }
+        async function novaKbRetrieveContext(queryText) {
+            try {
+                const chunks = await novaKbGetAllChunks();
+                if (!chunks || chunks.length === 0) return { found: false, context: '' };
+
+                const qVec = await novaKbEmbedQuery(queryText);
+                if (!qVec) return { found: false, context: '' };
+
+                const scored = chunks
+                    .map(c => ({ docName: c.docName, text: c.text, score: novaKbCosineSim(qVec, c.vector) }))
+                    .sort((a, b) => b.score - a.score)
+                    .slice(0, NOVA_KB_TOP_K)
+                    .filter(c => c.score >= NOVA_KB_THRESHOLD);
+
+                if (scored.length === 0) return { found: false, context: '' };
+
+                const context = scored.map((c, i) =>
+                    `(${i + 1}) 來源：${c.docName} | 相似度：${(c.score * 100).toFixed(1)}%\n${c.text}`
+                ).join('\n\n---\n\n');
+
+                return { found: true, context };
+            } catch (e) {
+                console.warn('向量資料庫檢索失敗', e);
+                return { found: false, context: '' };
+            }
+        }
+
         async function handleSendMessage() {
             if(appState.isThinking) return;
 
@@ -13350,6 +13454,24 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                         if (!searchResultText && appState.docMonitorUrl) searchResultText = await searchViaGas(searchQuery);
                         if (searchResultText) { injectedContext += `\n\n[系統自動連網搜尋結果，請參考此最新資訊來回答使用者的問題]:\n${searchResultText}\n\n`; }
                         else { addMessage(`⚠️ 代理搜尋失敗，將以原始知識庫回答。`, 'system'); }
+                    }
+                }
+
+                // ★ 向量資料庫問答模式：優先比對知識庫，找不到才轉聯網搜尋
+                if (isKbModeOn() && appState.keys.gemini && appState.translateMode === 'off') {
+                    addMessage(`📚 正在比對向量資料庫...`, 'system');
+                    renderMessages();
+                    const kbResult = await novaKbRetrieveContext(text);
+                    appState.messages.pop(); // 移除「正在比對」提示
+                    renderMessages();
+
+                    if (kbResult.found) {
+                        injectedContext += `\n\n[📚 向量資料庫檢索結果 - 請優先依此回答]:\n${kbResult.context}\n\n`;
+                        systemPromptAddon += `\n【知識庫問答模式 - 最高優先】：使用者已啟動向量資料庫問答模式。請優先且僅依據上方「向量資料庫檢索結果」的內容回答使用者的問題，不需要再進行網路搜尋。回答時可簡要註明資料來源檔名。\n`;
+                        enableSearchTool = false;
+                    } else {
+                        systemPromptAddon += `\n【知識庫問答模式 - 最高優先】：使用者已啟動向量資料庫問答模式，但向量資料庫中找不到與此問題相關的資料。請先用一句話明確回覆使用者「向量資料庫無相關資料」，接著立即使用網路搜尋工具查詢最新資訊來回答問題，不要省略搜尋這一步。\n`;
+                        enableSearchTool = true;
                     }
                 }
 
