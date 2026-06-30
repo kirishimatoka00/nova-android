@@ -6321,7 +6321,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                 try {
                     data = JSON.parse(evt.target.result);
                 } catch (parseErr) {
-                    alert(`還原失敗：檔案格式損毀，無法解析\n錯誤：${parseErr.message}`);
+                    showToast(`❌ 還原失敗：檔案格式損毀，無法解析（${parseErr.message}）`, 6000);
                     e.target.value = '';
                     return;
                 }
@@ -6329,7 +6329,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     const docs = data.documents || [];
                     const chunks = data.chunks || [];
                     if (!docs.length && !chunks.length) {
-                        alert('還原失敗：此檔案不包含任何向量資料庫內容');
+                        showToast('❌ 還原失敗：此檔案不包含任何向量資料庫內容', 5000);
                         e.target.value = '';
                         return;
                     }
@@ -6337,7 +6337,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     // 維度檢查：若備份檔的嵌入模型/維度與目前設定不同，提醒使用者（仍允許還原，但檢索可能失效）
                     const curModel = (typeof NOVA_KB_EMBED_MODEL !== 'undefined') ? NOVA_KB_EMBED_MODEL : '';
                     if (data.embedModel && curModel && data.embedModel !== curModel) {
-                        const proceed = confirm(`⚠️ 此備份使用的嵌入模型為「${data.embedModel}」，與目前程式使用的「${curModel}」不同，向量空間可能不相容，檢索結果可能不準確。\n\n仍要繼續還原嗎？`);
+                        const proceed = await showConfirm(`⚠️ 此備份使用的嵌入模型為「${data.embedModel}」，與目前程式使用的「${curModel}」不同，向量空間可能不相容，檢索結果可能不準確。\n\n仍要繼續還原嗎？`);
                         if (!proceed) { e.target.value = ''; return; }
                     }
 
@@ -6359,7 +6359,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     _setStatus(`✅ 已還原 ${docs.length} 份文件（${new Date().toLocaleString()}）`);
                     e.target.value = '';
                 } catch (err) {
-                    alert('還原失敗：' + (err.message || err));
+                    showToast('❌ 還原失敗：' + (err.message || err), 6000);
                     console.error('[NOVA] 向量資料庫還原失敗:', err);
                     _setStatus('❌ 還原失敗');
                 }

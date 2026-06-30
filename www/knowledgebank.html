@@ -18,6 +18,38 @@
   .spin{animation:spin 1s linear infinite;}
   @keyframes spin{to{transform:rotate(360deg);}}
   .progress-bar-inner{transition:width .25s ease;}
+
+  /* ════════════════════════════════════════════════════
+     ★ 白晝模式 — 與主程式 index.html 共用同一把 localStorage
+     'nova_theme' 金鑰，套用相同的配色映射表，確保視覺一致。
+     只在 <html> 有 .theme-light class 時生效，不影響黑夜模式。
+     ════════════════════════════════════════════════════ */
+  .theme-light body { background:#f8fafc; }
+  .theme-light .bg-slate-950 { background-color: #f8fafc !important; }
+  .theme-light .bg-slate-900 { background-color: #f8fafc !important; }
+  .theme-light .bg-slate-900\/95 { background-color: rgba(248,250,252,0.95) !important; }
+  .theme-light .bg-slate-900\/60 { background-color: rgba(248,250,252,0.60) !important; }
+  .theme-light .bg-slate-800 { background-color: #f1f5f9 !important; }
+  .theme-light .bg-slate-800\/50 { background-color: rgba(241,245,249,0.5) !important; }
+  .theme-light .bg-slate-700 { background-color: #e2e8f0 !important; }
+  .theme-light .bg-slate-600 { background-color: #cbd5e1 !important; }
+  .theme-light .border-slate-700 { border-color: #e2e8f0 !important; }
+  .theme-light .border-slate-800 { border-color: #f1f5f9 !important; }
+  .theme-light .text-white { color: #0f172a !important; }
+  .theme-light .text-slate-200 { color: #1e293b !important; }
+  .theme-light .text-slate-300 { color: #334155 !important; }
+  .theme-light .text-slate-400 { color: #64748b !important; }
+  .theme-light .text-slate-500 { color: #94a3b8 !important; }
+  .theme-light .bg-emerald-900\/40 { background-color: #ecfdf5 !important; }
+  .theme-light .bg-red-900\/30 { background-color: #fef2f2 !important; }
+  .theme-light .bg-red-900\/40 { background-color: #fef2f2 !important; }
+  .theme-light .border-emerald-700\/50 { border-color: #6ee7b7 !important; }
+  .theme-light .border-red-700\/50 { border-color: #fca5a5 !important; }
+  .theme-light .from-emerald-950 { --tw-gradient-from: #ecfdf5 !important; }
+  .theme-light .to-slate-900 { --tw-gradient-to: #f8fafc !important; }
+  .theme-light .bg-black\/60 { background-color: rgba(100,116,139,0.60) !important; }
+  .theme-light #kb-drop-zone { background-color: #f8fafc !important; }
+  .theme-light ::-webkit-scrollbar-thumb { background:#cbd5e1; }
 </style>
 </head>
 <body class="bg-slate-950 text-white min-h-screen flex flex-col">
@@ -32,6 +64,9 @@
       <h1 class="text-lg font-bold tracking-wide">向量資料庫</h1>
     </div>
     <div class="ml-auto flex items-center gap-2">
+      <button id="kb-theme-toggle" onclick="toggleKbTheme()" class="p-2 rounded-full hover:bg-slate-800 active:scale-90 transition-transform" title="切換白晝/黑夜模式">
+        <i id="kb-theme-icon" class="ph-bold ph-moon text-lg text-slate-400"></i>
+      </button>
       <span id="kb-key-status" class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">檢查金鑰中...</span>
     </div>
   </div>
@@ -544,12 +579,37 @@ async function testKbSearch() {
     }
 }
 
+// ---------- 白晝/黑夜模式（與主程式同步） ----------
+function applyKbTheme(theme) {
+    const icon = document.getElementById('kb-theme-icon');
+    if (theme === 'light') {
+        document.documentElement.classList.add('theme-light');
+        if (icon) { icon.className = 'ph-bold ph-sun text-lg text-amber-500'; }
+    } else {
+        document.documentElement.classList.remove('theme-light');
+        if (icon) { icon.className = 'ph-bold ph-moon text-lg text-slate-400'; }
+    }
+}
+function toggleKbTheme() {
+    const cur = localStorage.getItem('nova_theme') || 'dark';
+    const next = cur === 'light' ? 'dark' : 'light';
+    localStorage.setItem('nova_theme', next);
+    applyKbTheme(next);
+}
+
 // ---------- 初始化 ----------
 window.addEventListener('DOMContentLoaded', () => {
+    applyKbTheme(localStorage.getItem('nova_theme') || 'dark');
     refreshKbModeUI();
     refreshKeyStatus();
     renderDocList();
 });
+// 若使用者在主程式頁面切換主題後返回本頁，重新整理時會自動套用最新設定；
+// 若瀏覽器分頁未關閉也切換主題，透過 storage 事件即時同步
+window.addEventListener('storage', (e) => {
+    if (e.key === 'nova_theme') applyKbTheme(e.newValue || 'dark');
+});
+
 </script>  <!-- 自訂提示/確認對話框 (取代 native alert/confirm，避免 Capacitor WebView 顯示空白方框) -->
   <div id="nova-kb-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/60 backdrop-blur-sm px-6">
     <div id="nova-kb-modal-inner" class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-sm shadow-2xl">
