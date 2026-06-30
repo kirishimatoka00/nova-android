@@ -106,6 +106,46 @@ const EMBED_BATCH = 16;      // 每次批次送出嵌入的分段數
 
 let kbDb = null;
 
+// ---------- 自訂 alert / confirm（取代 native 對話框，避免空白方框問題）----------
+function kbAlert(msg, icon) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('nova-kb-modal');
+        document.getElementById('nova-kb-modal-icon').textContent = icon || '⚠️';
+        document.getElementById('nova-kb-modal-text').textContent = msg;
+        const btns = document.getElementById('nova-kb-modal-buttons');
+        btns.innerHTML = '';
+        const okBtn = document.createElement('button');
+        okBtn.textContent = '確定';
+        okBtn.className = 'px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-bold active:scale-95 transition-transform';
+        okBtn.onclick = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); resolve(true); };
+        btns.appendChild(okBtn);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    });
+}
+
+function kbConfirm(msg, icon) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('nova-kb-modal');
+        document.getElementById('nova-kb-modal-icon').textContent = icon || '❓';
+        document.getElementById('nova-kb-modal-text').textContent = msg;
+        const btns = document.getElementById('nova-kb-modal-buttons');
+        btns.innerHTML = '';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '取消';
+        cancelBtn.className = 'px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-sm font-bold active:scale-95 transition-transform';
+        cancelBtn.onclick = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); resolve(false); };
+        const okBtn = document.createElement('button');
+        okBtn.textContent = '確定';
+        okBtn.className = 'px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-bold active:scale-95 transition-transform';
+        okBtn.onclick = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); resolve(true); };
+        btns.appendChild(cancelBtn);
+        btns.appendChild(okBtn);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    });
+}
+
 // ---------- IndexedDB ----------
 function openKbDb() {
     return new Promise((resolve, reject) => {
@@ -330,7 +370,8 @@ function hideProgress() {
 async function handleKbFiles(fileList) {
     if (!fileList || fileList.length === 0) return;
     if (!GEMINI_KEY()) {
-        alert('⚠️ 尚未設定 Gemini API Key，請先回到主畫面的設定頁輸入金鑰。');
+        await kbAlert('尚未設定 Gemini API Key，請先回到主畫面的設定頁輸入金鑰後再匯入文件。');
+        document.getElementById('kb-file-input').value = '';
         return;
     }
     const files = Array.from(fileList);
@@ -381,7 +422,8 @@ async function handleKbFiles(fileList) {
             await new Promise(r => setTimeout(r, 500));
         } catch (err) {
             console.error(err);
-            alert(`處理「${file.name}」時發生錯誤：${err.message}`);
+            hideProgress();
+            await kbAlert(`處理「${file.name}」時發生錯誤：${err.message}`, '❌');
         }
     }
     hideProgress();
@@ -430,13 +472,15 @@ async function renderDocList() {
 }
 
 async function deleteKbDoc(docId) {
-    if (!confirm('確定要刪除這份文件的所有向量索引嗎？')) return;
+    const ok = await kbConfirm('確定要刪除這份文件的所有向量索引嗎？');
+    if (!ok) return;
     await dbDeleteByDocId(docId);
     renderDocList();
 }
 
 async function clearAllKb() {
-    if (!confirm('確定要清空整個向量資料庫嗎？此動作無法復原。')) return;
+    const ok = await kbConfirm('確定要清空整個向量資料庫嗎？此動作無法復原。');
+    if (!ok) return;
     await dbClearAll();
     renderDocList();
 }
@@ -455,7 +499,7 @@ function formatBytes(bytes) {
 async function testKbSearch() {
     const q = document.getElementById('kb-test-query').value.trim();
     if (!q) return;
-    if (!GEMINI_KEY()) { alert('⚠️ 尚未設定 Gemini API Key'); return; }
+    if (!GEMINI_KEY()) { await kbAlert('尚未設定 Gemini API Key'); return; }
     const resultEl = document.getElementById('kb-test-result');
     resultEl.innerHTML = '<div class="text-xs text-slate-500 flex items-center gap-2"><i class="ph-bold ph-circle-notch spin"></i> 搜尋中...</div>';
     try {
@@ -492,6 +536,14 @@ window.addEventListener('DOMContentLoaded', () => {
     refreshKeyStatus();
     renderDocList();
 });
-</script>
+</script>  <!-- 自訂提示/確認對話框 (取代 native alert/confirm，避免 Capacitor WebView 顯示空白方框) -->
+  <div id="nova-kb-modal" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+    <div id="nova-kb-modal-inner" class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-sm shadow-2xl">
+      <div id="nova-kb-modal-icon" class="text-3xl mb-2"></div>
+      <div id="nova-kb-modal-text" class="text-sm text-slate-200 leading-relaxed whitespace-pre-line"></div>
+      <div id="nova-kb-modal-buttons" class="mt-4 flex justify-end gap-2"></div>
+    </div>
+  </div>
+
 </body>
 </html>
