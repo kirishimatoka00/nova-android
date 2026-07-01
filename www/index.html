@@ -12073,6 +12073,69 @@ try {
         }
 
         // --- 網路搜尋與爬蟲功能 (WEB SCRAPER & SEARCH) ---
+        // ════════════════════════════════════════════════════════════
+        // ★ 網頁內容抓取：優先 CapacitorHttp（原生 Android，無 CORS 限制）
+        //   → GAS 代理（使用者自設）→ CORS Proxy 公共服務（三個輪流）
+        //   → 全部失敗回傳 null
+        // ════════════════════════════════════════════════════════════
+        async function fetchUrlContent(url) {
+            const _stripHtml = (html) => html
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+                .replace(/\s{3,}/g, '\n').trim();
+
+            // ① CapacitorHttp（原生 Android HTTP，完全無 CORS 限制，效果最佳）
+            const CapHttp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+            if (CapHttp) {
+                try {
+                    const result = await CapHttp.request({
+                        method: 'GET', url,
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8'
+                        },
+                        responseType: 'text'
+                    });
+                    if (result.status >= 200 && result.status < 300 && result.data && result.data.length > 400) {
+                        return _stripHtml(result.data).slice(0, 7000);
+                    }
+                } catch (e) { console.warn('[fetchUrlContent] CapacitorHttp failed:', e.message); }
+            }
+
+            // ② GAS 代理（使用者自設，適合突破部分防火牆）
+            if (appState.docMonitorUrl) {
+                try {
+                    const res = await fetch(appState.docMonitorUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ type: 'scrape_and_log', url }) });
+                    const text = await res.text();
+                    if (text && !text.startsWith('Error') && text.length > 200) return text;
+                } catch (e) { console.warn('[fetchUrlContent] GAS failed:', e.message); }
+            }
+
+            // ③ 公共 CORS Proxy（三個輪流嘗試）
+            const corsProxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            ];
+            for (const proxy of corsProxies) {
+                try {
+                    const controller = new AbortController();
+                    const tid = setTimeout(() => controller.abort(), 9000);
+                    const res = await fetch(proxy, { signal: controller.signal });
+                    clearTimeout(tid);
+                    if (!res.ok) continue;
+                    const html = await res.text();
+                    if (!html || html.length < 300) continue;
+                    const stripped = _stripHtml(html).slice(0, 7000);
+                    if (stripped.length > 200) return stripped;
+                } catch (e) { /* 嘗試下一個 */ }
+            }
+            return null;
+        }
+
         async function fetchUrlViaGas(url) {
             if (!appState.docMonitorUrl) return null;
             try { const res = await fetch(appState.docMonitorUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ type: 'scrape_and_log', url: url }) }); const text = await res.text(); return (text && !text.startsWith("Error")) ? text : null; } catch (e) { return null; }
@@ -13674,9 +13737,20 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                                 systemPromptAddon += `\n【重要防幻覺指令：這是一個 YouTube 影片連結。請優先閱讀上方[YouTube 影片資訊擷取]內的「標題」與「描述」。若需更多內容，請使用 Search 工具「搜尋該影片標題」來獲取資訊後再進行摘要。絕對禁止在缺乏資訊時憑空捏造無關的內容！】`;
                             } else if (!url.includes('twitter')) { 
                                 addMessage(`🔍 抓取網頁中...`, 'system'); 
-                                const content = await fetchUrlViaGas(url); 
-                                if (content) injectedContext = `\n\n[網頁內容]:\n${content}\n\n`;
-                                else if (appState.keys.gemini && modelToUse === 'gemini') { enableSearchTool = true; systemPromptAddon += `(網頁抓取失敗，請使用 Search 工具搜尋此連結)`; }
+                                const content = await fetchUrlContent(url);
+                                if (content) {
+                                    injectedContext = `\n\n[網頁內容 - 已從 ${url} 直接讀取]:\n${content}\n\n`;
+                                    enableSearchTool = false;
+                                    // ★ 將「已有真實網頁內容」標記傳入 fetchAIResponse，
+                                    //   讓 Gemini systemInstruction 層強制防止幻覺
+                                    _intentHints._urlFetchedOk = true;
+                                    _intentHints._urlFetchedSource = url;
+                                } else {
+                                    // 全部抓取方式均失敗 → 明確告知使用者，完全禁用搜尋工具避免 Gemini 自行猜測
+                                    enableSearchTool = false;
+                                    injectedContext = `\n\n[系統通知] 此網址（${url}）的內容無法被程式取得，可能原因：\n1. 該網站設有反爬蟲保護（如 UDN、CTWANT 等付費/登入牆）\n2. 頁面需要 JavaScript 動態載入\n3. 伺服器拒絕自動化存取\n\n`;
+                                    systemPromptAddon += `\n【強制防幻覺指令 - 最高優先級】：網頁內容無法取得。你的唯一任務是：(1) 告知使用者「此網址的內容因反爬蟲或存取限制，無法自動讀取」。(2) 建議使用者直接在瀏覽器開啟此連結。(3) 絕對禁止根據網址的任何部分（數字編號、路徑文字等）自行推測、捏造或「根據相關報導推斷」頁面內容。違反此規則視為嚴重錯誤。`;
+                                }
                             } else if (appState.keys.gemini && modelToUse === 'gemini') { 
                                 enableSearchTool = true;
                                 systemPromptAddon += `(請搜尋此連結)`; 
@@ -14374,6 +14448,15 @@ if (appState.pendingAnalyzeContextId) {
                     //    純粹是「上限」而非「目標長度」，不會增加一般簡短回覆的成本或延遲。
                     const normalMaxTokens = 65536;
                     const payload = { contents: contents, generationConfig: { temperature: 0.7, maxOutputTokens: options.isAnalysis ? analysisMaxTokens : normalMaxTokens } };
+
+                    // ★ 若已成功抓取網頁內容，在 systemInstruction 層加入強制防幻覺指令
+                    //   （systemInstruction 優先級高於 contents 內的 user text，
+                    //    即使 search grounding 啟用，此規則仍然有效）
+                    if (options.intentHints && options.intentHints._urlFetchedOk) {
+                        payload.systemInstruction = {
+                            parts: [{ text: `【網頁閱讀模式 - 最高優先】：使用者傳入了一個網址（${options.intentHints._urlFetchedSource || ''}），系統已成功直接讀取該頁面的文字內容並附在提示詞中的「[網頁內容]」區塊。請嚴格依此區塊的實際內容作答，不可引用任何此區塊以外的資訊、不可根據你的訓練資料推測、不可捏造任何細節。若內容不完整，請如實說明。` }]
+                        };
+                    }
                     // 🎨 Gemini 圖片生成模型需要明確啟用 IMAGE 輸出模式，且不可同時開啟 Google Search
                     if (isGeminiImageModel) {
                         payload.generationConfig.responseModalities = ["TEXT", "IMAGE"];
