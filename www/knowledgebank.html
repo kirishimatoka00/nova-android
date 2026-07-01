@@ -64,9 +64,6 @@
       <h1 class="text-lg font-bold tracking-wide">向量資料庫</h1>
     </div>
     <div class="ml-auto flex items-center gap-2">
-      <button id="kb-theme-toggle" onclick="toggleKbTheme()" class="p-2 rounded-full hover:bg-slate-800 active:scale-90 transition-transform" title="切換白晝/黑夜模式">
-        <i id="kb-theme-icon" class="ph-bold ph-moon text-lg text-slate-400"></i>
-      </button>
       <span id="kb-key-status" class="text-[10px] px-2 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">檢查金鑰中...</span>
     </div>
   </div>
@@ -579,22 +576,13 @@ async function testKbSearch() {
     }
 }
 
-// ---------- 白晝/黑夜模式（與主程式同步） ----------
+// ---------- 白晝/黑夜模式（自動與主程式同步，不提供獨立切換按鈕） ----------
 function applyKbTheme(theme) {
-    const icon = document.getElementById('kb-theme-icon');
     if (theme === 'light') {
         document.documentElement.classList.add('theme-light');
-        if (icon) { icon.className = 'ph-bold ph-sun text-lg text-amber-500'; }
     } else {
         document.documentElement.classList.remove('theme-light');
-        if (icon) { icon.className = 'ph-bold ph-moon text-lg text-slate-400'; }
     }
-}
-function toggleKbTheme() {
-    const cur = localStorage.getItem('nova_theme') || 'dark';
-    const next = cur === 'light' ? 'dark' : 'light';
-    localStorage.setItem('nova_theme', next);
-    applyKbTheme(next);
 }
 
 // ---------- 初始化 ----------
