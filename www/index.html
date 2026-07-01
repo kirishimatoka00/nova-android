@@ -2693,7 +2693,8 @@ async function encodeMp3(audioBuffer) {
         window._novaSkillsClear = async function() {
             const CapFS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
             if (!CapFS) return;
-            if (!confirm('確定要清空所有本地技能檔案嗎？此操作無法復原。')) return;
+            const ok = await showConfirm('確定要清空所有本地技能檔案嗎？此操作無法復原。');
+            if (!ok) return;
             try {
                 await CapFS.rmdir({ path: 'NovaSkills', directory: 'DOCUMENTS', recursive: true });
             } catch(e) {}
@@ -5603,11 +5604,11 @@ return html;
             const rounds = parseInt(document.getElementById('dual-ai-rounds').value) || 2;
             
             if (!topic) {
-                alert("請輸入研究主題或目標任務！");
+                showToast("請輸入研究主題或目標任務！");
                 return;
             }
             if (!appState.keys[modelA] || !appState.keys[modelB]) {
-                alert("請確認您已在設定中填寫所選模型的 API Key。");
+                showToast("請確認您已在設定中填寫所選模型的 API Key。");
                 return;
             }
 
@@ -6012,7 +6013,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                     data = JSON.parse(rawText);
                     rawText = null; // 立即釋放記憶體，不再需要原始字串
                 } catch(parseErr) {
-                    alert(`還原失敗：檔案過大或格式損毀，無法解析\n（${_sizeMB}MB）\n錯誤：${parseErr.message}`);
+                    showToast(`還原失敗：檔案過大或格式損毀，無法解析\n（${_sizeMB}MB）\n錯誤：${parseErr.message}`);
                     console.error("Import Parse Error:", parseErr);
                     e.target.value = '';
                     return;
@@ -6215,7 +6216,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     e.target.value = '';
                     
                 } catch(err) { 
-                    alert("還原失敗：無效的備份檔或資料損毀"); 
+                    showToast("還原失敗：無效的備份檔或資料損毀"); 
                     console.error("Import Error:", err);
                 }
             };
@@ -7618,10 +7619,10 @@ msg.files : (msg.file ? [msg.file] : []);
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
                 } else {
-                    alert("找不到編輯器視窗元件 (note-edit-modal)");
+                    showToast("找不到編輯器視窗元件 (note-edit-modal)");
                 }
             } catch(e) {
-                alert("開啟新增筆記時發生錯誤：" + e.message);
+                showToast("開啟新增筆記時發生錯誤：" + e.message);
             }
         };
 
@@ -7781,10 +7782,10 @@ msg.files : (msg.file ? [msg.file] : []);
                     modal.classList.remove('hidden');
                     modal.classList.add('flex');
                 } else {
-                    alert("找不到編輯器視窗元件 (note-edit-modal)");
+                    showToast("找不到編輯器視窗元件 (note-edit-modal)");
                 }
             } catch(e) {
-                alert("開啟筆記時發生錯誤：" + e.message);
+                showToast("開啟筆記時發生錯誤：" + e.message);
             }
         };
 
@@ -7833,7 +7834,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 closeNoteEdit(); 
                 showToast("✅ 筆記已儲存");
             } catch(e) {
-                alert("儲存筆記時發生錯誤：" + e.message);
+                showToast("儲存筆記時發生錯誤：" + e.message);
             }
         };
 
@@ -7899,7 +7900,7 @@ msg.files : (msg.file ? [msg.file] : []);
 
         window.backupNoteToDrive = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
-            if(!appState.driveUrl) { alert("請先在「設定」中填寫 Google Drive 備份 URL (Apps Script)"); return; }
+            if(!appState.driveUrl) { showToast("請先在「設定」中填寫 Google Drive 備份 URL (Apps Script)"); return; }
             
             const btn = document.getElementById('btn-backup-' + id);
             if(btn) { btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 備份中...'; btn.disabled = true; }
@@ -7909,7 +7910,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 if (n.type === 'audio') {
                     const audioBlob = await loadAudioBlob(n.id);
                     if (!audioBlob) {
-                        alert("找不到本地音訊資料，無法備份音訊。\n請確認音訊已存於本機 IndexedDB 中。");
+                        showToast("找不到本地音訊資料，無法備份音訊。\n請確認音訊已存於本機 IndexedDB 中。");
                         if(btn) { btn.innerHTML = '<i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份'; btn.disabled = false; }
                         return;
                     }
@@ -7948,7 +7949,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
                     n.driveUrl = "https://drive.google.com/"; saveToDB('notes', n); renderNotes(); showToast("✅ 筆記已成功備份至 Google Drive");
                 } else {
-                    alert("備份失敗：" + e.message);
+                    showToast("備份失敗：" + e.message);
                 }
                 if(btn) { btn.innerHTML = '<i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份'; btn.disabled = false; }
             }
@@ -8909,7 +8910,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                     }
                 } catch(e) {
                     if(typeof showToast === 'function') showToast('❌ 下載失敗：' + e.message, 8000);
-                    else alert('下載失敗：' + e.message);
+                    else showToast('下載失敗：' + e.message);
                     return { success: false, method: 'failed', detail: e.message };
                 }
             };
@@ -9135,12 +9136,12 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                 let record = type === 'record'
                     ? appState.audioRecords.find(x => String(x.id) === String(id))
                     : appState.notes.find(x => String(x.id) === String(id));
-                if (!record) { alert("找不到紀錄"); return; }
+                if (!record) { showToast("找不到紀錄"); return; }
 
                 showToast("📥 載入音訊資料中…");
                 let audioBlob = await loadAudioBlob(record.id);
                 if (!audioBlob && record.audioData) audioBlob = base64ToBlob(record.audioData);
-                if (!audioBlob) { alert("找不到本地音檔資料。"); return; }
+                if (!audioBlob) { showToast("找不到本地音檔資料。"); return; }
 
                 const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : '.weba';
                 const safeTitle = (record.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_');
@@ -9159,12 +9160,12 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                 let record = type === 'record'
                     ? appState.audioRecords.find(x => String(x.id) === String(id))
                     : appState.notes.find(x => String(x.id) === String(id));
-                if (!record) { alert("找不到紀錄"); return; }
+                if (!record) { showToast("找不到紀錄"); return; }
 
                 showToast("🔄 載入音訊並準備 MP3 轉換，請稍候…");
                 let audioBlob = await loadAudioBlob(record.id);
                 if (!audioBlob && record.audioData) audioBlob = base64ToBlob(record.audioData);
-                if (!audioBlob) { alert("找不到本地音檔資料。"); return; }
+                if (!audioBlob) { showToast("找不到本地音檔資料。"); return; }
 
                 try {
                     showToast("🎵 weba → MP3 轉換中（依檔案大小可能需時數秒）…");
@@ -10256,7 +10257,7 @@ function closePlusMenuOnOutsideClick(e) {
                     liveVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
                     document.getElementById('live-video-preview').srcObject = liveVideoStream;
                 } catch(e) {
-                    alert("切換鏡頭失敗：" + e.message);
+                    showToast("切換鏡頭失敗：" + e.message);
                 }
             }
         };
@@ -10304,7 +10305,7 @@ function closePlusMenuOnOutsideClick(e) {
                     document.getElementById('plus-menu').classList.add('hidden');
                     document.getElementById('plus-icon').classList.remove('rotate-45');
                 } catch (e) {
-                    alert("無法存取相機或權限被拒絕：" + e.message);
+                    showToast("無法存取相機或權限被拒絕：" + e.message);
                     appState.isLiveMode = false;
                     btn.classList.remove('text-red-400');
                     btn.classList.add('text-slate-300');
@@ -11490,7 +11491,7 @@ try {
         async function summarizeAudioRecord(id) {
             const r = appState.audioRecords.find(x => String(x.id) === String(id));
             if (!r) return;
-            if (appState.currentModel !== 'gemini') { alert("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
+            if (appState.currentModel !== 'gemini') { showToast("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
 
             // 找出同 groupId 的所有分段（按時間先後排序）
             const groupId = r.groupId || r.id;
@@ -11688,7 +11689,7 @@ try {
         async function summarizeVoiceNote(id) {
             const n = appState.notes.find(x => String(x.id) === String(id));
             if (!n) return;
-            if (appState.currentModel !== 'gemini') { alert("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
+            if (appState.currentModel !== 'gemini') { showToast("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
 
             const key = appState.keys.gemini;
             if (!key) { addMessage('⚠️ 請先設定 Gemini API Key！', 'system'); return; }
@@ -12047,7 +12048,7 @@ try {
 
         async function summarizeTextNote(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if (!n) return;
-            if (appState.currentModel !== 'gemini') { alert("文字深度分析建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
+            if (appState.currentModel !== 'gemini') { showToast("文字深度分析建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
 
             // ★ 修復：原本完全沒有把筆記內容帶入 prompt，AI 收到的只有指令本身，
             //   沒有任何「以下筆記內容」的實際文字，因此永遠回覆「筆記內容不足以產生有效摘要」。
@@ -12392,7 +12393,7 @@ window.startMultiAgentResearch = async function() {
             const verifierModel = document.getElementById('agent-verifier').value; 
             const imageModel = document.getElementById('agent-image-model').value;
             
-            if(!query && !appState.agentFile) { alert("請在設定面板輸入研究主題，或上傳相關檔案！"); openAgentModal(); return; }
+            if(!query && !appState.agentFile) { showToast("請在設定面板輸入研究主題，或上傳相關檔案！"); openAgentModal(); return; }
             
             const fileContent = appState.agentFile ? `\n\n【參考檔案資料】:\n檔名：${appState.agentFile.name}\n` : '';
             const topic = query || (appState.agentFile ? `全面分析上傳的檔案「${appState.agentFile.name}」並進行延伸深度研究` : "");
