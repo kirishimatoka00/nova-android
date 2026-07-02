@@ -918,7 +918,7 @@
                                 <div class="flex items-center justify-between">
                                     <div class="w-full">
                                         <label class="block text-xs text-emerald-400 font-bold flex items-center gap-1"><i class="ph-fill ph-database"></i> 向量資料庫（NOVA_VectorDB）</label>
-                                        <p class="text-[10px] text-slate-500 mt-1">「向量資料庫」內已匯入文件的索引與向量，與一般對話備份分開儲存。可在此完整備份或還原，預設存於 <code class="bg-slate-800 px-1 rounded">Documents/NOVA_Backups/</code> 與主程式備份相同的資料夾。</p>
+                                        <p class="text-[10px] text-slate-500 mt-1">「向量資料庫」內已匯入文件的索引、向量與資料夾分類（含啟用狀態），與一般對話備份分開儲存。可在此完整備份或還原，預設存於 <code class="bg-slate-800 px-1 rounded">Documents/NOVA_Backups/</code> 與主程式備份相同的資料夾。</p>
                                         <input type="file" id="nova-kb-import-input" accept=".json" class="hidden" onchange="window.importKbBackup && window.importKbBackup(event)">
                                         <div class="flex gap-2 mt-2">
                                             <button onclick="window.exportKbBackup && window.exportKbBackup()" class="px-2 py-1 text-[10px] bg-emerald-700 hover:bg-emerald-600 text-white rounded-md">📤 完整備份</button>
@@ -2820,6 +2820,7 @@ async function encodeMp3(audioBuffer) {
 
         // ── 增量寫入：每次 saveToDB / 刪除 / 設定變更 都呼叫 ──────────
         // delta 行格式：{"op":"upsert"|"delete","store":"messages","item":{...}} 或 {"op":"meta","data":{...}}
+        let _novaWalMsgSnapshotDebounce = null;
         window._novaWalAppendDelta = async function(op, store, item) {
             const CapFS = _novaWalGetCapFS();
             if (!CapFS) return; // 桌面瀏覽器環境不啟用 WAL
@@ -2828,7 +2829,19 @@ async function encodeMp3(audioBuffer) {
                 const b64 = btoa(unescape(encodeURIComponent(line)));
                 await _novaWalWriteFile(_NOVA_WAL_DELTA, b64, true);
                 _novaWalDeltaCount++;
-                // 累積到一定量或超過時間，觸發完整快照
+
+                // ★ 對話與圖片是最需要「即時」保護的內容：新增訊息（含圖片參照）後，
+                //   在使用者停止操作約 5 秒後自動重寫一次完整快照 NOVA_Live.json，
+                //   不必等到累積 20 筆變動或 3 分鐘才寫入，符合設定頁承諾的「即時寫入」。
+                if (store === 'messages') {
+                    if (_novaWalMsgSnapshotDebounce) clearTimeout(_novaWalMsgSnapshotDebounce);
+                    _novaWalMsgSnapshotDebounce = setTimeout(() => {
+                        _novaWalMsgSnapshotDebounce = null;
+                        window._novaWalSnapshot();
+                    }, 5000);
+                }
+
+                // 累積到一定量或超過時間，觸發完整快照（其他 store 的保底機制）
                 const now = Date.now();
                 if (_novaWalDeltaCount >= 20 || (now - _novaWalLastSnapshot > 3 * 60 * 1000 && _novaWalDeltaCount > 0)) {
                     window._novaWalSnapshot();
@@ -6233,7 +6246,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
             const _setStatus = (msg) => { if (statusEl) statusEl.textContent = msg; };
             try {
                 _setStatus('⏳ 讀取向量資料庫中...');
-                const [docs, chunks] = await Promise.all([novaKbGetAllDocs(), novaKbGetAllChunks()]);
+                const [docs, chunks, folders] = await Promise.all([novaKbGetAllDocs(), novaKbGetAllChunks(), novaKbGetAllFolders()]);
 
                 if (!docs.length && !chunks.length) {
                     showToast('⚠️ 向量資料庫目前是空的，沒有可備份的內容');
@@ -6248,10 +6261,11 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
 
                 const backupObj = {
                     _type: 'nova_kb_backup',
-                    _version: 1,
+                    _version: 2, // v2：包含資料夾分類結構
                     _exportedAt: now.toISOString(),
                     embedModel: (typeof NOVA_KB_EMBED_MODEL !== 'undefined') ? NOVA_KB_EMBED_MODEL : '',
                     embedOutputDim: (typeof NOVA_KB_EMBED_OUTPUT_DIM !== 'undefined') ? NOVA_KB_EMBED_OUTPUT_DIM : '',
+                    folders: folders,
                     documents: docs,
                     chunks: chunks
                 };
@@ -6283,7 +6297,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                         const _savePath = _moved
                             ? (finalUri ? finalUri.replace(/\/[^\/]+$/, '/') : 'Documents/NOVA_Backups/')
                             : '應用程式快取（內部儲存搬移失敗，檔案仍可用）';
-                        showToast(`✅ 向量資料庫已備份（${docs.length} 份文件、${chunks.length} 段向量）\n📂 ${_savePath}`, 6000);
+                        showToast(`✅ 向量資料庫已備份（${folders.length} 個資料夾、${docs.length} 份文件、${chunks.length} 段向量）\n📂 ${_savePath}`, 6000);
                         _setStatus(`✅ 上次備份：${now.toLocaleString()}（${docs.length} 份文件）`);
                     } catch (err) {
                         console.error('[NOVA] 向量資料庫備份失敗:', err);
@@ -6300,7 +6314,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                 a.href = url; a.download = fileName;
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                showToast(`✅ 向量資料庫已匯出（${docs.length} 份文件、${chunks.length} 段向量）`);
+                showToast(`✅ 向量資料庫已匯出（${folders.length} 個資料夾、${docs.length} 份文件、${chunks.length} 段向量）`);
                 _setStatus(`✅ 上次備份：${now.toLocaleString()}（${docs.length} 份文件）`);
             } catch (err) {
                 console.error('[NOVA] 向量資料庫備份失敗:', err);
@@ -6361,7 +6375,8 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                 try {
                     const docs = data.documents || [];
                     const chunks = data.chunks || [];
-                    if (!docs.length && !chunks.length) {
+                    const folders = data.folders || [];
+                    if (!docs.length && !chunks.length && !folders.length) {
                         showToast('❌ 還原失敗：此檔案不包含任何向量資料庫內容', 5000);
                         e.target.value = '';
                         return;
@@ -6374,9 +6389,15 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                         if (!proceed) { e.target.value = ''; return; }
                     }
 
-                    _setStatus(`⏳ 還原中（0/${docs.length + chunks.length}）...`);
+                    _setStatus(`⏳ 還原中（0/${folders.length + docs.length + chunks.length}）...`);
                     let done = 0;
-                    const total = docs.length + chunks.length;
+                    const total = folders.length + docs.length + chunks.length;
+                    // ★ 先還原資料夾結構，確保文件的 folderId 有對應的資料夾存在
+                    for (const folder of folders) {
+                        await novaKbPut('folders', folder);
+                        done++;
+                        if (done % 10 === 0) _setStatus(`⏳ 還原中（${done}/${total}）...`);
+                    }
                     for (const doc of docs) {
                         await novaKbPut('documents', doc);
                         done++;
@@ -6388,7 +6409,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                         if (done % 30 === 0) _setStatus(`⏳ 還原中（${done}/${total}）...`);
                     }
 
-                    showToast(`✅ 向量資料庫還原成功（${docs.length} 份文件、${chunks.length} 段向量）`, 6000);
+                    showToast(`✅ 向量資料庫還原成功（${folders.length} 個資料夾、${docs.length} 份文件、${chunks.length} 段向量）`, 6000);
                     _setStatus(`✅ 已還原 ${docs.length} 份文件（${new Date().toLocaleString()}）`);
                     e.target.value = '';
                 } catch (err) {
@@ -12638,7 +12659,8 @@ window.startMultiAgentResearch = async function() {
         // 及同一把 localStorage 內的 Gemini 金鑰 (nova_key_gemini)。
         // ════════════════════════════════════════════════════════════
         const NOVA_KB_DB_NAME = 'nova_kb_db';
-        const NOVA_KB_DB_VERSION = 1;
+        const NOVA_KB_DB_VERSION = 2; // v2：新增 folders 資料夾分類功能，須與 knowledgebank.html 保持一致
+        const NOVA_KB_UNCAT_FOLDER_ID = 'uncat'; // 「未分類」保留資料夾 id
         const NOVA_KB_EMBED_MODEL = 'gemini-embedding-2'; // 最新多模態嵌入模型（text-embedding-004 已下架）
         const NOVA_KB_EMBED_OUTPUT_DIM = 768; // 須與 knowledgebank.html 的 EMBED_OUTPUT_DIM 一致，否則向量維度不匹配
         // 注意：gemini-embedding-2 不支援 taskType 參數，改用提示前綴 "task: search result | query: ..." 指定任務類型
@@ -12658,10 +12680,15 @@ window.startMultiAgentResearch = async function() {
                 catch (e) { return reject(e); }
                 req.onupgradeneeded = (e) => {
                     const db = e.target.result;
+                    const tx = e.target.transaction;
                     if (!db.objectStoreNames.contains('documents')) db.createObjectStore('documents', { keyPath: 'id' });
                     if (!db.objectStoreNames.contains('chunks')) {
                         const store = db.createObjectStore('chunks', { keyPath: 'id' });
                         store.createIndex('docId', 'docId', { unique: false });
+                    }
+                    if (!db.objectStoreNames.contains('folders')) db.createObjectStore('folders', { keyPath: 'id' });
+                    if (e.oldVersion < 2) {
+                        try { tx.objectStore('folders').put({ id: NOVA_KB_UNCAT_FOLDER_ID, name: '未分類', active: true, createdAt: Date.now(), _protected: true }); } catch (err) {}
                     }
                 };
                 req.onsuccess = (e) => { _novaKbDb = e.target.result; resolve(_novaKbDb); };
@@ -12685,6 +12712,17 @@ window.startMultiAgentResearch = async function() {
                 try {
                     const tx = db.transaction('documents', 'readonly');
                     const req = tx.objectStore('documents').getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = (e) => reject(e.target.error);
+                } catch (e) { resolve([]); }
+            }));
+        }
+
+        function novaKbGetAllFolders() {
+            return novaKbOpenDb().then(db => new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction('folders', 'readonly');
+                    const req = tx.objectStore('folders').getAll();
                     req.onsuccess = () => resolve(req.result || []);
                     req.onerror = (e) => reject(e.target.error);
                 } catch (e) { resolve([]); }
@@ -12729,13 +12767,18 @@ window.startMultiAgentResearch = async function() {
         // 回傳 { found: boolean, context: string }
         async function novaKbRetrieveContext(queryText) {
             try {
-                const chunks = await novaKbGetAllChunks();
+                const [chunks, folders] = await Promise.all([novaKbGetAllChunks(), novaKbGetAllFolders()]);
                 if (!chunks || chunks.length === 0) return { found: false, context: '' };
+
+                // ★ 只比對「啟用中」資料夾內的文件，未啟用的資料夾對 AI 完全隱形
+                const activeFolderIds = new Set(folders.filter(f => f.active).map(f => f.id));
+                const visibleChunks = chunks.filter(c => activeFolderIds.has(c.folderId || NOVA_KB_UNCAT_FOLDER_ID));
+                if (visibleChunks.length === 0) return { found: false, context: '' };
 
                 const qVec = await novaKbEmbedQuery(queryText);
                 if (!qVec) return { found: false, context: '' };
 
-                const scored = chunks
+                const scored = visibleChunks
                     .map(c => ({ docName: c.docName, text: c.text, score: novaKbCosineSim(qVec, c.vector) }))
                     .sort((a, b) => b.score - a.score)
                     .slice(0, NOVA_KB_TOP_K)

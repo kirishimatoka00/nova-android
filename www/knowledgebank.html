@@ -84,9 +84,23 @@
       <div id="kb-mode-status-text" class="mt-3 text-xs font-bold text-slate-500">目前狀態：關閉</div>
     </div>
 
+    <!-- ★ 資料夾管理 -->
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="font-bold text-sm text-slate-300 flex items-center gap-2"><i class="ph-bold ph-folders text-amber-400"></i> 資料夾分類</label>
+        <button onclick="handleCreateFolder()" class="text-[11px] px-2 py-1 rounded-lg bg-amber-700 hover:bg-amber-600 text-white flex items-center gap-1"><i class="ph-bold ph-folder-plus"></i> 新增資料夾</button>
+      </div>
+      <p class="text-[11px] text-slate-500 mb-2 leading-relaxed">點擊資料夾切換「啟用」狀態（<span class="text-emerald-400 font-bold">綠色</span>＝AI 會讀取此資料夾內容；灰色＝AI 會忽略）。可同時啟用多個資料夾。</p>
+      <div id="kb-folder-list" class="flex flex-wrap gap-2"></div>
+    </div>
+
     <!-- 上傳區 -->
     <div>
       <label class="font-bold text-sm text-slate-300 mb-2 flex items-center gap-2"><i class="ph-bold ph-upload-simple text-blue-400"></i> 匯入文件</label>
+      <div class="mb-2">
+        <label class="text-[11px] text-slate-500 block mb-1">上傳至資料夾</label>
+        <select id="kb-upload-target-folder" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"></select>
+      </div>
       <label for="kb-file-input" id="kb-drop-zone" class="block border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-900/60">
         <i class="ph-bold ph-file-plus text-3xl text-slate-500 mb-2 block"></i>
         <div class="text-sm text-slate-300 font-medium">點擊或拖放檔案到此處</div>
@@ -134,10 +148,11 @@ const EMBED_OUTPUT_DIM = 768; // 截斷維度，兼顧精度與儲存/運算效�
 // 注意：gemini-embedding-2 不支援 taskType 參數，需改用提示前綴指定任務類型，
 // 且與 gemini-embedding-001 的向量空間不相容，不可混用。
 const DB_NAME = 'nova_kb_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // v2：新增 folders 資料夾分類功能
 const CHUNK_SIZE = 900;      // 每個分段的字元數
 const CHUNK_OVERLAP = 150;   // 分段重疊字元數
 const EMBED_BATCH = 16;      // 每次批次送出嵌入的分段數
+const UNCAT_FOLDER_ID = 'uncat'; // 「未分類」保留資料夾 id，預設啟用，避免舊資料在升級後對 AI 隱形
 
 let kbDb = null;
 
@@ -188,12 +203,22 @@ function openKbDb() {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
+            const tx = e.target.transaction;
             if (!db.objectStoreNames.contains('documents')) {
                 db.createObjectStore('documents', { keyPath: 'id' });
             }
             if (!db.objectStoreNames.contains('chunks')) {
                 const store = db.createObjectStore('chunks', { keyPath: 'id' });
                 store.createIndex('docId', 'docId', { unique: false });
+            }
+            if (!db.objectStoreNames.contains('folders')) {
+                db.createObjectStore('folders', { keyPath: 'id' });
+            }
+            // v1 → v2：確保「未分類」保留資料夾存在，讓升級前已匯入的文件仍對 AI 可見
+            if (e.oldVersion < 2) {
+                try {
+                    tx.objectStore('folders').put({ id: UNCAT_FOLDER_ID, name: '未分類', active: true, createdAt: Date.now(), _protected: true });
+                } catch (err) { /* ignore */ }
             }
         };
         req.onsuccess = (e) => { kbDb = e.target.result; resolve(kbDb); };
@@ -242,6 +267,99 @@ function dbClearAll() {
         tx.oncomplete = () => resolve();
         tx.onerror = (e) => reject(e.target.error);
     }));
+}
+
+// ---------- 資料夾 CRUD ----------
+async function ensureUncatFolder() {
+    const folders = await dbGetAll('folders');
+    if (!folders.some(f => f.id === UNCAT_FOLDER_ID)) {
+        await dbPut('folders', { id: UNCAT_FOLDER_ID, name: '未分類', active: true, createdAt: Date.now(), _protected: true });
+    }
+}
+
+async function createFolder(name) {
+    const folder = { id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name, active: false, createdAt: Date.now() };
+    await dbPut('folders', folder);
+    return folder;
+}
+
+async function toggleFolderActive(folderId) {
+    const folders = await dbGetAll('folders');
+    const f = folders.find(x => x.id === folderId);
+    if (!f) return;
+    f.active = !f.active;
+    await dbPut('folders', f);
+}
+
+async function renameFolder(folderId, newName) {
+    const folders = await dbGetAll('folders');
+    const f = folders.find(x => x.id === folderId);
+    if (!f) return;
+    f.name = newName;
+    await dbPut('folders', f);
+}
+
+async function deleteFolder(folderId) {
+    if (folderId === UNCAT_FOLDER_ID) return; // 保留資料夾不可刪除
+    // 將該資料夾內的文件與段落改移至「未分類」，不刪除實際內容
+    const [docs, chunks] = await Promise.all([dbGetAll('documents'), dbGetAll('chunks')]);
+    const affectedDocs = docs.filter(d => (d.folderId || UNCAT_FOLDER_ID) === folderId);
+    for (const d of affectedDocs) { d.folderId = UNCAT_FOLDER_ID; await dbPut('documents', d); }
+    const affectedChunks = chunks.filter(c => (c.folderId || UNCAT_FOLDER_ID) === folderId);
+    for (const c of affectedChunks) { c.folderId = UNCAT_FOLDER_ID; await dbPut('chunks', c); }
+    const db = await openKbDb();
+    await new Promise((resolve, reject) => {
+        const tx = db.transaction('folders', 'readwrite');
+        tx.objectStore('folders').delete(folderId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = (e) => reject(e.target.error);
+    });
+}
+
+async function moveDocToFolder(docId, folderId) {
+    const [docs, chunks] = await Promise.all([dbGetAll('documents'), dbGetAll('chunks')]);
+    const doc = docs.find(d => d.id === docId);
+    if (doc) { doc.folderId = folderId; await dbPut('documents', doc); }
+    const relatedChunks = chunks.filter(c => c.docId === docId);
+    for (const c of relatedChunks) { c.folderId = folderId; await dbPut('chunks', c); }
+}
+
+// ---------- 自訂文字輸入對話框（取代 native prompt，避免空白方框問題）----------
+function kbPromptText(msg, defaultValue) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('nova-kb-modal');
+        document.getElementById('nova-kb-modal-icon').textContent = '📝';
+        const textEl = document.getElementById('nova-kb-modal-text');
+        textEl.innerHTML = '';
+        const label = document.createElement('div');
+        label.textContent = msg;
+        label.className = 'mb-2';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultValue || '';
+        input.maxLength = 30;
+        input.className = 'w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-blue-500';
+        textEl.appendChild(label);
+        textEl.appendChild(input);
+
+        const btns = document.getElementById('nova-kb-modal-buttons');
+        btns.innerHTML = '';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '取消';
+        cancelBtn.className = 'px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-sm font-bold active:scale-95 transition-transform';
+        cancelBtn.onclick = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); resolve(null); };
+        const okBtn = document.createElement('button');
+        okBtn.textContent = '確定';
+        okBtn.className = 'px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-bold active:scale-95 transition-transform';
+        const submit = () => { const v = input.value.trim(); modal.classList.add('hidden'); modal.classList.remove('flex'); resolve(v || null); };
+        okBtn.onclick = submit;
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+        btns.appendChild(cancelBtn);
+        btns.appendChild(okBtn);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => input.focus(), 50);
+    });
 }
 
 // ---------- 知識庫問答模式 開關 ----------
@@ -420,6 +538,8 @@ async function handleKbFiles(fileList) {
         return;
     }
     const files = Array.from(fileList);
+    const targetFolderSel = document.getElementById('kb-upload-target-folder');
+    const targetFolderId = (targetFolderSel && targetFolderSel.value) || UNCAT_FOLDER_ID;
     for (let fi = 0; fi < files.length; fi++) {
         const file = files[fi];
         try {
@@ -439,7 +559,8 @@ async function handleKbFiles(fileList) {
                 name: file.name,
                 size: file.size,
                 chunkCount: pieces.length,
-                addedAt: Date.now()
+                addedAt: Date.now(),
+                folderId: targetFolderId
             };
 
             // 批次送出嵌入向量
@@ -454,7 +575,8 @@ async function handleKbFiles(fileList) {
                         docId,
                         docName: file.name,
                         text: batch[j],
-                        vector: vectors[j]
+                        vector: vectors[j],
+                        folderId: targetFolderId
                     };
                     await dbPut('chunks', chunk);
                 }
@@ -493,7 +615,9 @@ async function handleKbFiles(fileList) {
 
 // ---------- 文件清單 ----------
 async function renderDocList() {
-    const docs = await dbGetAll('documents');
+    const [docs, folders] = await Promise.all([dbGetAll('documents'), dbGetAll('folders')]);
+    const folderMap = {};
+    folders.forEach(f => folderMap[f.id] = f);
     const listEl = document.getElementById('kb-doc-list');
     const emptyEl = document.getElementById('kb-doc-empty');
     docs.sort((a, b) => b.addedAt - a.addedAt);
@@ -503,18 +627,31 @@ async function renderDocList() {
         return;
     }
     emptyEl.classList.add('hidden');
-    listEl.innerHTML = docs.map(d => `
+    const folderOptionsHtml = folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+    listEl.innerHTML = docs.map(d => {
+        const fid = d.folderId || UNCAT_FOLDER_ID;
+        const fname = folderMap[fid] ? folderMap[fid].name : '未分類';
+        return `
         <div class="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5">
             <i class="ph-bold ph-file-text text-blue-400 text-xl shrink-0"></i>
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium truncate">${escapeHtml(d.name)}</div>
-                <div class="text-[11px] text-slate-500">${d.chunkCount} 段向量 · ${formatBytes(d.size)} · ${new Date(d.addedAt).toLocaleString()}</div>
+                <div class="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                    <span>${d.chunkCount} 段向量 · ${formatBytes(d.size)} · ${new Date(d.addedAt).toLocaleString()}</span>
+                </div>
+                <div class="mt-1.5 flex items-center gap-1">
+                    <i class="ph-bold ph-folder text-amber-400 text-xs"></i>
+                    <select onchange="moveDocToFolder('${d.id}', this.value).then(renderDocList)" class="bg-slate-800 border border-slate-700 rounded-md text-[11px] px-1.5 py-0.5 outline-none">
+                        ${folderOptionsHtml.replace(`value="${fid}"`, `value="${fid}" selected`)}
+                    </select>
+                </div>
             </div>
             <button onclick="deleteKbDoc('${d.id}')" class="p-2 rounded-lg hover:bg-red-900/30 text-red-400 active:scale-90 transition-transform shrink-0">
                 <i class="ph-bold ph-trash"></i>
             </button>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 async function deleteKbDoc(docId) {
@@ -525,7 +662,7 @@ async function deleteKbDoc(docId) {
 }
 
 async function clearAllKb() {
-    const ok = await kbConfirm('確定要清空整個向量資料庫嗎？此動作無法復原。');
+    const ok = await kbConfirm('確定要清空整個向量資料庫嗎？此動作無法復原（資料夾本身會保留，僅清空文件與向量）。');
     if (!ok) return;
     await dbClearAll();
     renderDocList();
@@ -541,6 +678,79 @@ function formatBytes(bytes) {
     return (kb / 1024).toFixed(1) + ' MB';
 }
 
+// ---------- 資料夾 UI ----------
+async function renderFolderList() {
+    await ensureUncatFolder();
+    const folders = await dbGetAll('folders');
+    // 未分類固定排最前面，其餘依建立時間排序
+    folders.sort((a, b) => (a.id === UNCAT_FOLDER_ID ? -1 : b.id === UNCAT_FOLDER_ID ? 1 : a.createdAt - b.createdAt));
+
+    const listEl = document.getElementById('kb-folder-list');
+    listEl.innerHTML = folders.map(f => {
+        const activeClass = f.active
+            ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+            : 'bg-slate-800 border-slate-700 text-slate-400';
+        const protectedBadge = f._protected ? '' : `
+            <button onclick="event.stopPropagation(); handleRenameFolder('${f.id}', '${escapeHtml(f.name).replace(/'/g, "\\'")}')" class="p-0.5 hover:text-blue-400"><i class="ph-bold ph-pencil-simple text-[11px]"></i></button>
+            <button onclick="event.stopPropagation(); handleDeleteFolder('${f.id}', '${escapeHtml(f.name).replace(/'/g, "\\'")}')" class="p-0.5 hover:text-red-400"><i class="ph-bold ph-trash text-[11px]"></i></button>
+        `;
+        return `
+            <div onclick="handleToggleFolder('${f.id}')" class="flex items-center gap-1.5 border rounded-full px-3 py-1.5 text-xs font-medium cursor-pointer active:scale-95 transition-all ${activeClass}">
+                <i class="ph-bold ${f.active ? 'ph-folder-open' : 'ph-folder'} text-sm"></i>
+                <span>${escapeHtml(f.name)}</span>
+                ${protectedBadge}
+            </div>
+        `;
+    }).join('');
+
+    // 同步上傳目標下拉選單
+    const targetSel = document.getElementById('kb-upload-target-folder');
+    if (targetSel) {
+        const prevValue = targetSel.value;
+        targetSel.innerHTML = folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
+        if (folders.some(f => f.id === prevValue)) targetSel.value = prevValue;
+    }
+}
+
+async function handleCreateFolder() {
+    const name = await kbPromptText('請輸入新資料夾名稱：');
+    if (!name) return;
+    await createFolder(name);
+    renderFolderList();
+    renderDocList();
+    showKbToast(`📁 已建立資料夾「${name}」，點擊即可啟用讓 AI 讀取`);
+}
+
+async function handleRenameFolder(folderId, oldName) {
+    const name = await kbPromptText('請輸入新的資料夾名稱：', oldName);
+    if (!name) return;
+    await renameFolder(folderId, name);
+    renderFolderList();
+    renderDocList();
+}
+
+async function handleDeleteFolder(folderId, name) {
+    const ok = await kbConfirm(`確定要刪除資料夾「${name}」嗎？\n（資料夾內的文件會自動移至「未分類」，不會被刪除）`);
+    if (!ok) return;
+    await deleteFolder(folderId);
+    renderFolderList();
+    renderDocList();
+}
+
+async function handleToggleFolder(folderId) {
+    await toggleFolderActive(folderId);
+    renderFolderList();
+}
+
+// 輕量 toast（不需使用者互動，短暫顯示後自動消失）
+function showKbToast(msg) {
+    const el = document.createElement('div');
+    el.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 text-white text-xs px-4 py-2.5 rounded-full shadow-xl z-[60] max-w-[90%] text-center';
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3200);
+}
+
 // ---------- 測試搜尋 ----------
 async function testKbSearch() {
     const q = document.getElementById('kb-test-query').value.trim();
@@ -549,13 +759,20 @@ async function testKbSearch() {
     const resultEl = document.getElementById('kb-test-result');
     resultEl.innerHTML = '<div class="text-xs text-slate-500 flex items-center gap-2"><i class="ph-bold ph-circle-notch spin"></i> 搜尋中...</div>';
     try {
-        const chunks = await dbGetAll('chunks');
+        const [chunks, folders] = await Promise.all([dbGetAll('chunks'), dbGetAll('folders')]);
+        const activeFolderIds = new Set(folders.filter(f => f.active).map(f => f.id));
+        const activeChunks = chunks.filter(c => activeFolderIds.has(c.folderId || UNCAT_FOLDER_ID));
+
         if (chunks.length === 0) {
             resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料（尚未匯入任何文件）</div>';
             return;
         }
+        if (activeChunks.length === 0) {
+            resultEl.innerHTML = '<div class="text-xs text-amber-400">目前沒有任何「啟用中」的資料夾，請先在上方點擊資料夾以啟用。</div>';
+            return;
+        }
         const qVec = await embedSingle(formatQueryText(q));
-        const scored = chunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
+        const scored = activeChunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
             .sort((a, b) => b.score - a.score)
             .slice(0, 5);
         if (scored.length === 0 || scored[0].score < 0.55) {
@@ -586,10 +803,11 @@ function applyKbTheme(theme) {
 }
 
 // ---------- 初始化 ----------
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     applyKbTheme(localStorage.getItem('nova_theme') || 'dark');
     refreshKbModeUI();
     refreshKeyStatus();
+    await renderFolderList(); // 需先確保「未分類」資料夾存在，再渲染文件清單
     renderDocList();
 });
 // 若使用者在主程式頁面切換主題後返回本頁，重新整理時會自動套用最新設定；
