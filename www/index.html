@@ -7902,21 +7902,73 @@ msg.files : (msg.file ? [msg.file] : []);
             }
         };
 
-        window.exportNoteWord = function(id) {
+        // ★ 通用文字檔匯出（Word/.doc、HTML 等）：Android WebView 對 <a download> 支援不穩定，
+        //   改用既有的 Filesystem(CACHE) + Share 模式（與圖片匯出一致），確保實際能存檔/分享。
+        window._novaExportTextFile = async function(content, filename, mimeType) {
+            try {
+                const CapFS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+                const CapShare = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+
+                if (CapFS) {
+                    const b64 = btoa(unescape(encodeURIComponent(content)));
+                    const safeName = filename.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
+                    let finalUri = null;
+                    try {
+                        const res = await CapFS.writeFile({ path: `NOVA_Exports/${safeName}`, data: b64, directory: 'CACHE', recursive: true, encoding: 'base64' });
+                        finalUri = res.uri;
+                    } catch (err) {
+                        console.error('[NOVA export] CACHE 寫入失敗:', err);
+                        showToast('❌ 匯出失敗：' + err.message);
+                        return false;
+                    }
+                    if (finalUri && CapShare) {
+                        try {
+                            await CapShare.share({ title: safeName, files: [finalUri], dialogTitle: '儲存或分享檔案' });
+                            return true;
+                        } catch (shareErr) {
+                            if (shareErr && shareErr.message && /cancel/i.test(shareErr.message)) {
+                                showToast(`⚠️ 已取消，檔案暫存於 App 快取：${safeName}`);
+                                return true;
+                            }
+                            console.warn('[NOVA export] Share 失敗，檔案仍在快取:', shareErr);
+                        }
+                    }
+                    if (finalUri) {
+                        showToast(`✅ 已儲存：${safeName}（App 快取內，可用「檔案」App 尋找）`);
+                        return true;
+                    }
+                    return false;
+                }
+
+                // 瀏覽器 fallback（桌面環境，<a download> 正常運作）
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                return true;
+            } catch (e) {
+                console.error('[NOVA export] 失敗:', e);
+                showToast('❌ 匯出失敗：' + e.message);
+                return false;
+            }
+        };
+
+        window.exportNoteWord = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
             const content = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
             const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${n.title}</title></head><body><h1>${n.title}</h1><p>${n.date}</p><hr><div>${content}</div>
 </body></html>`;
-            const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
-            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${n.title}.doc`; a.click(); URL.revokeObjectURL(url);
+            showToast('⏳ 正在準備 Word 檔案...');
+            await window._novaExportTextFile('\ufeff' + html, `${n.title}.doc`, 'application/msword');
         };
 
-        window.exportNoteRichText = function(id) {
+        window.exportNoteRichText = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
             const content = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
             const html = `<html><head><meta charset='utf-8'><title>${n.title}</title></head><body style="font-family: sans-serif; padding: 20px;"><h1>${n.title}</h1><p style="color: gray;">${n.date}</p><hr><div style="line-height: 1.6;">${content}</div></body></html>`;
-            const blob = new Blob([html], { type: 'text/html' });
-            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${n.title}.html`; a.click(); URL.revokeObjectURL(url);
+            showToast('⏳ 正在準備 HTML 檔案...');
+            await window._novaExportTextFile(html, `${n.title}.html`, 'text/html');
         };
 
         window.backupNoteToDrive = async function(id) {
@@ -9963,10 +10015,11 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 const isAudio = n.type === 'audio'; const icon = isAudio ? '<i class="ph-fill ph-microphone text-purple-400"></i>' : '<i class="ph-fill ph-notebook text-emerald-400"></i>';
                 const folderBadge = `<span class="absolute top-3 right-3 text-[9px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(n.folder || '未分類')}</span>`;
                 
-                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center gap-1" title="匯出為 Word"><i class="ph-bold ph-file-doc"></i> Word</button>`;
-                actionButtons += `<button onclick="exportNoteRichText('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center gap-1" title="匯出為 HTML"><i class="ph-bold ph-file-html"></i> RichText</button>`;
-                actionButtons += `<button id="btn-backup-${n.id}" onclick="backupNoteToDrive('${n.id}')" class="text-xs bg-blue-900/50 hover:bg-blue-800/50 border border-blue-500/50 px-2 py-1.5 rounded text-blue-200 transition-colors flex items-center gap-1"><i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份</button>`;
-                actionButtons += `<button onclick="openNoteEdit('${n.id}')" class="text-xs bg-emerald-900/50 hover:bg-emerald-800/50 border border-emerald-500/50 px-3 py-1.5 rounded text-emerald-200 transition-colors flex items-center gap-1 font-bold ml-auto"><i class="ph-bold ph-corners-out"></i> 檢視與編輯</button>`;
+                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Word"><i class="ph-bold ph-file-doc"></i> Word</button>`;
+                actionButtons += `<button onclick="exportNoteRichText('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 HTML"><i class="ph-bold ph-file-html"></i> RichText</button>`;
+                actionButtons += `<button id="btn-backup-${n.id}" onclick="backupNoteToDrive('${n.id}')" class="text-xs bg-blue-900/50 hover:bg-blue-800/50 border border-blue-500/50 px-2 py-1.5 rounded text-blue-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份</button>`;
+                actionButtons += `<button id="btn-kb-import-${n.id}" onclick="importNoteToKb('${n.id}')" class="text-xs bg-emerald-900/40 hover:bg-emerald-800/50 border border-emerald-600/50 px-2 py-1.5 rounded text-emerald-300 transition-colors flex items-center justify-center gap-1" title="向量化並匯入向量資料庫"><i class="ph-bold ph-database"></i> 匯入向量資料庫</button>`;
+                actionButtons += `<button onclick="openNoteEdit('${n.id}')" class="text-xs bg-emerald-900/50 hover:bg-emerald-800/50 border border-emerald-500/50 px-3 py-1.5 rounded text-emerald-200 transition-colors flex items-center justify-center gap-1 font-bold"><i class="ph-bold ph-corners-out"></i> 檢視與編輯</button>`;
 
                 let extraAudioButtons = '';
                 if(isAudio) {
@@ -9977,16 +10030,16 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     const noteGroupBadge = noteSegCount > 1
                         ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-900/40 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full"><i class="ph-fill ph-scissors"></i> 分段 ${noteSegCount} 段</span>`
                         : '';
-                    if (noteGroupBadge) extraAudioButtons += `<div class="w-full mb-1">${noteGroupBadge}</div>`;
-                    extraAudioButtons += `<button onclick="batchDownloadWeba(${segIdsJs}, 'note')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center gap-1"><i class="ph-bold ph-download-simple"></i> weba${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
-                    extraAudioButtons += `<button onclick="batchDownloadMp3(${segIdsJs}, 'note')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-green-300 transition-colors border border-green-700/50 flex items-center gap-1"><i class="ph-bold ph-file-audio"></i> MP3${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
-                    if (noteSegCount > 1) extraAudioButtons += `<button onclick="downloadMergedMp3(${segIdsJs}, '${n.title.replace(/'/g,"\\'")}', 'note')" class="text-xs bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded text-white transition-colors flex items-center gap-1" title="接合所有分段為一個 MP3"><i class="ph-bold ph-music-notes-plus"></i> 合併 MP3</button>`;
+                    if (noteGroupBadge) extraAudioButtons += `<div class="col-span-full mb-1">${noteGroupBadge}</div>`;
+                    extraAudioButtons += `<button onclick="batchDownloadWeba(${segIdsJs}, 'note')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1"><i class="ph-bold ph-download-simple"></i> weba${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
+                    extraAudioButtons += `<button onclick="batchDownloadMp3(${segIdsJs}, 'note')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-green-300 transition-colors border border-green-700/50 flex items-center justify-center gap-1"><i class="ph-bold ph-file-audio"></i> MP3${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
+                    if (noteSegCount > 1) extraAudioButtons += `<button onclick="downloadMergedMp3(${segIdsJs}, '${n.title.replace(/'/g,"\\'")}', 'note')" class="text-xs bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded text-white transition-colors flex items-center justify-center gap-1" title="接合所有分段為一個 MP3"><i class="ph-bold ph-music-notes-plus"></i> 合併 MP3</button>`;
                     const aiLabel = noteSegCount > 1 ? `AI 分析 (全 ${noteSegCount} 段)` : 'AI 分析';
-                    extraAudioButtons += `<button onclick="summarizeVoiceNote('${n.id}')" class="text-xs bg-purple-900/50 border border-purple-500/50 hover:bg-purple-800/50 px-2 py-1.5 rounded text-purple-200 transition-colors flex items-center gap-1"><i class="ph-bold ph-sparkle"></i> ${aiLabel}</button>`;
+                    extraAudioButtons += `<button onclick="summarizeVoiceNote('${n.id}')" class="text-xs bg-purple-900/50 border border-purple-500/50 hover:bg-purple-800/50 px-2 py-1.5 rounded text-purple-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-sparkle"></i> ${aiLabel}</button>`;
                 } else {
-                    extraAudioButtons += `<button onclick="summarizeTextNote('${n.id}')" class="text-xs bg-purple-900/50 border border-purple-500/50 hover:bg-purple-800/50 px-2 py-1.5 rounded text-purple-200 transition-colors flex items-center gap-1"><i class="ph-bold ph-sparkle"></i> AI 分析</button>`;
+                    extraAudioButtons += `<button onclick="summarizeTextNote('${n.id}')" class="text-xs bg-purple-900/50 border border-purple-500/50 hover:bg-purple-800/50 px-2 py-1.5 rounded text-purple-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-sparkle"></i> AI 分析</button>`;
                 }
-                extraAudioButtons += `<button onclick="generatePPTFromNote('${n.id}')" class="text-xs bg-emerald-900/50 border border-emerald-500/50 hover:bg-emerald-800/50 px-2 py-1.5 rounded text-emerald-200 transition-colors flex items-center gap-1 ml-1"><i class="ph-bold ph-presentation-chart"></i> 製作 PPT</button>`;
+                extraAudioButtons += `<button onclick="generatePPTFromNote('${n.id}')" class="text-xs bg-emerald-900/50 border border-emerald-500/50 hover:bg-emerald-800/50 px-2 py-1.5 rounded text-emerald-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-presentation-chart"></i> 製作 PPT</button>`;
                 
                 let imgHtml = '';
                 const displayImages = n.images || (n.image ? [n.image] : []);
@@ -10013,7 +10066,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 
                 let renderedContent = n.isHtml ? n.content : formatMessage(n.content);
                 
-                return `<div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col relative overflow-hidden slide-in pt-8">${folderBadge}<div class="flex justify-between items-start mb-2"><h3 class="text-lg font-bold text-white flex items-center gap-2 truncate pr-2 w-full">${icon} <span class="truncate">${escapeHtml(n.title)}</span></h3><div class="flex space-x-1 shrink-0"><button onclick="deleteNote('${n.id}')" class="text-slate-500 hover:text-red-400 p-1.5 bg-slate-950/50 rounded"><i class="ph-bold ph-trash"></i></button></div></div><span class="text-[10px] text-slate-500 mb-2">${n.date}</span>${imgHtml}${audioPlayerHtml}<div class="note-html-content text-slate-300 text-sm overflow-y-auto max-h-40 scrollbar-thin ${n.isHtml ? 'whitespace-normal' : 'whitespace-pre-wrap'} relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-8 after:bg-gradient-to-t after:from-slate-900 after:to-transparent">${renderedContent}</div>${linkHtml}<div class="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-800">${extraAudioButtons}</div><div class="flex flex-wrap items-center gap-2 mt-2">${actionButtons}</div></div>`;
+                return `<div class="bg-slate-900 p-5 rounded-2xl border border-slate-800 flex flex-col relative overflow-hidden slide-in pt-8">${folderBadge}<div class="flex justify-between items-start mb-2"><h3 class="text-lg font-bold text-white flex items-center gap-2 truncate pr-2 w-full">${icon} <span class="truncate">${escapeHtml(n.title)}</span></h3><div class="flex space-x-1 shrink-0"><button onclick="deleteNote('${n.id}')" class="text-slate-500 hover:text-red-400 p-1.5 bg-slate-950/50 rounded"><i class="ph-bold ph-trash"></i></button></div></div><span class="text-[10px] text-slate-500 mb-2">${n.date}</span>${imgHtml}${audioPlayerHtml}<div class="note-html-content text-slate-300 text-sm overflow-y-auto max-h-40 scrollbar-thin ${n.isHtml ? 'whitespace-normal' : 'whitespace-pre-wrap'} relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-8 after:bg-gradient-to-t after:from-slate-900 after:to-transparent">${renderedContent}</div>${linkHtml}<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800">${extraAudioButtons}</div><div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">${actionButtons}</div></div>`;
             }).join('')||'<p class="text-slate-500 text-center col-span-3 mt-10">找不到符合的筆記</p>'; 
             
             if(mini) mini.innerHTML=appState.notes.slice(0,2).map(n=>{
@@ -12763,6 +12816,148 @@ window.startMultiAgentResearch = async function() {
             const data = await res.json();
             return data.embedding ? data.embedding.values : null;
         }
+
+        // ════════════════════════════════════════════════════════════
+        // ★ 筆記 → 向量資料庫：把筆記中心的個別筆記直接向量化匯入 nova_kb_db，
+        //   使其出現在 knowledgebank.html 的「已建立索引的文件」清單中。
+        //   與 knowledgebank.html 的文件切割/嵌入格式完全一致，確保可互通檢索。
+        // ════════════════════════════════════════════════════════════
+        const NOVA_KB_NOTES_FOLDER_ID = 'from_notes';
+        const NOVA_KB_CHUNK_SIZE = 900;
+        const NOVA_KB_CHUNK_OVERLAP = 150;
+        const NOVA_KB_EMBED_BATCH = 16;
+
+        function novaKbChunkText(text) {
+            const clean = (text || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+            if (!clean) return [];
+            const chunks = [];
+            let start = 0;
+            while (start < clean.length) {
+                let end = Math.min(start + NOVA_KB_CHUNK_SIZE, clean.length);
+                if (end < clean.length) {
+                    const lastBreak = clean.lastIndexOf('\n', end);
+                    const lastPeriod = Math.max(clean.lastIndexOf('。', end), clean.lastIndexOf('. ', end));
+                    const breakPoint = Math.max(lastBreak, lastPeriod);
+                    if (breakPoint > start + NOVA_KB_CHUNK_SIZE * 0.5) end = breakPoint + 1;
+                }
+                const piece = clean.slice(start, end).trim();
+                if (piece) chunks.push(piece);
+                if (end >= clean.length) break;
+                start = end - NOVA_KB_CHUNK_OVERLAP;
+                if (start < 0) start = 0;
+            }
+            return chunks;
+        }
+
+        async function novaKbEmbedDocumentBatch(texts) {
+            const key = appState.keys.gemini;
+            if (!key) throw new Error('缺少 Gemini API Key');
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_KB_EMBED_MODEL}:batchEmbedContents?key=${key}`;
+            const body = {
+                requests: texts.map(t => ({
+                    model: `models/${NOVA_KB_EMBED_MODEL}`,
+                    content: { parts: [{ text: t }] },
+                    outputDimensionality: NOVA_KB_EMBED_OUTPUT_DIM
+                }))
+            };
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!res.ok) {
+                const errText = await res.text().catch(() => '');
+                throw new Error(`嵌入請求失敗 (${res.status}): ${errText.slice(0, 200)}`);
+            }
+            const data = await res.json();
+            return (data.embeddings || []).map(e => e.values);
+        }
+
+        async function novaKbEnsureNotesFolder() {
+            const folders = await novaKbGetAllFolders();
+            if (!folders.some(f => f.id === NOVA_KB_NOTES_FOLDER_ID)) {
+                await novaKbPut('folders', { id: NOVA_KB_NOTES_FOLDER_ID, name: '來自筆記', active: true, createdAt: Date.now() });
+            }
+        }
+
+        async function novaKbDeleteChunksByDocId(docId) {
+            const db = await novaKbOpenDb();
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction('chunks', 'readwrite');
+                const idx = tx.objectStore('chunks').index('docId');
+                const cursorReq = idx.openCursor(IDBKeyRange.only(docId));
+                cursorReq.onsuccess = (e) => { const cursor = e.target.result; if (cursor) { cursor.delete(); cursor.continue(); } };
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        window.importNoteToKb = async function(noteId) {
+            const n = appState.notes.find(x => String(x.id) === String(noteId));
+            if (!n) return;
+            if (!appState.keys.gemini) { showToast('⚠️ 請先在設定中填寫 Gemini API Key，才能將筆記向量化'); return; }
+
+            const btn = document.getElementById(`btn-kb-import-${n.id}`);
+            const _setBtnState = (html, disabled) => { if (btn) { btn.innerHTML = html; btn.disabled = !!disabled; } };
+            _setBtnState('<i class="ph-bold ph-circle-notch animate-spin"></i> 向量化中...', true);
+
+            try {
+                // 取出純文字（去除 HTML 標籤，保留可讀內容）
+                const tempEl = document.createElement('div');
+                tempEl.innerHTML = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
+                const plainText = (tempEl.innerText || tempEl.textContent || '').trim();
+
+                if (!plainText) {
+                    showToast('⚠️ 此筆記沒有可向量化的文字內容');
+                    _setBtnState('<i class="ph-bold ph-database"></i> 匯入向量資料庫', false);
+                    return;
+                }
+
+                const pieces = novaKbChunkText(plainText);
+                if (pieces.length === 0) {
+                    showToast('⚠️ 此筆記內容過短，無法建立索引');
+                    _setBtnState('<i class="ph-bold ph-database"></i> 匯入向量資料庫', false);
+                    return;
+                }
+
+                await novaKbEnsureNotesFolder();
+                const docId = 'note_' + n.id; // 固定 id：重複匯入會覆蓋舊索引，而非重複建立
+                await novaKbDeleteChunksByDocId(docId); // 若曾匯入過，先清除舊向量段落
+
+                let completed = 0;
+                for (let i = 0; i < pieces.length; i += NOVA_KB_EMBED_BATCH) {
+                    const batch = pieces.slice(i, i + NOVA_KB_EMBED_BATCH);
+                    const formattedBatch = batch.map(t => `title: ${n.title || '未命名筆記'} | text: ${t}`);
+                    const vectors = await novaKbEmbedDocumentBatch(formattedBatch);
+                    for (let j = 0; j < batch.length; j++) {
+                        await novaKbPut('chunks', {
+                            id: docId + '_c' + (i + j),
+                            docId,
+                            docName: n.title || '未命名筆記',
+                            text: batch[j],
+                            vector: vectors[j],
+                            folderId: NOVA_KB_NOTES_FOLDER_ID
+                        });
+                    }
+                    completed += batch.length;
+                    _setBtnState(`<i class="ph-bold ph-circle-notch animate-spin"></i> 向量化中 (${completed}/${pieces.length})`, true);
+                }
+
+                await novaKbPut('documents', {
+                    id: docId,
+                    name: n.title || '未命名筆記',
+                    size: plainText.length,
+                    chunkCount: pieces.length,
+                    addedAt: Date.now(),
+                    folderId: NOVA_KB_NOTES_FOLDER_ID,
+                    sourceType: 'note',
+                    sourceNoteId: n.id
+                });
+
+                showToast(`✅ 筆記已匯入向量資料庫（${pieces.length} 段），可在「向量資料庫→來自筆記」資料夾中查看`);
+                _setBtnState('<i class="ph-bold ph-check-circle"></i> 已匯入（點擊更新）', false);
+            } catch (err) {
+                console.error('[NOVA] 筆記匯入向量資料庫失敗:', err);
+                showToast('❌ 匯入失敗：' + (err.message || err));
+                _setBtnState('<i class="ph-bold ph-database"></i> 匯入向量資料庫', false);
+            }
+        };
 
         // 回傳 { found: boolean, context: string }
         async function novaKbRetrieveContext(queryText) {
