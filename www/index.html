@@ -10398,7 +10398,10 @@ function closePlusMenuOnOutsideClick(e) {
             if (wideBtn) {
                 const label = wideBtn.querySelector('.cam-wide-label');
                 if (label) label.textContent = appState.currentLensType === 'wide' ? '廣角' : '1×';
-                const disabled = appState.currentFacing === 'front' || !_novaCamCategorized.backWide;
+                // ★ 廣角按鈕不再只依賴「找到獨立的廣角 deviceId」才能用──大多數手機的多鏡頭
+                //   （主鏡頭/廣角/望遠）在瀏覽器眼中其實是同一個裝置，只能靠 zoom 軌道約束切換，
+                //   因此只要目前鏡頭是後鏡頭就先允許點擊，實際能否切換交給 toggleWideCamera 判斷。
+                const disabled = appState.currentFacing === 'front';
                 wideBtn.disabled = disabled;
                 wideBtn.classList.toggle('opacity-40', disabled);
             }
@@ -10410,11 +10413,42 @@ function closePlusMenuOnOutsideClick(e) {
             try {
                 const constraints = _novaGetCameraConstraints();
                 liveVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
-                document.getElementById('live-video-preview').srcObject = liveVideoStream;
             } catch (e) {
-                showToast("切換鏡頭失敗：" + e.message);
-            } finally {
-                _novaUpdateCameraButtonsUI();
+                console.warn('[NOVA] 指定鏡頭切換失敗，改用 facingMode 重試:', e);
+                // exact deviceId 失敗（常見於 OverconstrainedError）→ 退回用 facingMode 重試一次
+                try {
+                    const fallback = { video: { facingMode: appState.currentFacing === 'front' ? 'user' : 'environment' } };
+                    liveVideoStream = await navigator.mediaDevices.getUserMedia(fallback);
+                } catch (e2) {
+                    showToast("切換鏡頭失敗：" + e2.message);
+                    _novaUpdateCameraButtonsUI();
+                    return;
+                }
+            }
+            document.getElementById('live-video-preview').srcObject = liveVideoStream;
+            // 每次換流後，重新套用目前的廣角/1× 縮放狀態（新的 track 需要重新設定 zoom）
+            await _novaApplyZoomToCurrentTrack();
+            _novaUpdateCameraButtonsUI();
+        }
+
+        // ★ 廣角/1× 切換的實際生效機制：
+        //   多數手機的多鏡頭系統在瀏覽器 getUserMedia 眼中只會顯示「一個」後鏡頭裝置，
+        //   廣角/主鏡頭/望遠鏡頭的切換是由系統相機服務依 zoom 倍率自動決定要用哪顆實體鏡頭，
+        //   因此網頁端唯一能影響鏡頭選擇的方式是透過 MediaStreamTrack 的 zoom 約束（若裝置支援）。
+        async function _novaApplyZoomToCurrentTrack() {
+            if (!liveVideoStream || appState.currentFacing === 'front') return;
+            const track = liveVideoStream.getVideoTracks()[0];
+            if (!track || typeof track.getCapabilities !== 'function') return;
+            try {
+                const caps = track.getCapabilities();
+                if (!caps.zoom) return; // 此裝置的 track 不支援 zoom 約束，無法用網頁切換廣角
+                const { min, max } = caps.zoom;
+                // 廣角 = 縮放範圍的最小值（多數裝置以 1.0 為主鏡頭基準，低於 1.0 才會切到廣角鏡頭）
+                // 1× = 盡量貼近 1.0，若範圍本身就從 1.0 起跳，則用最小值代表主鏡頭
+                const targetZoom = (appState.currentLensType === 'wide') ? min : Math.min(Math.max(1, min), max);
+                await track.applyConstraints({ advanced: [{ zoom: targetZoom }] });
+            } catch (e) {
+                console.warn('[NOVA] 套用 zoom 約束失敗（此裝置可能不支援廣角切換）:', e);
             }
         }
 
@@ -10425,9 +10459,20 @@ function closePlusMenuOnOutsideClick(e) {
 
         window.toggleWideCamera = async function() {
             if (appState.currentFacing === 'front') { showToast('前鏡頭無廣角切換'); return; }
-            if (!_novaCamCategorized.backWide) { showToast('此裝置未偵測到廣角鏡頭'); return; }
+            const track = liveVideoStream && liveVideoStream.getVideoTracks()[0];
+            const caps = (track && typeof track.getCapabilities === 'function') ? track.getCapabilities() : {};
+            if (!_novaCamCategorized.backWide && !caps.zoom) {
+                showToast('此裝置不支援廣角切換（瀏覽器僅能存取單一後鏡頭，且不支援縮放約束）');
+                return;
+            }
             appState.currentLensType = (appState.currentLensType === 'wide') ? 'normal' : 'wide';
-            await _novaApplyCameraSelection();
+            // 若有獨立的廣角 deviceId，走原本的換流程序；否則走同一顆鏡頭的 zoom 縮放
+            if (_novaCamCategorized.backWide) {
+                await _novaApplyCameraSelection();
+            } else {
+                await _novaApplyZoomToCurrentTrack();
+                _novaUpdateCameraButtonsUI();
+            }
         };
 
         async function toggleLiveMode(forceMode = null) {
