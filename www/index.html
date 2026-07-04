@@ -7945,13 +7945,55 @@ msg.files : (msg.file ? [msg.file] : []);
             }
         };
 
+        // ★ 將文字轉換為 RTF 格式所需的 Unicode 逸出序列（RTF 規格要求非 ASCII 字元
+        //   必須寫成 \uNNNN? 這種形式，中文筆記內容一定會用到）
+        function _novaTextToRtfEscaped(text) {
+            let out = '';
+            for (const ch of String(text)) {
+                const code = ch.codePointAt(0);
+                if (ch === '\n') { out += '\\par\n'; continue; }
+                if (ch === '\r') continue;
+                if (code < 0x80) {
+                    if (ch === '\\' || ch === '{' || ch === '}') out += '\\' + ch;
+                    else out += ch;
+                } else if (code > 0xFFFF) {
+                    // 超出基本多語言平面（例如部分表情符號）：需拆成 UTF-16 代理對
+                    const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
+                    const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                    const s16 = n => n > 32767 ? n - 65536 : n;
+                    out += `\\u${s16(high)}?\\u${s16(low)}?`;
+                } else {
+                    const s16 = code > 32767 ? code - 65536 : code;
+                    out += `\\u${s16}?`;
+                }
+            }
+            return out;
+        }
+
         window.exportNoteWord = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
-            const content = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
-            const html = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${n.title}</title></head><body><h1>${n.title}</h1><p>${n.date}</p><hr><div>${content}</div>
-</body></html>`;
             showToast('⏳ 正在準備 Word 檔案...');
-            await window._novaExportTextFile('\ufeff' + html, `${n.title}.doc`, 'application/msword');
+
+            // 取出純文字（去除 HTML 標籤，保留換行結構），確保產出的 RTF 內容乾淨可靠
+            const tempEl = document.createElement('div');
+            tempEl.innerHTML = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
+            const plainText = (tempEl.innerText || tempEl.textContent || '').trim();
+
+            // ★ 產生真正合法的 RTF（Rich Text Format）文件，而非「用 .doc 副檔名包裝 HTML」
+            //   的舊做法——那種假檔案在桌面 Word 尚可靠猜測開啟，但 Android 上的 WPS Office、
+            //   手機版 Word 等 App 大多會直接依副檔名判斷成舊版二進位 .doc 格式而拒開。
+            //   RTF 是純文字、跨平台通用的真實 Word 相容格式，任何 Word/WPS 都能正確開啟。
+            const titleRtf = _novaTextToRtfEscaped(n.title || '未命名筆記');
+            const dateRtf = _novaTextToRtfEscaped(n.date || '');
+            const bodyRtf = _novaTextToRtfEscaped(plainText);
+            const rtf = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1028
+{\\fonttbl{\\f0\\fnil\\fcharset136 Microsoft JhengHei;}{\\f1\\fnil\\fcharset0 Calibri;}}
+\\f0\\fs32\\b ${titleRtf}\\b0\\fs20\\par
+\\cf1 ${dateRtf}\\par
+\\line
+\\fs24 ${bodyRtf}
+}`;
+            await window._novaExportTextFile(rtf, `${n.title || '筆記'}.rtf`, 'application/rtf');
         };
 
         window.exportNoteRichText = async function(id) {
@@ -10006,7 +10048,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 const isAudio = n.type === 'audio'; const icon = isAudio ? '<i class="ph-fill ph-microphone text-purple-400"></i>' : '<i class="ph-fill ph-notebook text-emerald-400"></i>';
                 const folderBadge = `<span class="absolute top-3 right-3 text-[9px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(n.folder || '未分類')}</span>`;
                 
-                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Word"><i class="ph-bold ph-file-doc"></i> Word</button>`;
+                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Word 相容格式 (.rtf)"><i class="ph-bold ph-file-doc"></i> Word</button>`;
                 actionButtons += `<button onclick="exportNoteRichText('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 HTML"><i class="ph-bold ph-file-html"></i> RichText</button>`;
                 actionButtons += `<button id="btn-backup-${n.id}" onclick="backupNoteToDrive('${n.id}')" class="text-xs bg-blue-900/50 hover:bg-blue-800/50 border border-blue-500/50 px-2 py-1.5 rounded text-blue-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份</button>`;
                 actionButtons += `<button id="btn-kb-import-${n.id}" onclick="importNoteToKb('${n.id}')" class="text-xs bg-emerald-900/40 hover:bg-emerald-800/50 border border-emerald-600/50 px-2 py-1.5 rounded text-emerald-300 transition-colors flex items-center justify-center gap-1" title="向量化並匯入向量資料庫"><i class="ph-bold ph-database"></i> 匯入向量資料庫</button>`;
