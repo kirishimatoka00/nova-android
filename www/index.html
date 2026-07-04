@@ -7908,36 +7908,29 @@ msg.files : (msg.file ? [msg.file] : []);
             try {
                 const CapFS = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
                 const CapShare = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+                const safeName = filename.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
 
                 if (CapFS) {
                     const b64 = btoa(unescape(encodeURIComponent(content)));
-                    const safeName = filename.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
+                    // ★ 直接寫入公開 Documents/ 資料夾根目錄（與使用者透過分享面板儲存
+                    //   PPT、圖片時選擇的相同位置一致），確保用「檔案」App 打開 Documents
+                    //   就能直接看到，不再依賴 Share 分享面板的不確定結果。
                     let finalUri = null;
                     try {
-                        const res = await CapFS.writeFile({ path: `NOVA_Exports/${safeName}`, data: b64, directory: 'CACHE', recursive: true, encoding: 'base64' });
+                        const res = await CapFS.writeFile({ path: safeName, data: b64, directory: 'DOCUMENTS', recursive: true, encoding: 'base64' });
                         finalUri = res.uri;
+                        showToast(`✅ 已儲存至 Documents/${safeName}`, 5000);
                     } catch (err) {
-                        console.error('[NOVA export] CACHE 寫入失敗:', err);
+                        console.error('[NOVA export] 寫入 Documents 失敗:', err);
                         showToast('❌ 匯出失敗：' + err.message);
                         return false;
                     }
+                    // 額外提供分享捷徑（非必要，失敗也不影響檔案已存在 Documents 的事實）
                     if (finalUri && CapShare) {
-                        try {
-                            await CapShare.share({ title: safeName, files: [finalUri], dialogTitle: '儲存或分享檔案' });
-                            return true;
-                        } catch (shareErr) {
-                            if (shareErr && shareErr.message && /cancel/i.test(shareErr.message)) {
-                                showToast(`⚠️ 已取消，檔案暫存於 App 快取：${safeName}`);
-                                return true;
-                            }
-                            console.warn('[NOVA export] Share 失敗，檔案仍在快取:', shareErr);
-                        }
+                        try { await CapShare.share({ title: safeName, files: [finalUri], dialogTitle: '分享檔案（檔案已存於 Documents/）' }); }
+                        catch (shareErr) { /* 使用者取消分享無妨，檔案已確實寫入 Documents */ }
                     }
-                    if (finalUri) {
-                        showToast(`✅ 已儲存：${safeName}（App 快取內，可用「檔案」App 尋找）`);
-                        return true;
-                    }
-                    return false;
+                    return true;
                 }
 
                 // 瀏覽器 fallback（桌面環境，<a download> 正常運作）
