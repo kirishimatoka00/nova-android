@@ -5764,8 +5764,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                     await CapFS.appendFile({
                         path: fileName,
                         data: b64,
-                        directory: 'CACHE',
-                        encoding: 'base64'
+                        directory: 'CACHE'
                     });
                 } catch(e) {
                     // 首次寫入時檔案不存在，appendFile 可能失敗 → fallback writeFile 建立檔案
@@ -5774,8 +5773,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                             path: fileName,
                             data: b64,
                             directory: 'CACHE',
-                            recursive: true,
-                            encoding: 'base64'
+                            recursive: true
                         });
                     } else {
                         throw e;
@@ -6278,7 +6276,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     const b64 = btoa(unescape(encodeURIComponent(jsonStr)));
                     try {
                         // 先寫入 CACHE，再搬到公開 Documents/NOVA_Backups/（與主程式備份同一資料夾）
-                        await CapFS.writeFile({ path: fileName, data: b64, directory: 'CACHE', recursive: true, encoding: 'base64' });
+                        await CapFS.writeFile({ path: fileName, data: b64, directory: 'CACHE', recursive: true });
                         let finalUri = null;
                         let _moved = false;
                         try {
@@ -7917,7 +7915,7 @@ msg.files : (msg.file ? [msg.file] : []);
                     //   就能直接看到，不再依賴 Share 分享面板的不確定結果。
                     let finalUri = null;
                     try {
-                        const res = await CapFS.writeFile({ path: safeName, data: b64, directory: 'DOCUMENTS', recursive: true, encoding: 'base64' });
+                        const res = await CapFS.writeFile({ path: safeName, data: b64, directory: 'DOCUMENTS', recursive: true });
                         finalUri = res.uri;
                         showToast(`✅ 已儲存至 Documents/${safeName}`, 5000);
                     } catch (err) {
