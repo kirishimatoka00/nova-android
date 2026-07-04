@@ -1482,14 +1482,11 @@
                     
                     <!-- LIVE 視訊畫面層 (分層：放大比例，保留對話) -->
                     <div id="live-video-container" class="hidden w-full h-[65vh] max-h-[650px] bg-slate-900 border-b-2 border-red-500/50 shadow-xl z-20 overflow-hidden flex-col relative shrink-0 transition-all duration-300">
-                        <!-- 相機控制：前後鏡頭切換 + 廣角/1× 切換 -->
-                        <div class="absolute top-2 right-2 z-40 flex gap-2">
-                            <button id="cam-toggle-frontback" onclick="toggleFrontBackCamera()" class="bg-slate-900/80 text-white text-xs rounded-lg px-3 py-1.5 border border-red-500/50 backdrop-blur-md shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95 transition-transform">
-                                <i class="ph-bold ph-camera-rotate"></i><span class="cam-fb-label">後鏡頭</span>
-                            </button>
-                            <button id="cam-toggle-wide" onclick="toggleWideCamera()" class="bg-slate-900/80 text-white text-xs rounded-lg px-3 py-1.5 border border-red-500/50 backdrop-blur-md shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95 transition-transform">
-                                <i class="ph-bold ph-magnifying-glass"></i><span class="cam-wide-label">1×</span>
-                            </button>
+                        <!-- 相機鏡頭選擇 -->
+                        <div class="absolute top-2 right-2 z-40">
+                            <select id="camera-select" onchange="switchCamera(this.value)" class="bg-slate-900/80 text-white text-xs rounded-lg px-3 py-1.5 outline-none border border-red-500/50 backdrop-blur-md shadow-lg cursor-pointer">
+                                <option value="environment">載入鏡頭清單中...</option>
+                            </select>
                         </div>
                         <div class="bg-red-600 text-white text-xs font-bold text-center py-1 tracking-widest flex items-center justify-center gap-2 shrink-0">
                             <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div> LIVE AI VISION
@@ -3117,7 +3114,7 @@ async function encodeMp3(audioBuffer) {
             isMaster: localStorage.getItem('nova_is_master') === 'true',
             liveSyncEnabled: localStorage.getItem('nova_live_sync_enabled') !== 'false',
             deletedIds: JSON.parse(localStorage.getItem('nova_deleted_ids') || '{}'),
-            chatFiles: [], currentFacing: 'back', currentLensType: 'normal',
+            chatFiles: [], currentDeviceId: null,
             docMonitorUrl: localStorage.getItem('nova_doc_url') || '', 
             driveUrl: localStorage.getItem('nova_drive_url') || '',
             corsProxyUrl: localStorage.getItem('nova_cors_proxy_url') || '',
@@ -7954,9 +7951,8 @@ msg.files : (msg.file ? [msg.file] : []);
             let out = '';
             for (const ch of String(text)) {
                 const code = ch.codePointAt(0);
-                // 文字節點內的原始換行/回車只是 HTML 原始碼排版用的空白，不代表真正的換行，
-                // 真正的換行一律交由 <br>／區塊標籤在 _novaHtmlNodeToRtf 中處理，避免重複斷行
-                if (ch === '\n' || ch === '\r') { out += ' '; continue; }
+                if (ch === '\n') { out += '\\par\n'; continue; }
+                if (ch === '\r') continue;
                 if (code < 0x80) {
                     if (ch === '\\' || ch === '{' || ch === '}') out += '\\' + ch;
                     else out += ch;
@@ -7974,41 +7970,14 @@ msg.files : (msg.file ? [msg.file] : []);
             return out;
         }
 
-        // ★ 遞迴走訪 DOM，將 HTML 結構轉換為對應的 RTF 控制碼，
-        //   保留換行（<br>／<div>／<p> 區塊分段）與基本格式（粗體/斜體/底線/清單），
-        //   而不是像舊版一樣用 innerText 整段拉平成純文字、遺失所有換行與格式。
-        function _novaHtmlNodeToRtf(node) {
-            let out = '';
-            for (const child of node.childNodes) {
-                if (child.nodeType === Node.TEXT_NODE) {
-                    out += _novaTextToRtfEscaped(child.textContent);
-                    continue;
-                }
-                if (child.nodeType !== Node.ELEMENT_NODE) continue;
-                const tag = child.tagName.toLowerCase();
-                if (tag === 'br') { out += '\\line\n'; continue; }
-                if (tag === 'b' || tag === 'strong') { out += '\\b ' + _novaHtmlNodeToRtf(child) + '\\b0 '; continue; }
-                if (tag === 'i' || tag === 'em') { out += '\\i ' + _novaHtmlNodeToRtf(child) + '\\i0 '; continue; }
-                if (tag === 'u') { out += '\\ul ' + _novaHtmlNodeToRtf(child) + '\\ulnone '; continue; }
-                if (tag === 'li') { out += _novaTextToRtfEscaped('• ') + _novaHtmlNodeToRtf(child) + '\\par\n'; continue; }
-                if (tag === 'ul' || tag === 'ol') { out += _novaHtmlNodeToRtf(child); continue; }
-                if (tag === 'div' || tag === 'p' || tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'h4') {
-                    out += _novaHtmlNodeToRtf(child) + '\\par\n';
-                    continue;
-                }
-                // 其他標籤（如 span）：不影響格式，直接遞迴處理內部節點
-                out += _novaHtmlNodeToRtf(child);
-            }
-            return out;
-        }
-
         window.exportNoteWord = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
             showToast('⏳ 正在準備 Word 檔案...');
 
-            // 解析為 DOM 結構後再轉換，確保換行與基本格式都能正確保留
+            // 取出純文字（去除 HTML 標籤，保留換行結構），確保產出的 RTF 內容乾淨可靠
             const tempEl = document.createElement('div');
             tempEl.innerHTML = n.isHtml ? n.content : n.content.replace(/\n/g, '<br>');
+            const plainText = (tempEl.innerText || tempEl.textContent || '').trim();
 
             // ★ 產生真正合法的 RTF（Rich Text Format）文件，而非「用 .doc 副檔名包裝 HTML」
             //   的舊做法——那種假檔案在桌面 Word 尚可靠猜測開啟，但 Android 上的 WPS Office、
@@ -8016,11 +7985,11 @@ msg.files : (msg.file ? [msg.file] : []);
             //   RTF 是純文字、跨平台通用的真實 Word 相容格式，任何 Word/WPS 都能正確開啟。
             const titleRtf = _novaTextToRtfEscaped(n.title || '未命名筆記');
             const dateRtf = _novaTextToRtfEscaped(n.date || '');
-            const bodyRtf = _novaHtmlNodeToRtf(tempEl);
+            const bodyRtf = _novaTextToRtfEscaped(plainText);
             const rtf = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1028
 {\\fonttbl{\\f0\\fnil\\fcharset136 Microsoft JhengHei;}{\\f1\\fnil\\fcharset0 Calibri;}}
 \\f0\\fs32\\b ${titleRtf}\\b0\\fs20\\par
-${dateRtf}\\par
+\\cf1 ${dateRtf}\\par
 \\line
 \\fs24 ${bodyRtf}
 }`;
@@ -10341,93 +10310,63 @@ function closePlusMenuOnOutsideClick(e) {
 }
 
         // --- 攝影機與 LIVE 視覺功能 ---
-        // ★ 相機分類結果：把裝置的鏡頭分成「後鏡頭-一般」「後鏡頭-廣角」「前鏡頭」三類，
-        //   讓使用者用兩顆按鈕（前後鏡頭 / 廣角-1×）切換，取代原本冗長的下拉選單。
-        let _novaCamCategorized = { backNormal: null, backWide: null, front: null };
-
-        async function _novaCategorizeCameras() {
+        async function populateCameraSelect() {
+            const select = document.getElementById('camera-select');
+            if (!select) return;
+            
             try {
-                // 先建立暫時 stream 取得授權，才能讀到有意義的裝置 label（後鏡頭/廣角等字樣）
+                // 為了避免授權後麥克風卡死，建立暫時的 stream 來要權限，要完馬上釋放
                 const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 tempStream.getTracks().forEach(t => t.stop());
 
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const videoDevices = devices.filter(d => d.kind === 'videoinput');
-
-                const backCams = videoDevices.filter(d => /back|後/i.test(d.label));
-                const frontCams = videoDevices.filter(d => /front|前置|selfie|自拍/i.test(d.label));
-                const wideCam = backCams.find(d => /wide|廣角/i.test(d.label) && !/ultra.*tele|telephoto|望遠/i.test(d.label));
-                const normalCam = backCams.find(d => !/wide|廣角|tele|望遠/i.test(d.label)) || backCams[0];
-
-                _novaCamCategorized.backWide = wideCam ? wideCam.deviceId : null;
-                _novaCamCategorized.backNormal = normalCam ? normalCam.deviceId : null;
-                _novaCamCategorized.front = frontCams[0] ? frontCams[0].deviceId : null;
-
-                // 裝置沒有可辨識的 label（常見於部分機型/瀏覽器隱私限制）→ 退回用 facingMode 判斷
-                if (!_novaCamCategorized.backNormal && !_novaCamCategorized.front) {
-                    _novaCamCategorized.backNormal = 'environment';
-                    _novaCamCategorized.front = 'user';
+                
+                select.innerHTML = '';
+                if (videoDevices.length === 0) {
+                    select.innerHTML = '<option value="">無相機</option>';
+                    return;
                 }
-            } catch (e) {
-                console.warn('[NOVA] 相機分類失敗，改用預設 facingMode:', e);
-                _novaCamCategorized = { backNormal: 'environment', backWide: null, front: 'user' };
+
+                videoDevices.forEach((d, i) => {
+                    const option = document.createElement('option');
+                    option.value = d.deviceId;
+                    option.text = d.label || `相機 ${i + 1}`;
+                    select.appendChild(option);
+                });
+                
+                if (appState.currentDeviceId) {
+                    let exists = videoDevices.find(d => d.deviceId === appState.currentDeviceId);
+                    if(exists) select.value = appState.currentDeviceId;
+                    else select.selectedIndex = 0;
+                } else {
+                    let backCams = videoDevices.filter(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('後'));
+                    let standardCam = backCams.find(d => !d.label.toLowerCase().includes('wide') && !d.label.toLowerCase().includes('廣角'));
+                    if(standardCam) select.value = standardCam.deviceId;
+                    else if(backCams.length > 0) select.value = backCams[0].deviceId;
+                    else select.selectedIndex = 0;
+                    
+                    appState.currentDeviceId = select.value;
+                }
+            } catch(e) {
+                select.innerHTML = '<option value="environment">後鏡頭 (預設)</option><option value="user">前鏡頭 (自拍)</option>';
             }
         }
 
-        function _novaGetCameraConstraints() {
-            let deviceId = null;
-            if (appState.currentFacing === 'front') {
-                deviceId = _novaCamCategorized.front;
-            } else {
-                deviceId = (appState.currentLensType === 'wide') ? _novaCamCategorized.backWide : _novaCamCategorized.backNormal;
-                if (!deviceId) deviceId = _novaCamCategorized.backNormal; // 若無廣角鏡頭，退回一般鏡頭
+        window.switchCamera = async function(deviceId) {
+            appState.currentDeviceId = deviceId;
+            if (appState.isLiveMode && liveVideoStream) {
+                liveVideoStream.getTracks().forEach(t => t.stop());
+                try {
+                    let constraints = { video: { deviceId: { exact: deviceId } } };
+                    if(deviceId === 'environment' || deviceId === 'user') constraints = { video: { facingMode: deviceId } };
+                    
+                    liveVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    document.getElementById('live-video-preview').srcObject = liveVideoStream;
+                } catch(e) {
+                    showToast("切換鏡頭失敗：" + e.message);
+                }
             }
-            if (!deviceId || deviceId === 'environment' || deviceId === 'user') {
-                return { video: { facingMode: appState.currentFacing === 'front' ? 'user' : 'environment' } };
-            }
-            return { video: { deviceId: { exact: deviceId } } };
-        }
-
-        function _novaUpdateCameraButtonsUI() {
-            const fbBtn = document.getElementById('cam-toggle-frontback');
-            const wideBtn = document.getElementById('cam-toggle-wide');
-            if (fbBtn) {
-                const label = fbBtn.querySelector('.cam-fb-label');
-                if (label) label.textContent = appState.currentFacing === 'front' ? '前鏡頭' : '後鏡頭';
-            }
-            if (wideBtn) {
-                const label = wideBtn.querySelector('.cam-wide-label');
-                if (label) label.textContent = appState.currentLensType === 'wide' ? '廣角' : '1×';
-                const disabled = appState.currentFacing === 'front' || !_novaCamCategorized.backWide;
-                wideBtn.disabled = disabled;
-                wideBtn.classList.toggle('opacity-40', disabled);
-            }
-        }
-
-        async function _novaApplyCameraSelection() {
-            if (!appState.isLiveMode || !liveVideoStream) return;
-            liveVideoStream.getTracks().forEach(t => t.stop());
-            try {
-                const constraints = _novaGetCameraConstraints();
-                liveVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
-                document.getElementById('live-video-preview').srcObject = liveVideoStream;
-            } catch (e) {
-                showToast("切換鏡頭失敗：" + e.message);
-            } finally {
-                _novaUpdateCameraButtonsUI();
-            }
-        }
-
-        window.toggleFrontBackCamera = async function() {
-            appState.currentFacing = (appState.currentFacing === 'front') ? 'back' : 'front';
-            await _novaApplyCameraSelection();
-        };
-
-        window.toggleWideCamera = async function() {
-            if (appState.currentFacing === 'front') { showToast('前鏡頭無廣角切換'); return; }
-            if (!_novaCamCategorized.backWide) { showToast('此裝置未偵測到廣角鏡頭'); return; }
-            appState.currentLensType = (appState.currentLensType === 'wide') ? 'normal' : 'wide';
-            await _novaApplyCameraSelection();
         };
 
         async function toggleLiveMode(forceMode = null) {
@@ -10444,17 +10383,20 @@ function closePlusMenuOnOutsideClick(e) {
             if (appState.isLiveMode) {
                 try {
                     if (appState.translateMode !== 'off') toggleTranslateMode(true);
-
-                    // 預設狀態：後鏡頭、一般（1×）焦距
-                    appState.currentFacing = appState.currentFacing || 'back';
-                    appState.currentLensType = appState.currentLensType || 'normal';
-
-                    await _novaCategorizeCameras();
-                    const constraints = _novaGetCameraConstraints();
-
+                    
+                    await populateCameraSelect(); 
+                    const cameraSelect = document.getElementById('camera-select');
+                    let constraints = { video: { facingMode: 'environment' } };
+                    if(cameraSelect && cameraSelect.value) {
+                        if (cameraSelect.value === 'environment' || cameraSelect.value === 'user') {
+                            constraints = { video: { facingMode: cameraSelect.value } };
+                        } else {
+                            constraints = { video: { deviceId: { exact: cameraSelect.value } } };
+                        }
+                    }
+                    
                     liveVideoStream = await navigator.mediaDevices.getUserMedia(constraints);
                     videoEl.srcObject = liveVideoStream;
-                    _novaUpdateCameraButtonsUI();
                     containerEl.classList.remove('hidden');
                     containerEl.classList.add('flex');
                     
