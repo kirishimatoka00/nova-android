@@ -863,7 +863,13 @@
                                 <div class="pt-2 border-t border-slate-700/60">
                                     <label class="block text-xs text-lime-400 mb-1 font-bold"><i class="ph-fill ph-desktop"></i> Local API（本機 AI，例如 llama.cpp / LM Studio）</label>
                                     <input type="text" id="key-local-url" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs focus:border-lime-500 outline-none mb-1.5" placeholder="http://127.0.0.1:8080">
-                                    <input type="password" id="key-local" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs focus:border-lime-500 outline-none" placeholder="API Key（本機伺服器通常不需要，留空即可）">
+                                    <input type="password" id="key-local" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs focus:border-lime-500 outline-none mb-1.5" placeholder="API Key（本機伺服器通常不需要，留空即可）">
+                                    <div class="flex items-center gap-2 mb-1.5">
+                                        <input type="checkbox" id="key-local-disable-thinking" class="accent-lime-500">
+                                        <label for="key-local-disable-thinking" class="text-[11px] text-slate-300">關閉思考模式（適用 Qwen3 等 thinking 模型，加速一般聊天回應）</label>
+                                    </div>
+                                    <label class="block text-[11px] text-slate-400 mb-1">最大回應 Token 數</label>
+                                    <input type="number" id="key-local-max-tokens" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs focus:border-lime-500 outline-none" placeholder="1024">
                                     <p class="text-[10px] text-slate-500 mt-1">相容 OpenAI Chat Completions 格式（/v1/chat/completions），支援 llama.cpp、Ollama、LM Studio 等本機伺服器。</p>
                                 </div>
                             </div>
@@ -3142,6 +3148,8 @@ async function encodeMp3(audioBuffer) {
             weather: { temp: '--', condition: 'cloudy', humidity: '--', wind: '--', loc: '未定位' },
             keys: { gemini: localStorage.getItem('nova_key_gemini')||'', groq: localStorage.getItem('nova_key_groq')||'', cohere: localStorage.getItem('nova_key_cohere')||'', openai: localStorage.getItem('nova_key_openai')||'', grok: localStorage.getItem('nova_key_grok')||'', local: localStorage.getItem('nova_key_local')||'', serpapi: localStorage.getItem('nova_key_serpapi')||'', aws_ak: localStorage.getItem('nova_key_aws_ak')||'', aws_sk: localStorage.getItem('nova_key_aws_sk')||'', aws_region: localStorage.getItem('nova_key_aws_region')||'ap-northeast-1', gmaps: localStorage.getItem('nova_key_gmaps')||'' },
             localApiUrl: localStorage.getItem('nova_local_api_url')||'http://127.0.0.1:8080',
+            localMaxTokens: parseInt(localStorage.getItem('nova_local_max_tokens'))||1024,
+            localDisableThinking: localStorage.getItem('nova_local_disable_thinking') !== 'false',
             isThinking: false, isListening: false, isNoteListening: false, noteVoiceActive: false, isSearchEnabled: true, isContinuous: false, manualLocIndex: 0,
             isLiveMode: false, 
             translateMode: 'off', 
@@ -5716,6 +5724,8 @@ appState.keys[key] = v; localStorage.setItem('nova_key_'+key, v); };
             s('key-gemini', 'gemini'); s('key-groq', 'groq'); s('key-cohere', 'cohere'); s('key-openai', 'openai'); s('key-grok', 'grok'); s('key-local', 'local'); s('key-serpapi', 'serpapi'); s('key-aws-ak', 'aws_ak');
 s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gmaps');
             appState.localApiUrl = (document.getElementById('key-local-url').value.trim() || 'http://127.0.0.1:8080').replace(/\/+$/,''); localStorage.setItem('nova_local_api_url', appState.localApiUrl);
+            appState.localDisableThinking = document.getElementById('key-local-disable-thinking').checked; localStorage.setItem('nova_local_disable_thinking', appState.localDisableThinking);
+            appState.localMaxTokens = parseInt(document.getElementById('key-local-max-tokens').value) || 1024; localStorage.setItem('nova_local_max_tokens', appState.localMaxTokens);
             appState.docMonitorUrl = document.getElementById('key-doc-url').value.trim(); localStorage.setItem('nova_doc_url', appState.docMonitorUrl);
             appState.driveUrl = document.getElementById('key-drive-url').value.trim(); localStorage.setItem('nova_drive_url', appState.driveUrl);
             appState.corsProxyUrl = document.getElementById('key-cors-proxy-url').value.trim(); localStorage.setItem('nova_cors_proxy_url', appState.corsProxyUrl);
@@ -15310,10 +15320,22 @@ if (appState.pendingAnalyzeContextId) {
                     const headers = { 'Content-Type': 'application/json' };
                     if (key) headers['Authorization'] = `Bearer ${key}`;
 
-                    const res = await fetchWithTimeout(`${baseUrl}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ model: appState.localModelName || 'local-model', messages: messagesPayload, temperature: 0.7 }) });
+                    const localPayload = { model: appState.localModelName || 'local-model', messages: messagesPayload, temperature: 0.7, max_tokens: appState.localMaxTokens || 1024 };
+                    // 💡 Qwen3 等思考型模型預設會先跑一大段 <think>...</think> 推理，
+                    //    即使是「Hi」這種簡單訊息也可能耗費上千 token。
+                    //    除非使用者在設定裡關閉此選項，否則預設關閉思考模式以加快回應。
+                    if (appState.localDisableThinking !== false) {
+                        localPayload.enable_thinking = false;
+                        localPayload.chat_template_kwargs = { enable_thinking: false };
+                    }
+
+                    const res = await fetchWithTimeout(`${baseUrl}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify(localPayload) });
                     const resText = await res.text(); let data; try { data = JSON.parse(resText); } catch(e) { throw new Error(`本機 API 回應異常: ${resText.substring(0, 100)}`); }
                     if (!res.ok) throw new Error(`${data.error?.message || res.status}`);
-                    return data.choices?.[0]?.message?.content || "無回應";
+                    let localOut = data.choices?.[0]?.message?.content || "無回應";
+                    // 💡 保底：若模型仍附帶思考標籤（部分模型即使關閉 enable_thinking 仍會殘留），移除後再顯示
+                    localOut = localOut.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim() || localOut;
+                    return localOut;
                 }
             } catch(e) { throw e; }
         }
@@ -15888,7 +15910,7 @@ ${evts.map(e=>`• ${e.start.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'
             }
             
             const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
-            safeSet('key-gemini', appState.keys.gemini); safeSet('key-groq', appState.keys.groq); safeSet('key-cohere', appState.keys.cohere); safeSet('key-openai', appState.keys.openai); safeSet('key-grok', appState.keys.grok); safeSet('key-local', appState.keys.local); safeSet('key-local-url', appState.localApiUrl); safeSet('key-serpapi', appState.keys.serpapi); safeSet('key-aws-ak', appState.keys.aws_ak); safeSet('key-aws-sk', appState.keys.aws_sk); safeSet('key-aws-region', appState.keys.aws_region); safeSet('key-doc-url', appState.docMonitorUrl); safeSet('key-drive-url', appState.driveUrl); safeSet('key-cors-proxy-url', appState.corsProxyUrl); safeSet('key-gmaps', appState.keys.gmaps);
+            safeSet('key-gemini', appState.keys.gemini); safeSet('key-groq', appState.keys.groq); safeSet('key-cohere', appState.keys.cohere); safeSet('key-openai', appState.keys.openai); safeSet('key-grok', appState.keys.grok); safeSet('key-local', appState.keys.local); safeSet('key-local-url', appState.localApiUrl); safeSet('key-local-max-tokens', appState.localMaxTokens); const _lct = document.getElementById('key-local-disable-thinking'); if (_lct) _lct.checked = appState.localDisableThinking !== false; safeSet('key-serpapi', appState.keys.serpapi); safeSet('key-aws-ak', appState.keys.aws_ak); safeSet('key-aws-sk', appState.keys.aws_sk); safeSet('key-aws-region', appState.keys.aws_region); safeSet('key-doc-url', appState.docMonitorUrl); safeSet('key-drive-url', appState.driveUrl); safeSet('key-cors-proxy-url', appState.corsProxyUrl); safeSet('key-gmaps', appState.keys.gmaps);
             safeSet('key-voice-timeout', appState.voiceTimeout);
             safeSet('key-translate-b-timeout', appState.translateBTimeout);
             safeSet('key-vad-multiplier', appState.vadMultiplier);
