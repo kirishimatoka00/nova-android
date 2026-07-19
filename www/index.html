@@ -1895,8 +1895,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.5';
+        const NOVA_APP_VERSION = '2.3.6';
         const NOVA_CHANGELOG = [
+            { v: '2.3.6', date: '2026-07-19', notes: [
+                '修正點擊持續偏移的問題：根本原因是截圖用 scale=0.5 縮圖，卻要求 AI 自己心算「乘以2」換算回真實座標，這個換算步驟常常算錯或忘記做，導致座標一直偏移打不中目標',
+                '改為截圖不縮放，直接以裝置原始解析度擷取，AI 在截圖上看到哪裡就回傳哪裡的座標，完全不需要任何換算，降低出錯機率'
+            ]},
             { v: '2.3.5', date: '2026-07-19', notes: [
                 '修正重大邏輯錯誤：click/longClick/swipe 回傳 false（代表沒點到任何元件）之前被誤判為成功，導致 AI 一直重複點擊幾乎相同座標卻毫無進展',
                 '新增 NovaSoftFail：偵測到 false 回傳時記為「軟失敗」，不中止整個任務，但會明確告知 AI 該次點擊沒生效，並要求下一回合根據最新截圖重新選點',
@@ -6787,7 +6791,10 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             async function getScreenshotBase64() {
-                const res = await fetch(baseUrl() + '/screenshot/0?scale=0.5&t=' + Date.now(), { cache: 'no-store' });
+                // 之前用 scale=0.5 縮圖，要求 AI 自己心算 ×2 換算回真實座標，
+                // 這個換算步驟很容易出錯（AI 常忘記換算或算錯），導致點擊一直偏移。
+                // 改成不縮放，截圖像素直接等於裝置真實座標，AI 看到哪裡就點哪裡，不需要任何換算。
+                const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
                 const blob = await res.blob();
                 return await new Promise((resolve, reject) => {
@@ -6892,7 +6899,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"wait","ms":毫秒數,"say":"..."}
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
-座標請以畫面實際像素為準（截圖已縮小為原尺寸的一半，請將座標換算回原始比例，即把你在截圖上看到的座標乘以2再回傳）。
+座標請直接以這張截圖上你看到的實際像素位置回傳（截圖沒有縮放，圖片座標＝裝置真實座標，不需要做任何換算或乘除）。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先用 type:"tap" 點擊該輸入框（確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
 如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個座標點擊沒有生效（點到空白處或元件辨識錯誤），請仔細觀察這次截圖，重新選一個更精準對到文字/圖示中心點的座標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
