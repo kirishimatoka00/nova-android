@@ -1895,8 +1895,15 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.2';
+        const NOVA_APP_VERSION = '2.4.3';
         const NOVA_CHANGELOG = [
+            { v: '2.4.3', date: '2026-07-19', notes: [
+                '確認 v2.4.2 的判讀修正是對的：{"error":null,"exitCode":0,"output":""} 就是正常成功的回應（input tap/keyevent 本來就不會印出任何東西）',
+                '但發現新問題：任務跑到第9回合又重新打開一次 Chrome、反覆重點同一個搜尋欄位，代表文字其實沒有真的打進去，卻因為 shell 指令回報成功而被誤判為搜尋已送出',
+                '推測原因：exitCode:0 只代表「ime set 指令送出去了」，不代表系統真的已完成 IME 切換；原本切換後只等 300ms 就送出文字廣播，時間可能不夠',
+                '拉長切換等待時間（300ms→800ms）、廣播後再等 500ms，並新增 settings get secure default_input_method 查詢，把目前真正生效的輸入法回報在執行紀錄裡，方便之後核對是否真的切換成功',
+                '在 AI 決策 prompt 加入提醒：打完文字後下一回合要先看新截圖確認文字真的出現在輸入框裡，才可以按 Enter，不要無條件相信「指令沒報錯」＝「畫面上真的發生了」'
+            ]},
             { v: '2.4.2', date: '2026-07-19', notes: [
                 '拿掉引號後文字輸入仍然回報同一個錯誤 {"Stderr":null}，代表問題不是引號，而是我們自己對 atx-agent /shell 回應格式的判讀錯誤：{"Stderr":null} 看起來像 Go 語言的空結構體，很可能根本不代表失敗',
                 'shellExec 改為只有 error 是「非空字串」才視為真正失敗；其餘情況一律回傳完整原始回應內容，讓聊天室的執行紀錄能顯示 atx-agent 真正回傳了什麼，之後才能對照出正確的判讀方式，而不是繼續憑外觀猜測'
@@ -6878,13 +6885,27 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 把文字打進目前「已經取得焦點」的輸入框——所以文字輸入前一定要先 tap 該輸入框。
             async function setImeText(text) {
                 await shellExec('ime set com.github.uiautomator/.AdbKeyboard');
-                await new Promise(r => setTimeout(r, 300));
+                // 之前用 300ms 延遲太短：exitCode:0 只代表「ime set 指令送出去了」，
+                // 不代表系統真的已經切換完成。切太快就廣播，AdbKeyboard 可能根本還沒真正拿到焦點，
+                // 文字就這樣憑空消失，但每一步卻都回報成功，導致 AI 誤以為打完字了、按下 Enter，
+                // 結果搜尋框其實還是空的。拉長等待時間 + 實際查詢目前的 IME 是不是真的切換成功。
+                await new Promise(r => setTimeout(r, 800));
+                let imeCheck = '';
+                try {
+                    const cur = await shellExec('settings get secure default_input_method');
+                    imeCheck = String(cur).trim();
+                } catch (_) { /* 查不到就算了，不影響繼續執行 */ }
+
                 const b64 = btoa(unescape(encodeURIComponent(text)));
                 // 不要加雙引號：atx-agent 的 /shell 是用空白直接切 argv（不是真的跑一個 shell 直譯器，
                 // 之前 monkey 指令的 log 就顯示它把每個空白分隔的片段當成獨立 arg），
                 // 引號不會被當成「字串邊界」解析掉，只會變成字面上的字元混進去，導致廣播失敗。
                 // base64 字元集本身不含空白，所以不加引號也不會被切斷，直接傳即可。
-                await shellExec(`am broadcast -a ADB_INPUT_B64 --es msg ${b64}`);
+                const result = await shellExec(`am broadcast -a ADB_INPUT_B64 --es msg ${b64}`);
+                await new Promise(r => setTimeout(r, 500)); // 給 AdbKeyboard 一點時間真的把文字塞進輸入框
+
+                const imeOk = imeCheck.includes('AdbKeyboard');
+                return `${result}｜目前輸入法=${imeCheck || '未知'}${imeOk ? '' : '　⚠️ 可能還沒切換成 AdbKeyboard，文字可能沒有真的輸入進去'}`;
             }
 
             // 執行單一動作：AI 回傳的 action 物件會呼叫對應的 uiautomator2 操作
@@ -6963,6 +6984,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"fail","say":"任務無法完成的原因"}
 座標請直接以這張截圖上你看到的實際像素位置回傳（截圖沒有縮放，圖片座標＝裝置真實座標，不需要做任何換算或乘除）。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先用 type:"tap" 點擊該輸入框（確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
+重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新 tap 該輸入框、再重新輸入一次文字，不要直接按 Enter。
 如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個座標點擊沒有生效（點到空白處或元件辨識錯誤），請仔細觀察這次截圖，重新選一個更精準對到文字/圖示中心點的座標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
 如果任務已經達成，請回傳 type:"done"；如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
