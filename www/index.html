@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.4';
+        const NOVA_APP_VERSION = '2.3.5';
         const NOVA_CHANGELOG = [
+            { v: '2.3.5', date: '2026-07-19', notes: [
+                '修正重大邏輯錯誤：click/longClick/swipe 回傳 false（代表沒點到任何元件）之前被誤判為成功，導致 AI 一直重複點擊幾乎相同座標卻毫無進展',
+                '新增 NovaSoftFail：偵測到 false 回傳時記為「軟失敗」，不中止整個任務，但會明確告知 AI 該次點擊沒生效，並要求下一回合根據最新截圖重新選點',
+                '截圖請求加上 cache: no-store 與時間戳參數，確保每回合讀到的是真正即時的畫面，避免瀏覽器快取造成 AI 看到舊畫面'
+            ]},
             { v: '2.3.4', date: '2026-07-19', notes: [
                 '修正錯誤訊息顯示 [object Object] 的問題：shell/rpc 回傳的 error 若為物件，改用安全的 stringifyErr() 正確序列化顯示',
                 '要求1：每一回合執行後都會明確顯示「✅ 第X回合執行成功」或「❌ 第X回合執行失敗：原因」，不再只在失敗時才報告',
@@ -6782,7 +6787,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             async function getScreenshotBase64() {
-                const res = await fetch(baseUrl() + '/screenshot/0?scale=0.5');
+                const res = await fetch(baseUrl() + '/screenshot/0?scale=0.5&t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
                 const blob = await res.blob();
                 return await new Promise((resolve, reject) => {
@@ -6829,14 +6834,28 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 }
             }
 
+            // uiautomator2 的 click/longClick/swipe 回傳布林值：true 代表真的點到東西、false 代表沒有效果
+            // （常見原因：座標算錯、該處沒有可互動元件、畫面還沒載入完成）。
+            // 之前的版本只看「有沒有丟例外」，導致 false 被誤判成功，AI 完全不知道自己點空了。
+            class NovaSoftFail extends Error { constructor(msg) { super(msg); this.soft = true; } }
+
             async function performAction(action) {
                 switch (action.type) {
-                    case 'tap':
-                        return rpc('click', [action.x, action.y]);
-                    case 'long_press':
-                        return rpc('longClick', [action.x, action.y]);
-                    case 'swipe':
-                        return rpc('swipe', [action.x1, action.y1, action.x2, action.y2, action.duration || 20]);
+                    case 'tap': {
+                        const r = await rpc('click', [action.x, action.y]);
+                        if (r === false) throw new NovaSoftFail(`click(${action.x}, ${action.y}) 回傳 false，該座標可能沒有可點擊的元件，或畫面尚未載入完成`);
+                        return r;
+                    }
+                    case 'long_press': {
+                        const r = await rpc('longClick', [action.x, action.y]);
+                        if (r === false) throw new NovaSoftFail(`longClick(${action.x}, ${action.y}) 回傳 false，該座標可能沒有可點擊的元件`);
+                        return r;
+                    }
+                    case 'swipe': {
+                        const r = await rpc('swipe', [action.x1, action.y1, action.x2, action.y2, action.duration || 20]);
+                        if (r === false) throw new NovaSoftFail(`swipe 回傳 false，滑動可能未生效`);
+                        return r;
+                    }
                     case 'text':
                         return setImeText(action.text || '');
                     case 'key':
@@ -6875,6 +6894,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"fail","say":"任務無法完成的原因"}
 座標請以畫面實際像素為準（截圖已縮小為原尺寸的一半，請將座標換算回原始比例，即把你在截圖上看到的座標乘以2再回傳）。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先用 type:"tap" 點擊該輸入框（確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
+如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個座標點擊沒有生效（點到空白處或元件辨識錯誤），請仔細觀察這次截圖，重新選一個更精準對到文字/圖示中心點的座標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
 如果任務已經達成，請回傳 type:"done"；如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
 
@@ -6953,17 +6973,29 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 
                             // 要求 1：每一步都要驗證成功或失敗，而不是執行完就假設成功
                             let stepResult;
+                            let softFailMsg = null;
                             try {
                                 stepResult = await performAction(action);
                             } catch (execErr) {
-                                addMessage(`❌ 第 ${round} 回合執行失敗：${execErr.message}`, 'system');
-                                throw execErr; // 交給外層 catch 統一中止任務
+                                if (execErr.soft) {
+                                    // 軟失敗（例如點空了）：不中止整個任務，回報給 AI 讓它下一回合根據最新截圖修正
+                                    softFailMsg = execErr.message;
+                                    addMessage(`⚠️ 第 ${round} 回合動作未生效：${softFailMsg}`, 'system');
+                                } else {
+                                    addMessage(`❌ 第 ${round} 回合執行失敗：${execErr.message}`, 'system');
+                                    throw execErr; // 交給外層 catch 統一中止任務
+                                }
                             }
-                            const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
-                                ? '(無回傳內容，但呼叫未回報錯誤)'
-                                : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
-                            addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
-                            history.push({ round, action, result: resultText });
+
+                            if (softFailMsg) {
+                                history.push({ round, action, result: 'FAILED: ' + softFailMsg });
+                            } else {
+                                const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
+                                    ? '(無回傳內容，但呼叫未回報錯誤)'
+                                    : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
+                                addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
+                                history.push({ round, action, result: resultText });
+                            }
                             clearTimeout(roundTimer);
 
                             const elapsed = Date.now() - roundStart;
