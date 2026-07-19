@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.8';
+        const NOVA_APP_VERSION = '2.3.9';
         const NOVA_CHANGELOG = [
+            { v: '2.3.9', date: '2026-07-19', notes: [
+                '排除座標/縮放問題後（比例已確認接近 1.000，座標都在真實解析度範圍內，螢幕確認開著），仍然每次點擊都回傳 false，查證後找到已知成因：atx-agent 底層的 uiautomator instrumentation session 有時會「假活著」（HTTP 服務仍回應，但底層 session 已 stale），此時 click/swipe 一律靜靜回傳 false 且不丟錯誤',
+                '每次啟動自主任務前，自動呼叫 DELETE /uiautomator 重啟觸控服務（官方文件建議的標準修復方式）',
+                '任務執行中若連續 2 次動作未生效，視為 session 可能又壞掉，自動再重啟一次觸控服務後繼續，不會傻傻用同樣壞掉的 session 一直重試'
+            ]},
             { v: '2.3.8', date: '2026-07-19', notes: [
                 '使用者確認螢幕全程開著，排除螢幕關閉/鎖定假說',
                 '找到更根本的原因：不能假設 atx-agent 回傳的截圖像素尺寸＝裝置真實觸控解析度（它內部可能自行用 minicap 等機制縮放，不受我們的請求參數控制），先前兩版都要求 AI 自己心算換算，換算本身就不可靠',
@@ -6988,6 +6993,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
                 const history = [];
+                let consecutiveSoftFails = 0;
                 setStatus(`執行中（0/${maxRounds} 回合）`, null);
 
                 try {
@@ -7000,6 +7006,19 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         setStatus('❌ 尚未連線', false);
                         running = false;
                         return;
+                    }
+
+                    // 已知問題：atx-agent 底層的 uiautomator instrumentation session 有時會變成「假活著」
+                    // （HTTP 服務仍在回應，但底層 session 已 stale/斷線），這時 click/swipe 等操作
+                    // 會不管座標多正確，一律靜靜回傳 false（不會丟出錯誤，很難察覺）。
+                    // 官方文件建議的修復方式是強制重啟 uiautomator session：DELETE /uiautomator。
+                    // 每次任務開始前先做一次，是低成本、高機率解決「座標明明對但點擊全部失敗」的方法。
+                    try {
+                        await fetch(baseUrl() + '/uiautomator', { method: 'DELETE' });
+                        await new Promise(r => setTimeout(r, 1500)); // 重啟需要一點時間
+                        addMessage('🔄 已重啟 uiautomator 觸控服務（修正已知的 session 失效問題，可能是先前點擊全部失敗的原因）', 'system');
+                    } catch (resetErr) {
+                        console.warn('uiautomator reset failed', resetErr);
                     }
 
                     for (let round = 1; round <= maxRounds; round++) {
@@ -7079,7 +7098,19 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 
                             if (softFailMsg) {
                                 history.push({ round, action, result: 'FAILED: ' + softFailMsg });
+                                consecutiveSoftFails++;
+                                // 連續 2 次以上動作沒生效，極可能是 uiautomator session 又壞掉了，
+                                // 不要傻傻再試第 3、4 次相同座標——直接重啟 session 再繼續。
+                                if (consecutiveSoftFails >= 2) {
+                                    try {
+                                        await fetch(baseUrl() + '/uiautomator', { method: 'DELETE' });
+                                        await new Promise(r => setTimeout(r, 1500));
+                                        addMessage('🔄 連續多次動作未生效，已自動重啟 uiautomator 觸控服務後繼續', 'system');
+                                        consecutiveSoftFails = 0;
+                                    } catch (_) { /* 重啟失敗就繼續往下跑，不中止任務 */ }
+                                }
                             } else {
+                                consecutiveSoftFails = 0;
                                 const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
                                     ? '(無回傳內容，但呼叫未回報錯誤)'
                                     : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
