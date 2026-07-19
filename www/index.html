@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.3';
+        const NOVA_APP_VERSION = '2.3.4';
         const NOVA_CHANGELOG = [
+            { v: '2.3.4', date: '2026-07-19', notes: [
+                '修正錯誤訊息顯示 [object Object] 的問題：shell/rpc 回傳的 error 若為物件，改用安全的 stringifyErr() 正確序列化顯示',
+                '要求1：每一回合執行後都會明確顯示「✅ 第X回合執行成功」或「❌ 第X回合執行失敗：原因」，不再只在失敗時才報告',
+                '要求2：每一步驟執行前，聊天室會用程式碼區塊顯示這一步實際執行的 rpc/shell 指令內容（describeAction()）'
+            ]},
             { v: '2.3.3', date: '2026-07-19', notes: [
                 '修正 text 動作出現 -32602 method parameters invalid 的問題：/jsonrpc/0 的 setText 是針對特定 UiObject 選擇器的方法，單純傳字串不合法',
                 '改用 shellExec 切換到 uiautomator2 init 已安裝好的 AdbKeyboard IME，透過 shell 廣播 ADB_INPUT_B64（base64 編碼）把文字打進目前取得焦點的輸入框',
@@ -6735,12 +6740,18 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 
             // atx-agent 的 shell 執行是獨立的 REST 端點（GET/POST /shell），不是 /jsonrpc/0 的 RPC method，
             // 所以不能透過 rpc('shell', ...) 呼叫（會得到 -32601 method not found）。
+            function stringifyErr(e) {
+                if (e == null) return '未知錯誤';
+                if (typeof e === 'string') return e;
+                try { return JSON.stringify(e); } catch (_) { return String(e); }
+            }
+
             async function shellExec(cmd) {
                 const res = await fetch(baseUrl() + '/shell?command=' + encodeURIComponent(cmd) + '&timeout=60');
                 if (!res.ok) throw new Error('atx-agent /shell 回應錯誤 HTTP ' + res.status);
                 const data = await res.json();
-                if (data.error) throw new Error('shell 指令錯誤：' + data.error);
-                return data.output;
+                if (data && data.error) throw new Error('shell 指令錯誤：' + stringifyErr(data.error));
+                return (data && data.output) || '';
             }
 
             // 呼叫 atx-agent 的 JSON-RPC 介面（對應 uiautomator2 python 端的 device.jsonrpc 呼叫）
@@ -6752,7 +6763,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 });
                 if (!res.ok) throw new Error('atx-agent 回應錯誤 HTTP ' + res.status);
                 const data = await res.json();
-                if (data.error) throw new Error('atx-agent RPC 錯誤：' + JSON.stringify(data.error));
+                if (data.error) throw new Error('atx-agent RPC 錯誤：' + stringifyErr(data.error));
                 return data.result;
             }
 
@@ -6800,6 +6811,24 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             // 執行單一動作：AI 回傳的 action 物件會呼叫對應的 uiautomator2 操作
+            // 產生「這一步實際執行了什麼指令」的可讀文字，顯示在聊天室的程式碼區塊裡
+            function describeAction(action) {
+                switch (action.type) {
+                    case 'tap': return `rpc: click(${action.x}, ${action.y})`;
+                    case 'long_press': return `rpc: longClick(${action.x}, ${action.y})`;
+                    case 'swipe': return `rpc: swipe(${action.x1}, ${action.y1}, ${action.x2}, ${action.y2}, ${action.duration || 20})`;
+                    case 'text': return `shell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg "<base64: ${action.text || ''}>"`;
+                    case 'key': return `rpc: pressKey(${JSON.stringify(action.key)})`;
+                    case 'open_app': return action.activity
+                        ? `shell: am start -n ${action.package}/${action.activity}`
+                        : `shell: monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
+                    case 'wait': return `等待 ${action.ms || 1000}ms`;
+                    case 'done': return '(任務判定完成)';
+                    case 'fail': return '(任務判定無法繼續)';
+                    default: return JSON.stringify(action);
+                }
+            }
+
             async function performAction(action) {
                 switch (action.type) {
                     case 'tap':
@@ -6904,8 +6933,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             const action = await decideNextAction(goal, history, screenshotB64);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
-                            // 要求 5：執行前先在聊天室報出正在進行的動作
-                            addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}`, 'system');
+                            // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
+                            addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
 
                             if (action.type === 'done') {
                                 addMessage(`✅ 自主任務完成：${action.say || goal}`, 'ai');
@@ -6922,8 +6951,19 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                                 return;
                             }
 
-                            await performAction(action);
-                            history.push({ round, action });
+                            // 要求 1：每一步都要驗證成功或失敗，而不是執行完就假設成功
+                            let stepResult;
+                            try {
+                                stepResult = await performAction(action);
+                            } catch (execErr) {
+                                addMessage(`❌ 第 ${round} 回合執行失敗：${execErr.message}`, 'system');
+                                throw execErr; // 交給外層 catch 統一中止任務
+                            }
+                            const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
+                                ? '(無回傳內容，但呼叫未回報錯誤)'
+                                : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
+                            addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
+                            history.push({ round, action, result: resultText });
                             clearTimeout(roundTimer);
 
                             const elapsed = Date.now() - roundStart;
