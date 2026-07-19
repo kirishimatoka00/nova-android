@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.3';
+        const NOVA_APP_VERSION = '2.4.4';
         const NOVA_CHANGELOG = [
+            { v: '2.4.4', date: '2026-07-19', notes: [
+                '實測診斷資訊終於抓到真正病根：目前輸入法=com.samsung.android.honeyboard，代表 ime set 從頭到尾都沒有生效，文字廣播一直是對著沒人在聽的 AdbKeyboard 送資料',
+                '找到原因：Android 的 ime set 有個前提——目標輸入法必須先被「enable」到已啟用清單裡，如果 AdbKeyboard 從未 enable 過，ime set 會靜靜地什麼都不做（不報錯，但預設輸入法根本沒換），這正好可以解釋為什麼每一步都回報成功、卻始終沒有真的切換',
+                '修正：文字輸入前先執行 ime enable com.github.uiautomator/.AdbKeyboard 再 ime set；若驗證後仍未切換成功，備援改用 settings put secure default_input_method 直接寫入（繞過 ime set 內部的啟用檢查）'
+            ]},
             { v: '2.4.3', date: '2026-07-19', notes: [
                 '確認 v2.4.2 的判讀修正是對的：{"error":null,"exitCode":0,"output":""} 就是正常成功的回應（input tap/keyevent 本來就不會印出任何東西）',
                 '但發現新問題：任務跑到第9回合又重新打開一次 Chrome、反覆重點同一個搜尋欄位，代表文字其實沒有真的打進去，卻因為 shell 指令回報成功而被誤判為搜尋已送出',
@@ -6884,17 +6889,32 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 透過 shell 廣播 ADB_INPUT_B64（base64 編碼，避免中文/空白等特殊字元被 shell 吃掉）
             // 把文字打進目前「已經取得焦點」的輸入框——所以文字輸入前一定要先 tap 該輸入框。
             async function setImeText(text) {
+                // 真正的病根找到了：settings get secure default_input_method 顯示切換後還是三星原生鍵盤
+                // com.samsung.android.honeyboard，代表 ime set 完全沒有生效。Android 的 ime set 有個
+                // 容易忽略的前提：目標輸入法必須先出現在「已啟用」清單裡，如果 AdbKeyboard 從沒被明確
+                // enable 過，ime set 會靜靜地什麼都不做（不會報錯，但預設輸入法根本沒換），
+                // 之前每一步回報成功但文字打不進去，原因就在這裡。
+                await shellExec('ime enable com.github.uiautomator/.AdbKeyboard');
+                await new Promise(r => setTimeout(r, 300));
                 await shellExec('ime set com.github.uiautomator/.AdbKeyboard');
-                // 之前用 300ms 延遲太短：exitCode:0 只代表「ime set 指令送出去了」，
-                // 不代表系統真的已經切換完成。切太快就廣播，AdbKeyboard 可能根本還沒真正拿到焦點，
-                // 文字就這樣憑空消失，但每一步卻都回報成功，導致 AI 誤以為打完字了、按下 Enter，
-                // 結果搜尋框其實還是空的。拉長等待時間 + 實際查詢目前的 IME 是不是真的切換成功。
                 await new Promise(r => setTimeout(r, 800));
+
                 let imeCheck = '';
                 try {
                     const cur = await shellExec('settings get secure default_input_method');
                     imeCheck = String(cur).trim();
-                } catch (_) { /* 查不到就算了，不影響繼續執行 */ }
+                } catch (_) { /* 查不到就算了 */ }
+
+                // 如果 enable + set 還是沒換成功，備用手段：直接寫入 secure setting
+                // （這會繞過 ime set 內部「必須先 enable」的檢查邏輯，某些機型上更可靠）。
+                if (!imeCheck.includes('AdbKeyboard')) {
+                    try {
+                        await shellExec('settings put secure default_input_method com.github.uiautomator/.AdbKeyboard');
+                        await new Promise(r => setTimeout(r, 500));
+                        const cur2 = await shellExec('settings get secure default_input_method');
+                        imeCheck = String(cur2).trim();
+                    } catch (_) { /* 備用手段也失敗就算了，下面照實回報 */ }
+                }
 
                 const b64 = btoa(unescape(encodeURIComponent(text)));
                 // 不要加雙引號：atx-agent 的 /shell 是用空白直接切 argv（不是真的跑一個 shell 直譯器，
@@ -6915,7 +6935,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return `shell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>`;
+                    case 'text': return `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
