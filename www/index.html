@@ -1895,8 +1895,19 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.6';
+        const NOVA_APP_VERSION = '2.3.8';
         const NOVA_CHANGELOG = [
+            { v: '2.3.8', date: '2026-07-19', notes: [
+                '使用者確認螢幕全程開著，排除螢幕關閉/鎖定假說',
+                '找到更根本的原因：不能假設 atx-agent 回傳的截圖像素尺寸＝裝置真實觸控解析度（它內部可能自行用 minicap 等機制縮放，不受我們的請求參數控制），先前兩版都要求 AI 自己心算換算，換算本身就不可靠',
+                '這版改為程式自動處理：實際量測截圖像素尺寸（getImageDimsFromBlob）+ 呼叫 deviceInfo 取得裝置真實解析度，兩者比對算出縮放比例，程式自動把 AI 回傳的（截圖像素）座標換算成真實觸控座標，完全不依賴 AI 心算',
+                '執行訊息會附上換算比例供除錯核對（例如「截圖 720x1520 ≠ 裝置真實解析度 1080x2280，座標已自動換算 ×1.5/1.5」）'
+            ]},
+            { v: '2.3.7', date: '2026-07-19', notes: [
+                '查證 Android UiDevice.click(x,y) 官方行為：這是原始觸控事件注入，即使點到空白處通常仍會回傳 true；持續回傳 false 且與座標完全無關，最可能原因是螢幕已關閉/鎖定，觸控事件根本沒被送達，而不是座標算錯',
+                '點擊失敗時新增診斷：呼叫 deviceInfo 取得真實 screenOn 狀態與裝置解析度，寫進錯誤訊息方便比對',
+                '若偵測到 screenOn=false，自動嘗試喚醒螢幕（KEYCODE_WAKEUP）並嘗試回到桌面（KEYCODE_MENU）後重試一次點擊（注意：若有鎖屏密碼/圖形鎖，仍需你先手動解鎖，這個自動重試無法繞過真正的鎖屏密碼）'
+            ]},
             { v: '2.3.6', date: '2026-07-19', notes: [
                 '修正點擊持續偏移的問題：根本原因是截圖用 scale=0.5 縮圖，卻要求 AI 自己心算「乘以2」換算回真實座標，這個換算步驟常常算錯或忘記做，導致座標一直偏移打不中目標',
                 '改為截圖不縮放，直接以裝置原始解析度擷取，AI 在截圖上看到哪裡就回傳哪裡的座標，完全不需要任何換算，降低出錯機率'
@@ -6790,19 +6801,39 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 }
             }
 
-            async function getScreenshotBase64() {
-                // 之前用 scale=0.5 縮圖，要求 AI 自己心算 ×2 換算回真實座標，
-                // 這個換算步驟很容易出錯（AI 常忘記換算或算錯），導致點擊一直偏移。
-                // 改成不縮放，截圖像素直接等於裝置真實座標，AI 看到哪裡就點哪裡，不需要任何換算。
-                const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
-                if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
-                const blob = await res.blob();
-                return await new Promise((resolve, reject) => {
+            function blobToBase64(blob) {
+                return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result.split(',')[1]);
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 });
+            }
+
+            // 量測截圖真正的像素尺寸（不能假設它就等於裝置解析度——atx-agent 內部可能用 minicap
+            // 等機制自行決定截圖大小，不受我們的請求參數控制）。
+            function getImageDimsFromBlob(blob) {
+                return new Promise((resolve, reject) => {
+                    const url = URL.createObjectURL(blob);
+                    const img = new Image();
+                    img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
+                    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法讀取截圖尺寸')); };
+                    img.src = url;
+                });
+            }
+
+            async function getScreenshotBase64() {
+                const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
+                if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
+                const blob = await res.blob();
+                const [b64, dims] = await Promise.all([blobToBase64(blob), getImageDimsFromBlob(blob)]);
+                return { b64, width: dims.width, height: dims.height };
+            }
+
+            // 取得裝置「真實」解析度（觸控座標系統以此為準），用來跟截圖的實際像素尺寸比對換算。
+            async function getDeviceDisplaySize() {
+                const info = await rpc('deviceInfo', []);
+                return { width: info.displayWidth, height: info.displayHeight, screenOn: info.screenOn };
             }
 
             async function getHierarchyDump() {
@@ -6849,8 +6880,32 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             async function performAction(action) {
                 switch (action.type) {
                     case 'tap': {
-                        const r = await rpc('click', [action.x, action.y]);
-                        if (r === false) throw new NovaSoftFail(`click(${action.x}, ${action.y}) 回傳 false，該座標可能沒有可點擊的元件，或畫面尚未載入完成`);
+                        let r = await rpc('click', [action.x, action.y]);
+                        if (r === false) {
+                            // click 回傳 false 代表觸控事件沒有被裝置接受。已知螢幕是開著的情況下，
+                            // 最可能原因是座標超出真實螢幕範圍（本版已加入截圖↔裝置解析度自動換算，
+                            // 理論上不該再發生，若仍出現，通常代表換算後座標還是落在系統列/導覽列等
+                            // 不允許注入觸控的區域，或該次換算失敗才直接使用了截圖原始座標）。
+                            // 仍保留裝置狀態診斷，避免漏掉真的是螢幕鎖定的情況。
+                            let diag = '';
+                            try {
+                                const info = await rpc('deviceInfo', []);
+                                diag = `裝置回報：screenOn=${info.screenOn}, 真實解析度=${info.displayWidth}x${info.displayHeight}，本次點擊座標=(${action.x}, ${action.y})`;
+                                if (info.screenOn === false) {
+                                    await shellExec('input keyevent 224'); // KEYCODE_WAKEUP
+                                    await new Promise(res => setTimeout(res, 500));
+                                    await shellExec('input keyevent 82'); // KEYCODE_MENU，多數機型可解鎖到桌面（若有鎖屏密碼則仍會失敗）
+                                    await new Promise(res => setTimeout(res, 500));
+                                    r = await rpc('click', [action.x, action.y]);
+                                    diag += '（已嘗試喚醒螢幕並重試一次）';
+                                } else if (action.x > info.displayWidth || action.y > info.displayHeight || action.x < 0 || action.y < 0) {
+                                    diag += '　⚠️ 座標超出真實螢幕範圍，換算可能有誤';
+                                }
+                            } catch (diagErr) {
+                                diag = '（無法取得裝置狀態診斷資訊：' + diagErr.message + '）';
+                            }
+                            if (r === false) throw new NovaSoftFail(`click(${action.x}, ${action.y}) 回傳 false，觸控事件未被接受。${diag}`);
+                        }
                         return r;
                     }
                     case 'long_press': {
@@ -6954,14 +7009,42 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         const roundStart = Date.now();
 
                         try {
-                            const screenshotB64 = await getScreenshotBase64();
+                            const shot = await getScreenshotBase64();
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
-                            const action = await decideNextAction(goal, history, screenshotB64);
+                            const rawAction = await decideNextAction(goal, history, shot.b64);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
+
+                            // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
+                            // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
+                            // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
+                            let action = rawAction;
+                            let scaleNote = '';
+                            if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
+                                try {
+                                    const disp = await getDeviceDisplaySize();
+                                    const scaleX = disp.width / shot.width;
+                                    const scaleY = disp.height / shot.height;
+                                    action = { ...rawAction };
+                                    if (rawAction.type === 'swipe') {
+                                        action.x1 = Math.round(rawAction.x1 * scaleX);
+                                        action.y1 = Math.round(rawAction.y1 * scaleY);
+                                        action.x2 = Math.round(rawAction.x2 * scaleX);
+                                        action.y2 = Math.round(rawAction.y2 * scaleY);
+                                    } else {
+                                        action.x = Math.round(rawAction.x * scaleX);
+                                        action.y = Math.round(rawAction.y * scaleY);
+                                    }
+                                    if (Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02) {
+                                        scaleNote = `（截圖 ${shot.width}x${shot.height} ≠ 裝置真實解析度 ${disp.width}x${disp.height}，座標已自動換算 ×${scaleX.toFixed(3)}/${scaleY.toFixed(3)}）`;
+                                    }
+                                } catch (dimErr) {
+                                    scaleNote = `（⚠️ 無法取得裝置真實解析度做座標換算：${dimErr.message}，直接使用截圖像素座標）`;
+                                }
+                            }
 
                             // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
-                            addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
+                            addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}${scaleNote}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
 
                             if (action.type === 'done') {
                                 addMessage(`✅ 自主任務完成：${action.say || goal}`, 'ai');
