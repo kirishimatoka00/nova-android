@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.9';
+        const NOVA_APP_VERSION = '2.4.0';
         const NOVA_CHANGELOG = [
+            { v: '2.4.0', date: '2026-07-19', notes: [
+                '重啟 uiautomator session 後點擊仍然 100% 失敗，證實問題不是 session 失效，而是這台裝置的 /jsonrpc/0 觸控注入（click/longClick/swipe）本身就是壞的（推測與部分機型的觸控安全限制或 OneUI 對非系統來源的合成觸控事件的限制有關）',
+                '既然 shell 指令（monkey 開啟 App）在同一台裝置上一直穩定運作，這版放棄 uiautomator2 RPC 觸控注入，改用 Android 原生 input 指令：tap 用 input tap x y、swipe 用 input swipe、長按用同點 swipe 800ms、按鍵用 input keyevent',
+                '⚠️ 副作用：input 指令沒有像 RPC 一樣的布林成功/失敗回傳值，無法再用「回傳 false」判斷點擊有沒有生效，只能靠沒有拋出例外來判斷指令已送出；若畫面沒反應但沒有錯誤訊息，需要靠下一輪截圖比對來確認'
+            ]},
             { v: '2.3.9', date: '2026-07-19', notes: [
                 '排除座標/縮放問題後（比例已確認接近 1.000，座標都在真實解析度範圍內，螢幕確認開著），仍然每次點擊都回傳 false，查證後找到已知成因：atx-agent 底層的 uiautomator instrumentation session 有時會「假活著」（HTTP 服務仍回應，但底層 session 已 stale），此時 click/swipe 一律靜靜回傳 false 且不丟錯誤',
                 '每次啟動自主任務前，自動呼叫 DELETE /uiautomator 重啟觸控服務（官方文件建議的標準修復方式）',
@@ -6862,11 +6867,11 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 產生「這一步實際執行了什麼指令」的可讀文字，顯示在聊天室的程式碼區塊裡
             function describeAction(action) {
                 switch (action.type) {
-                    case 'tap': return `rpc: click(${action.x}, ${action.y})`;
-                    case 'long_press': return `rpc: longClick(${action.x}, ${action.y})`;
-                    case 'swipe': return `rpc: swipe(${action.x1}, ${action.y1}, ${action.x2}, ${action.y2}, ${action.duration || 20})`;
+                    case 'tap': return `shell: input tap ${action.x} ${action.y}`;
+                    case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
+                    case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
                     case 'text': return `shell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg "<base64: ${action.text || ''}>"`;
-                    case 'key': return `rpc: pressKey(${JSON.stringify(action.key)})`;
+                    case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
                         : `shell: monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
@@ -6877,57 +6882,30 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 }
             }
 
-            // uiautomator2 的 click/longClick/swipe 回傳布林值：true 代表真的點到東西、false 代表沒有效果
-            // （常見原因：座標算錯、該處沒有可互動元件、畫面還沒載入完成）。
-            // 之前的版本只看「有沒有丟例外」，導致 false 被誤判成功，AI 完全不知道自己點空了。
+            // 已知問題記錄：/jsonrpc/0 的 click/longClick/swipe 在這台裝置上無論座標、
+            // 無論是否重啟 uiautomator session，一律回傳 false（觸控事件完全沒有被接受）。
+            // 但 shell 指令（monkey 開啟 App）在同一台裝置上一直運作正常。
+            // 因此這版乾脆放棄透過 uiautomator2 的 RPC 觸控注入，改用 Android 原生
+            // `input` shell 指令（走跟 open_app 一樣、已證實可靠的 shellExec 管道）。
             class NovaSoftFail extends Error { constructor(msg) { super(msg); this.soft = true; } }
 
             async function performAction(action) {
                 switch (action.type) {
-                    case 'tap': {
-                        let r = await rpc('click', [action.x, action.y]);
-                        if (r === false) {
-                            // click 回傳 false 代表觸控事件沒有被裝置接受。已知螢幕是開著的情況下，
-                            // 最可能原因是座標超出真實螢幕範圍（本版已加入截圖↔裝置解析度自動換算，
-                            // 理論上不該再發生，若仍出現，通常代表換算後座標還是落在系統列/導覽列等
-                            // 不允許注入觸控的區域，或該次換算失敗才直接使用了截圖原始座標）。
-                            // 仍保留裝置狀態診斷，避免漏掉真的是螢幕鎖定的情況。
-                            let diag = '';
-                            try {
-                                const info = await rpc('deviceInfo', []);
-                                diag = `裝置回報：screenOn=${info.screenOn}, 真實解析度=${info.displayWidth}x${info.displayHeight}，本次點擊座標=(${action.x}, ${action.y})`;
-                                if (info.screenOn === false) {
-                                    await shellExec('input keyevent 224'); // KEYCODE_WAKEUP
-                                    await new Promise(res => setTimeout(res, 500));
-                                    await shellExec('input keyevent 82'); // KEYCODE_MENU，多數機型可解鎖到桌面（若有鎖屏密碼則仍會失敗）
-                                    await new Promise(res => setTimeout(res, 500));
-                                    r = await rpc('click', [action.x, action.y]);
-                                    diag += '（已嘗試喚醒螢幕並重試一次）';
-                                } else if (action.x > info.displayWidth || action.y > info.displayHeight || action.x < 0 || action.y < 0) {
-                                    diag += '　⚠️ 座標超出真實螢幕範圍，換算可能有誤';
-                                }
-                            } catch (diagErr) {
-                                diag = '（無法取得裝置狀態診斷資訊：' + diagErr.message + '）';
-                            }
-                            if (r === false) throw new NovaSoftFail(`click(${action.x}, ${action.y}) 回傳 false，觸控事件未被接受。${diag}`);
-                        }
-                        return r;
-                    }
-                    case 'long_press': {
-                        const r = await rpc('longClick', [action.x, action.y]);
-                        if (r === false) throw new NovaSoftFail(`longClick(${action.x}, ${action.y}) 回傳 false，該座標可能沒有可點擊的元件`);
-                        return r;
-                    }
-                    case 'swipe': {
-                        const r = await rpc('swipe', [action.x1, action.y1, action.x2, action.y2, action.duration || 20]);
-                        if (r === false) throw new NovaSoftFail(`swipe 回傳 false，滑動可能未生效`);
-                        return r;
-                    }
+                    case 'tap':
+                        return shellExec(`input tap ${action.x} ${action.y}`);
+                    case 'long_press':
+                        // 用同一點的 swipe（起點=終點、拉長持續時間）模擬長按
+                        return shellExec(`input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`);
+                    case 'swipe':
+                        return shellExec(`input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`);
                     case 'text':
                         return setImeText(action.text || '');
-                    case 'key':
-                        // 例如 'back'、'home'、'enter'
-                        return rpc('pressKey', [action.key]);
+                    case 'key': {
+                        // 例如 'back'、'home'、'enter'、'menu'，轉成對應的 Android keyevent 代碼
+                        const keyMap = { back: 4, home: 3, enter: 66, menu: 82, power: 26, tab: 61, del: 67, search: 84 };
+                        const code = keyMap[(action.key || '').toLowerCase()] ?? action.key;
+                        return shellExec(`input keyevent ${code}`);
+                    }
                     case 'open_app':
                         const cmd = action.activity
                             ? `am start -n ${action.package}/${action.activity}`
