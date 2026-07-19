@@ -830,6 +830,7 @@
                             <button onclick="switchSettingsTab('tab-ui')" id="stab-ui" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🎨 外觀</button>
                             <button onclick="switchSettingsTab('tab-rec')" id="stab-rec" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">⏺️ 錄音</button>
                             <button onclick="switchSettingsTab('tab-cal')" id="stab-cal" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">📅 行事曆</button>
+                            <button onclick="switchSettingsTab('tab-autotask')" id="stab-autotask" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🤖 AI自主任務</button>
                         </div>
                     </div>
 
@@ -1159,6 +1160,43 @@
                                 </div>
                             </div>
                             <p class="text-[10px] text-slate-500 pt-1">⚠️ 首次使用需同意行事曆與通知權限。若未出現授權視窗，請至 Android 設定 → 應用程式 → NOVA 120 SSP → 權限 手動開啟。</p>
+                        </div>
+
+                        <!-- 分頁：AI 自主任務 -->
+                        <div id="tab-autotask" class="space-y-3 hidden">
+                            <div class="bg-gradient-to-r from-fuchsia-900/30 to-purple-900/30 p-4 rounded-xl border border-fuchsia-500/50 shadow-inner space-y-3">
+                                <label class="block text-xs text-fuchsia-300 font-bold flex items-center gap-2 mb-1">
+                                    <i class="ph-fill ph-robot"></i> 自主任務執行限制
+                                </label>
+                                <p class="text-[10px] text-slate-400">以「/ap 指令」啟動的自主任務，會透過 uiautomator2（在 Termux 內安裝並啟動 atx-agent 服務）操控手機畫面完成任務。啟動後不需逐步確認，但以下雙重限制會強制中止，避免失控。</p>
+                                <div class="grid grid-cols-2 gap-2 mt-2">
+                                    <div>
+                                        <label class="block text-[10px] text-fuchsia-300 mb-1 font-bold">🔁 最大回合數</label>
+                                        <input type="number" min="1" max="50" id="autotask-max-rounds" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-fuchsia-500 outline-none" placeholder="10">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-purple-300 mb-1 font-bold">⏱️ 單回合逾時（秒）</label>
+                                        <input type="number" min="10" max="600" id="autotask-round-timeout" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-purple-500 outline-none" placeholder="120">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-300 mb-1 font-bold">🔌 uiautomator2 / atx-agent 位址</label>
+                                    <input type="text" id="autotask-atx-url" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-fuchsia-500 outline-none" placeholder="http://127.0.0.1:7912">
+                                    <p class="text-[10px] text-slate-500 mt-1">首次使用請在 Termux 執行：<code>pkg install python -y && pip install uiautomator2 && python -m uiautomator2 init</code>，這會安裝並啟動 atx-agent（監聽本機 7912 埠），之後 NOVA 就能透過此位址直接操控畫面。</p>
+                                </div>
+                                <div class="pt-1 border-t border-slate-700/60">
+                                    <p class="text-[10px] text-amber-300 font-bold">用法：在對話框輸入「/ap 你要它做的任務」即可啟動自主任務。</p>
+                                    <p class="text-[10px] text-slate-500 mt-1">執行中每一步都會即時顯示「正在執行：...」；達到最大回合數、單回合逾時，或 AI 判斷任務已完成／無法繼續時會自動停止。</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between bg-slate-800/50 rounded-xl p-3 border border-slate-700">
+                                <div>
+                                    <span id="autotask-status-dot" class="w-2 h-2 rounded-full bg-slate-600 inline-block mr-1"></span>
+                                    <span id="autotask-status-text" class="text-[11px] text-slate-400">尚未執行任何自主任務</span>
+                                </div>
+                                <button onclick="window.novaAutoTask && window.novaAutoTask.testConnection && window.novaAutoTask.testConnection()" class="px-3 py-1.5 text-[10px] bg-fuchsia-900/40 hover:bg-fuchsia-800/50 text-fuchsia-300 rounded-lg font-bold border border-fuchsia-500/30">🔍 測試連線</button>
+                            </div>
+                            <p class="text-[9px] text-slate-600 pt-1">目前版本 <span id="nova-version-label"></span></p>
                         </div>
 
                     </div>
@@ -1854,6 +1892,18 @@
 
   <!-- ================= JavaScript 邏輯與功能實作 ================= -->
     <script>
+        // ══════════════════════════════════════════════════════════════
+        // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
+        // ══════════════════════════════════════════════════════════════
+        const NOVA_APP_VERSION = '2.3.0';
+        const NOVA_CHANGELOG = [
+            { v: '2.3.0', date: '2026-07-19', notes: [
+                '新增「AI自主任務」設定頁：可設定單一任務最大回合數（預設10）與單回合逾時秒數（預設120秒）',
+                '新增 /ap 指令：以 uiautomator2（透過 Termux 安裝並啟動 atx-agent）自主操控手機完成指定任務',
+                '自主任務執行時，每一步動作前都會在聊天室顯示「正在執行：...」的即時狀態訊息',
+                '自主任務不需使用者逐步確認，但僅在明確以 /ap 開頭觸發時才會啟動，以此作為識別旗標'
+            ]},
+        ];
         // --- 全域變數與狀態初始化 ---
         let recognition = null; let noteRecognition = null; let voiceTimer = null; 
         let chatInitialInput = ""; let noteInitialInput = "";
@@ -3157,6 +3207,12 @@ async function encodeMp3(audioBuffer) {
             currentListenLang: 'zh-TW',
             manualLocs: [{name: "台北", lat: 25.0330, lon: 121.5654}, {name: "台中", lat: 24.1477, lon: 120.6736}, {name: "高雄", lat: 22.6273, lon: 120.3014}],
             pendingReminder: null, reminderStage: 0, countryCode: 'TW', lastLat: null, lastLon: null,
+            // 🤖 AI 自主任務（uiautomator2 / Termux）設定
+            autoTaskSettings: {
+                maxRounds: parseInt(localStorage.getItem('nova_autotask_max_rounds')) || 10,
+                roundTimeoutSec: parseInt(localStorage.getItem('nova_autotask_round_timeout')) || 120,
+                atxAgentUrl: localStorage.getItem('nova_autotask_atx_url') || 'http://127.0.0.1:7912',
+            },
             recordingContext: 'default', currentAudioTranscript: '', editNoteImagesBase64: [], 
             pendingAnalyzePrompt: "", pendingAnalyzeContextId: null, pendingAnalyzeType: "", pendingAnalyzeDuration: 0,
             recordingStartTime: 0,
@@ -5571,11 +5627,11 @@ return html;
         window.closeSettings = function() { document.getElementById('settings-modal').classList.add('hidden'); };
 
         window.switchSettingsTab = function(tabId) {
-            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal'].forEach(id => {
+            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal', 'tab-autotask'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(tabId).classList.remove('hidden');
-            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal'].forEach(id => {
+            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal', 'stab-autotask'].forEach(id => {
                 const btn = document.getElementById(id);
                 btn.classList.remove('bg-blue-600', 'text-white');
                 btn.classList.add('text-slate-400');
@@ -5596,6 +5652,20 @@ return html;
             // 切換到行事曆設定時同步 UI
             if (tabId === 'tab-cal' && typeof calSyncSettingsUI === 'function') {
                 calSyncSettingsUI();
+            }
+            // 切換到 AI 自主任務設定時同步 UI
+            if (tabId === 'tab-autotask') {
+                const mr = document.getElementById('autotask-max-rounds');
+                const rt = document.getElementById('autotask-round-timeout');
+                const au = document.getElementById('autotask-atx-url');
+                const vl = document.getElementById('nova-version-label');
+                if (mr) mr.value = appState.autoTaskSettings.maxRounds;
+                if (rt) rt.value = appState.autoTaskSettings.roundTimeoutSec;
+                if (au) au.value = appState.autoTaskSettings.atxAgentUrl;
+                if (vl) vl.textContent = 'v' + NOVA_APP_VERSION;
+                if (mr) mr.onchange = () => { appState.autoTaskSettings.maxRounds = parseInt(mr.value) || 10; localStorage.setItem('nova_autotask_max_rounds', appState.autoTaskSettings.maxRounds); };
+                if (rt) rt.onchange = () => { appState.autoTaskSettings.roundTimeoutSec = parseInt(rt.value) || 120; localStorage.setItem('nova_autotask_round_timeout', appState.autoTaskSettings.roundTimeoutSec); };
+                if (au) au.onchange = () => { appState.autoTaskSettings.atxAgentUrl = au.value.trim() || 'http://127.0.0.1:7912'; localStorage.setItem('nova_autotask_atx_url', appState.autoTaskSettings.atxAgentUrl); };
             }
             // 切換到錄音設定時同步目前數值
             if (tabId === 'tab-rec') {
@@ -6624,6 +6694,228 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 }
             }
         };
+        // ══════════════════════════════════════════════════════════════
+        // 🤖 NOVA 自主任務引擎（NovaAutoTask）— v2.3.0
+        // 架構說明：
+        //   Termux 只負責「一次性安裝與啟動」uiautomator2 的 atx-agent 常駐服務
+        //   （在手機上執行：pkg install python -y && pip install uiautomator2 && python -m uiautomator2 init）。
+        //   atx-agent 啟動後會在本機開一個 HTTP 服務（預設 http://127.0.0.1:7912），
+        //   NOVA（WebView）之後每一回合都是直接對這個本機 HTTP 服務發送請求來讀取畫面/ 操控畫面，
+        //   不需要每次都透過 Termux 執行指令，執行速度快且穩定。
+        //   /ap 是啟動自主任務唯一的識別旗標：只有使用者明確輸入 /ap 開頭訊息，才會進入本迴圈；
+        //   沒有 /ap，一律視為一般對話，不會擅自操控手機。
+        // ══════════════════════════════════════════════════════════════
+        window.novaAutoTask = (function() {
+            let running = false;
+
+            function setStatus(text, ok) {
+                const dot = document.getElementById('autotask-status-dot');
+                const label = document.getElementById('autotask-status-text');
+                if (label) label.textContent = text;
+                if (dot) dot.className = 'w-2 h-2 rounded-full inline-block mr-1 ' + (ok === true ? 'bg-emerald-400' : ok === false ? 'bg-red-500' : 'bg-amber-400');
+            }
+
+            function baseUrl() {
+                return (appState.autoTaskSettings && appState.autoTaskSettings.atxAgentUrl) || 'http://127.0.0.1:7912';
+            }
+
+            // 呼叫 atx-agent 的 JSON-RPC 介面（對應 uiautomator2 python 端的 device.jsonrpc 呼叫）
+            async function rpc(method, params = []) {
+                const res = await fetch(baseUrl() + '/jsonrpc/0', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
+                });
+                if (!res.ok) throw new Error('atx-agent 回應錯誤 HTTP ' + res.status);
+                const data = await res.json();
+                if (data.error) throw new Error('atx-agent RPC 錯誤：' + JSON.stringify(data.error));
+                return data.result;
+            }
+
+            async function testConnection() {
+                setStatus('連線測試中...', null);
+                try {
+                    const res = await fetch(baseUrl() + '/info');
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const info = await res.json();
+                    setStatus('✅ 已連線：' + (info.model || info.serial || 'uiautomator2 裝置'), true);
+                    showToast('✅ uiautomator2 連線成功');
+                } catch (e) {
+                    setStatus('❌ 無法連線：' + e.message, false);
+                    showToast('❌ 無法連線 atx-agent，請確認已在 Termux 執行 python -m uiautomator2 init');
+                }
+            }
+
+            async function getScreenshotBase64() {
+                const res = await fetch(baseUrl() + '/screenshot/0?scale=0.5');
+                if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
+                const blob = await res.blob();
+                return await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+
+            async function getHierarchyDump() {
+                try { return await rpc('dumpWindowHierarchy', [false]); }
+                catch (e) { return ''; }
+            }
+
+            // 執行單一動作：AI 回傳的 action 物件會呼叫對應的 uiautomator2 操作
+            async function performAction(action) {
+                switch (action.type) {
+                    case 'tap':
+                        return rpc('click', [action.x, action.y]);
+                    case 'long_press':
+                        return rpc('longClick', [action.x, action.y]);
+                    case 'swipe':
+                        return rpc('swipe', [action.x1, action.y1, action.x2, action.y2, action.duration || 20]);
+                    case 'text':
+                        return rpc('setText', [action.text || '']);
+                    case 'key':
+                        // 例如 'back'、'home'、'enter'
+                        return rpc('pressKey', [action.key]);
+                    case 'open_app':
+                        return rpc('startActivity', [{ packageName: action.package, activity: action.activity || '' }]);
+                    case 'wait':
+                        return new Promise(r => setTimeout(r, Math.min(action.ms || 1000, 5000)));
+                    case 'done':
+                        return 'DONE';
+                    case 'fail':
+                        return 'FAIL';
+                    default:
+                        throw new Error('未知的動作類型：' + action.type);
+                }
+            }
+
+            // 呼叫 Gemini（視覺模型），依目前畫面截圖 + 任務目標 + 歷史，決定下一步動作
+            async function decideNextAction(goal, history, screenshotB64) {
+                const key = appState.keys.gemini;
+                if (!key) throw new Error('尚未設定 Gemini API Key，無法進行自主任務畫面判斷');
+                const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
+你會看到目前手機畫面的截圖。請判斷下一步該做的「單一」動作，並只回傳 JSON（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
+{"type":"tap","x":數字,"y":數字,"say":"這一步在做什麼（給使用者看的一句話）"}
+{"type":"long_press","x":數字,"y":數字,"say":"..."}
+{"type":"swipe","x1":數字,"y1":數字,"x2":數字,"y2":數字,"say":"..."}
+{"type":"text","text":"要輸入的文字","say":"..."}
+{"type":"key","key":"back|home|enter","say":"..."}
+{"type":"open_app","package":"套件名稱","say":"..."}
+{"type":"wait","ms":毫秒數,"say":"..."}
+{"type":"done","say":"任務已完成的說明"}
+{"type":"fail","say":"任務無法完成的原因"}
+座標請以畫面實際像素為準（截圖已縮小為原尺寸的一半，請將座標換算回原始比例，即把你在截圖上看到的座標乘以2再回傳）。
+已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
+如果任務已經達成，請回傳 type:"done"；如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
+
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: sysPrompt },
+                                { inline_data: { mime_type: 'image/png', data: screenshotB64 } }
+                            ]
+                        }],
+                        generationConfig: { temperature: 0.2 }
+                    })
+                });
+                if (!res.ok) throw new Error('Gemini 判斷失敗 HTTP ' + res.status);
+                const data = await res.json();
+                let txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
+                txt = txt.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+                try { return JSON.parse(txt); }
+                catch (e) { throw new Error('無法解析 AI 回傳的動作 JSON：' + txt.slice(0, 200)); }
+            }
+
+            async function run(goal) {
+                if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
+                running = true;
+                const settings = appState.autoTaskSettings || { maxRounds: 10, roundTimeoutSec: 120 };
+                const maxRounds = settings.maxRounds || 10;
+                const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
+                const history = [];
+                setStatus(`執行中（0/${maxRounds} 回合）`, null);
+
+                try {
+                    // 先確認 atx-agent 是否可連線
+                    try {
+                        const infoRes = await fetch(baseUrl() + '/info');
+                        if (!infoRes.ok) throw new Error('HTTP ' + infoRes.status);
+                    } catch (e) {
+                        addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install uiautomator2 && python -m uiautomator2 init，確認服務已啟動後再試一次。', 'system');
+                        setStatus('❌ 尚未連線', false);
+                        running = false;
+                        return;
+                    }
+
+                    for (let round = 1; round <= maxRounds; round++) {
+                        setStatus(`執行中（${round}/${maxRounds} 回合）`, null);
+                        let roundTimedOut = false;
+                        const roundTimer = setTimeout(() => { roundTimedOut = true; }, roundTimeoutMs);
+                        const roundStart = Date.now();
+
+                        try {
+                            const screenshotB64 = await getScreenshotBase64();
+                            if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
+
+                            const action = await decideNextAction(goal, history, screenshotB64);
+                            if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
+
+                            // 要求 5：執行前先在聊天室報出正在進行的動作
+                            addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}`, 'system');
+
+                            if (action.type === 'done') {
+                                addMessage(`✅ 自主任務完成：${action.say || goal}`, 'ai');
+                                setStatus('✅ 上次任務已完成', true);
+                                clearTimeout(roundTimer);
+                                running = false;
+                                return;
+                            }
+                            if (action.type === 'fail') {
+                                addMessage(`⚠️ 自主任務無法繼續：${action.say || '未知原因'}`, 'ai');
+                                setStatus('⚠️ 上次任務失敗', false);
+                                clearTimeout(roundTimer);
+                                running = false;
+                                return;
+                            }
+
+                            await performAction(action);
+                            history.push({ round, action });
+                            clearTimeout(roundTimer);
+
+                            const elapsed = Date.now() - roundStart;
+                            if (elapsed >= roundTimeoutMs) throw new Error('__ROUND_TIMEOUT__');
+
+                            // 動作間短暫等待畫面反應
+                            await new Promise(r => setTimeout(r, 800));
+                        } catch (roundErr) {
+                            clearTimeout(roundTimer);
+                            if (roundErr.message === '__ROUND_TIMEOUT__' || (Date.now() - roundStart) >= roundTimeoutMs) {
+                                addMessage(`⏱️ 第 ${round} 回合超過 ${settings.roundTimeoutSec} 秒逾時限制，已中止自主任務。`, 'system');
+                                setStatus('⏱️ 因逾時中止', false);
+                                running = false;
+                                return;
+                            }
+                            addMessage(`⚠️ 第 ${round} 回合發生錯誤，已中止自主任務：${roundErr.message}`, 'system');
+                            setStatus('❌ 因錯誤中止', false);
+                            running = false;
+                            return;
+                        }
+                    }
+
+                    addMessage(`🔁 已達最大回合數（${maxRounds} 回合），自主任務自動停止。若任務尚未完成，可再次輸入 /ap 繼續。`, 'system');
+                    setStatus(`⏹️ 已達回合上限（${maxRounds}）`, false);
+                } finally {
+                    running = false;
+                }
+            }
+
+            return { run, testConnection, isRunning: () => running };
+        })();
+
 window.clearChatHistory = async function() {
             if(await showConfirm('確定要清空「當前」這筆對話紀錄嗎？(其他對話不會受影響)')) { 
                 const targetSid = String(appState.currentSessionId || 'legacy');
@@ -13172,6 +13464,24 @@ window.startMultiAgentResearch = async function() {
             if (appState.pendingAnalyzeContextId && text !== appState.pendingAnalyzePrompt) {
                 appState.pendingAnalyzeContextId = null;
                 appState.pendingAnalyzeType = '';
+            }
+
+// ====== 新增：AI 自主任務（uiautomator2）指令攔截器 ======
+            // 這是 AI 自主任務的唯一識別旗標：只有明確以 /ap 開頭才會啟動免逐步確認的自主操控迴圈。
+            if (text.toLowerCase().startsWith("/ap ") || text.toLowerCase() === "/ap") {
+                const taskGoal = text.length > 3 ? text.substring(3).trim() : '';
+                input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                if (!taskGoal) {
+                    addMessage('⚠️ 請在 /ap 後面接上要自主執行的任務內容，例如：/ap 打開設定並開啟藍牙', 'system');
+                    return;
+                }
+                addMessage(`🤖 啟動 AI 自主任務：${taskGoal}`, 'user');
+                if (window.novaAutoTask && typeof window.novaAutoTask.run === 'function') {
+                    window.novaAutoTask.run(taskGoal);
+                } else {
+                    addMessage('⚠️ 自主任務引擎尚未載入，請重新整理 App 後再試。', 'system');
+                }
+                return;
             }
 
 // ====== 新增：Power Automate 指令攔截器 ======
