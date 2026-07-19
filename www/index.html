@@ -1895,8 +1895,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.1';
+        const NOVA_APP_VERSION = '2.3.2';
         const NOVA_CHANGELOG = [
+            { v: '2.3.2', date: '2026-07-19', notes: [
+                '修正 open_app 仍然 -32601 method not found 的問題：根本原因是 shell 指令在 atx-agent 中是獨立的 REST 端點 GET/POST /shell，並不是 /jsonrpc/0 的 RPC method，所以透過 rpc(\'shell\', ...) 呼叫本來就找不到；改為新增 shellExec() 直接呼叫 /shell 端點',
+                '⚠️ click/longClick/swipe/setText/pressKey/dumpWindowHierarchy 等其餘動作目前仍走 /jsonrpc/0，若後續測試出現同樣的 -32601，需要逐一比對 atx-agent 2.x 實際支援的 method 名稱再修正'
+            ]},
             { v: '2.3.1', date: '2026-07-19', notes: [
                 '修正 open_app 動作：atx-agent 沒有 startActivity 這個 RPC method（會回傳 -32601 method not found），改用 shell 執行 am start / monkey 指令來啟動 App',
                 '更新 Termux 安裝說明：uiautomator2 3.0+ 已移除 atx-agent 長駐服務，需安裝 uiautomator2<3.0；新版 setuptools 移除 pkg_resources 會導致安裝失敗，需一併安裝 setuptools<70.0.0',
@@ -6724,6 +6728,16 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 return (appState.autoTaskSettings && appState.autoTaskSettings.atxAgentUrl) || 'http://127.0.0.1:7912';
             }
 
+            // atx-agent 的 shell 執行是獨立的 REST 端點（GET/POST /shell），不是 /jsonrpc/0 的 RPC method，
+            // 所以不能透過 rpc('shell', ...) 呼叫（會得到 -32601 method not found）。
+            async function shellExec(cmd) {
+                const res = await fetch(baseUrl() + '/shell?command=' + encodeURIComponent(cmd) + '&timeout=60');
+                if (!res.ok) throw new Error('atx-agent /shell 回應錯誤 HTTP ' + res.status);
+                const data = await res.json();
+                if (data.error) throw new Error('shell 指令錯誤：' + data.error);
+                return data.output;
+            }
+
             // 呼叫 atx-agent 的 JSON-RPC 介面（對應 uiautomator2 python 端的 device.jsonrpc 呼叫）
             async function rpc(method, params = []) {
                 const res = await fetch(baseUrl() + '/jsonrpc/0', {
@@ -6783,12 +6797,10 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 例如 'back'、'home'、'enter'
                         return rpc('pressKey', [action.key]);
                     case 'open_app':
-                        // atx-agent 沒有 startActivity 這個 RPC method（會回傳 -32601 method not found），
-                        // 改用 shell 執行 am start / monkey 來啟動 App，這是 atx-agent 實際支援且最穩定的方式。
                         const cmd = action.activity
                             ? `am start -n ${action.package}/${action.activity}`
                             : `monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
-                        return rpc('shell', [cmd]);
+                        return shellExec(cmd);
                     case 'wait':
                         return new Promise(r => setTimeout(r, Math.min(action.ms || 1000, 5000)));
                     case 'done':
