@@ -1895,8 +1895,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.1';
+        const NOVA_APP_VERSION = '2.4.2';
         const NOVA_CHANGELOG = [
+            { v: '2.4.2', date: '2026-07-19', notes: [
+                '拿掉引號後文字輸入仍然回報同一個錯誤 {"Stderr":null}，代表問題不是引號，而是我們自己對 atx-agent /shell 回應格式的判讀錯誤：{"Stderr":null} 看起來像 Go 語言的空結構體，很可能根本不代表失敗',
+                'shellExec 改為只有 error 是「非空字串」才視為真正失敗；其餘情況一律回傳完整原始回應內容，讓聊天室的執行紀錄能顯示 atx-agent 真正回傳了什麼，之後才能對照出正確的判讀方式，而不是繼續憑外觀猜測'
+            ]},
             { v: '2.4.1', date: '2026-07-19', notes: [
                 '實測確認：v2.4.0 改用 shell input tap 後，第 2 回合終於執行成功（不再是每次都 false）——證實 RPC 觸控注入在這台裝置上確實壞掉，改用 shell input 是對的方向',
                 '修正文字輸入指令失敗（shell 指令錯誤：{"Stderr":null}）：atx-agent 的 /shell 是用空白單純切 argv，不是真的跑一個 shell 直譯器（先前 monkey 指令的 log 已經證實這點），雙引號不會被當作字串邊界解析，只會變成字面字元混進去；拿掉 am broadcast 指令裡包住 base64 內容的雙引號即可解決'
@@ -6783,9 +6787,21 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             async function shellExec(cmd) {
                 const res = await fetch(baseUrl() + '/shell?command=' + encodeURIComponent(cmd) + '&timeout=60');
                 if (!res.ok) throw new Error('atx-agent /shell 回應錯誤 HTTP ' + res.status);
-                const data = await res.json();
-                if (data && data.error) throw new Error('shell 指令錯誤：' + stringifyErr(data.error));
-                return (data && data.output) || '';
+                const raw = await res.text();
+                let data;
+                try { data = JSON.parse(raw); } catch (_) { return raw; } // 不是 JSON 就直接當純文字輸出回傳
+
+                // 已知教訓：atx-agent 的 /shell 回應格式我們其實沒有官方文件可查，之前兩次都誤判
+                // 「看起來像 error 的欄位」＝失敗，但實際上像 {"Stderr":null} 這種 Go 空結構體
+                // 很可能根本代表「沒有錯誤」。這裡改成只有明確是「非空字串」的 error 才視為真的失敗，
+                // 其餘一律當作成功、但把完整原始回應原封不動回傳，讓聊天室能顯示出來給我們核對真正格式。
+                if (data && typeof data.error === 'string' && data.error.trim() !== '') {
+                    throw new Error('shell 指令錯誤：' + data.error);
+                }
+                if (data && data.output !== undefined && data.output !== null && data.output !== '') {
+                    return data.output;
+                }
+                return raw; // 沒有明確 output 欄位時，直接把完整原始回應顯示出來，方便對照真實格式
             }
 
             // 呼叫 atx-agent 的 JSON-RPC 介面（對應 uiautomator2 python 端的 device.jsonrpc 呼叫）
