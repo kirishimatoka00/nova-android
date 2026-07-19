@@ -1182,7 +1182,7 @@
                                 <div>
                                     <label class="block text-[10px] text-slate-300 mb-1 font-bold">🔌 uiautomator2 / atx-agent 位址</label>
                                     <input type="text" id="autotask-atx-url" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-fuchsia-500 outline-none" placeholder="http://127.0.0.1:7912">
-                                    <p class="text-[10px] text-slate-500 mt-1">首次使用請在 Termux 執行：<code>pkg install python -y && pip install uiautomator2 && python -m uiautomator2 init</code>，這會安裝並啟動 atx-agent（監聽本機 7912 埠），之後 NOVA 就能透過此位址直接操控畫面。</p>
+                                    <p class="text-[10px] text-slate-500 mt-1">首次使用請在 Termux 執行：<code>pkg install python -y && pip install "setuptools&lt;70.0.0" "uiautomator2&lt;3.0" && python -m uiautomator2 init</code>，這會安裝並啟動 atx-agent（監聽本機 7912 埠）。⚠️ uiautomator2 3.0 以後版本已移除 atx-agent 長駐服務，務必安裝 2.x 版本；同時新版 setuptools 移除了 pkg_resources 會導致安裝失敗，需一併降版。</p>
                                 </div>
                                 <div class="pt-1 border-t border-slate-700/60">
                                     <p class="text-[10px] text-amber-300 font-bold">用法：在對話框輸入「/ap 你要它做的任務」即可啟動自主任務。</p>
@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.3.0';
+        const NOVA_APP_VERSION = '2.3.1';
         const NOVA_CHANGELOG = [
+            { v: '2.3.1', date: '2026-07-19', notes: [
+                '修正 open_app 動作：atx-agent 沒有 startActivity 這個 RPC method（會回傳 -32601 method not found），改用 shell 執行 am start / monkey 指令來啟動 App',
+                '更新 Termux 安裝說明：uiautomator2 3.0+ 已移除 atx-agent 長駐服務，需安裝 uiautomator2<3.0；新版 setuptools 移除 pkg_resources 會導致安裝失敗，需一併安裝 setuptools<70.0.0',
+                '（實測確認：正確安裝後 atx-agent 監聽本機 7912 埠無誤，先前連線失敗是版本落差所致，非位址設定錯誤）'
+            ]},
             { v: '2.3.0', date: '2026-07-19', notes: [
                 '新增「AI自主任務」設定頁：可設定單一任務最大回合數（預設10）與單回合逾時秒數（預設120秒）',
                 '新增 /ap 指令：以 uiautomator2（透過 Termux 安裝並啟動 atx-agent）自主操控手機完成指定任務',
@@ -6778,7 +6783,12 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 例如 'back'、'home'、'enter'
                         return rpc('pressKey', [action.key]);
                     case 'open_app':
-                        return rpc('startActivity', [{ packageName: action.package, activity: action.activity || '' }]);
+                        // atx-agent 沒有 startActivity 這個 RPC method（會回傳 -32601 method not found），
+                        // 改用 shell 執行 am start / monkey 來啟動 App，這是 atx-agent 實際支援且最穩定的方式。
+                        const cmd = action.activity
+                            ? `am start -n ${action.package}/${action.activity}`
+                            : `monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
+                        return rpc('shell', [cmd]);
                     case 'wait':
                         return new Promise(r => setTimeout(r, Math.min(action.ms || 1000, 5000)));
                     case 'done':
@@ -6845,7 +6855,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         const infoRes = await fetch(baseUrl() + '/info');
                         if (!infoRes.ok) throw new Error('HTTP ' + infoRes.status);
                     } catch (e) {
-                        addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install uiautomator2 && python -m uiautomator2 init，確認服務已啟動後再試一次。', 'system');
+                        addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install "setuptools<70.0.0" "uiautomator2<3.0" && python -m uiautomator2 init（注意：uiautomator2 3.0+ 已移除 atx-agent，務必安裝 2.x 版本），確認服務已啟動後再試一次。', 'system');
                         setStatus('❌ 尚未連線', false);
                         running = false;
                         return;
