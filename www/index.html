@@ -1895,8 +1895,16 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.4';
+        const NOVA_APP_VERSION = '2.4.6';
         const NOVA_CHANGELOG = [
+            { v: '2.4.6', date: '2026-07-19', notes: [
+                '找到「跑不到20回合就逾時中止」的原因：v2.3.6 為了修座標偏移拿掉了截圖縮放，改成抓裝置原始解析度（如 1080x2280）截圖直接送給 Gemini，但這個尺寸上傳到 Gemini API 常常太慢，光是等 AI 判斷下一步就可能吃掉大半個 120 秒單回合逾時額度，跟座標、觸控本身完全無關',
+                '修正：截圖仍以裝置原始解析度從 atx-agent 抓取（維持座標精準度來源），但改用 canvas 縮小成最長邊 768px 的 JPEG 再送給 Gemini，大幅縮短上傳等待時間；座標換算邏輯不變，只是換算來源尺寸從原始解析度改成縮小後的尺寸，準確度不受影響'
+            ]},
+            { v: '2.4.5', date: '2026-07-19', notes: [
+                '修正「done 自我宣稱成功」的驗證漏洞：AI 回傳 type:done 時完全沒有要求任何視覺證據，只要前幾步指令沒報錯就可能直接宣告完成，跟先前 tap/text 踩過的同一種「沒報錯≠有效果」陷阱一樣',
+                '在決策 prompt 中新增強制規則：done 前必須在當回合最新截圖裡明確看到完成證據（訊息真的以泡泡形式出現、頁面確實跳轉等），並要求把看到的具體證據寫進 say 欄位，看不出證據就不能回傳 done'
+            ]},
             { v: '2.4.4', date: '2026-07-19', notes: [
                 '實測診斷資訊終於抓到真正病根：目前輸入法=com.samsung.android.honeyboard，代表 ime set 從頭到尾都沒有生效，文字廣播一直是對著沒人在聽的 AdbKeyboard 送資料',
                 '找到原因：Android 的 ime set 有個前提——目標輸入法必須先被「enable」到已啟用清單裡，如果 AdbKeyboard 從未 enable 過，ime set 會靜靜地什麼都不做（不報錯，但預設輸入法根本沒換），這正好可以解釋為什麼每一步都回報成功、卻始終沒有真的切換',
@@ -6852,24 +6860,33 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 });
             }
 
-            // 量測截圖真正的像素尺寸（不能假設它就等於裝置解析度——atx-agent 內部可能用 minicap
-            // 等機制自行決定截圖大小，不受我們的請求參數控制）。
-            function getImageDimsFromBlob(blob) {
-                return new Promise((resolve, reject) => {
-                    const url = URL.createObjectURL(blob);
-                    const img = new Image();
-                    img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
-                    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法讀取截圖尺寸')); };
-                    img.src = url;
-                });
+            // 用 canvas 把截圖縮小後再送給 Gemini：截圖本身仍以裝置原始解析度從 atx-agent 抓取
+            // （維持座標精準度），但傳給 Gemini 的圖片改用縮小版——因為 v2.3.6 拿掉截圖縮放後，
+            // 1080x2280 原始大小的圖片上傳到 Gemini API 常常太慢，光是等這次回合的 AI 判斷
+            // 就可能超過 120 秒單回合逾時，導致整個任務被中止（畫面上完全來不及看到任何點擊）。
+            // AI 之後回傳的座標是「相對於這張縮小圖」，所以要記住縮小後的實際寬高，
+            // 才能用同一套「圖片尺寸 vs 裝置真實解析度」的比例換算邏輯把座標轉回真實觸控座標。
+            async function resizeForApi(blob, maxDim = 768) {
+                const bitmap = await createImageBitmap(blob);
+                const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+                const w = Math.max(1, Math.round(bitmap.width * scale));
+                const h = Math.max(1, Math.round(bitmap.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w; canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(bitmap, 0, 0, w, h);
+                const outBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.65));
+                const b64 = await blobToBase64(outBlob);
+                return { b64, width: w, height: h };
             }
 
             async function getScreenshotBase64() {
                 const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
                 const blob = await res.blob();
-                const [b64, dims] = await Promise.all([blobToBase64(blob), getImageDimsFromBlob(blob)]);
-                return { b64, width: dims.width, height: dims.height };
+                // 傳給 Gemini 的是縮小版（快），但回傳的 width/height 對應的就是這張縮小版的尺寸，
+                // 下游的座標換算邏輯完全不用改，只是換算的「來源尺寸」變小了而已。
+                return await resizeForApi(blob, 768);
             }
 
             // 取得裝置「真實」解析度（觸控座標系統以此為準），用來跟截圖的實際像素尺寸比對換算。
@@ -7007,7 +7024,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新 tap 該輸入框、再重新輸入一次文字，不要直接按 Enter。
 如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個座標點擊沒有生效（點到空白處或元件辨識錯誤），請仔細觀察這次截圖，重新選一個更精準對到文字/圖示中心點的座標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
-如果任務已經達成，請回傳 type:"done"；如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
+⚠️ 極重要：回傳 type:"done" 之前，必須在這一回合拿到的「最新截圖」裡親眼看到明確的完成證據（例如：你要送出的訊息真的以對話泡泡的形式出現在畫面上、頁面已經跳轉到預期的結果頁、輸入框裡確實顯示你要的文字等），不能只因為前幾回合的指令沒有回傳錯誤就假設任務成功——之前已經發生過好幾次「指令沒報錯」但畫面上其實什麼都沒發生的案例（點擊沒點到、文字沒真的打進去），所以「沒有錯誤」≠「有效果」。如果這次截圖看不出明確的完成證據，請不要回傳 done，改成先做一個能幫助你確認現況的動作（例如再點一次同一個地方、或用 wait 等一下再截圖看看），並在 say 欄位具體描述你在截圖上看到的證據是什麼。
+如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
 
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
                     method: 'POST',
