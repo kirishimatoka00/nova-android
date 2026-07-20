@@ -1895,8 +1895,23 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.8';
+        const NOVA_APP_VERSION = '2.5.1';
         const NOVA_CHANGELOG = [
+            { v: '2.5.1', date: '2026-07-20', notes: [
+                '新增 getCurrentForegroundApp()（對應 uiautomator2 的 app_current()）：透過 dumpsys window windows 查詢系統回報的真正前景 App 套件名稱，寫進每回合的判斷提示裡，減少 AI 只靠截圖誤判、反覆重新開啟同一個 App 的狀況',
+                '新增自動關閉常見彈窗（對應教學文章的 auto_handle_popups）：每回合解析出的元件清單如果比對到「關閉/取消/跳過/我知道了」等通用字樣的可點擊按鈕，直接關掉、不消耗一次 AI 判斷，省時間也避免任務被廣告/系統彈窗卡住；清單刻意保持精簡以降低誤點到任務本身按鈕的風險'
+            ]},
+            { v: '2.5.0', date: '2026-07-20', notes: [
+                '重大架構升級（參考 uiautomator2 教學文章後補上的缺口）：發現 getHierarchyDump() 早就寫好卻從沒被呼叫過，先前完全依賴「截圖 + AI 視覺估座標」這種較不精準的方式，才會一路踩到縮放比例、DPI、偵錯疊層等各種座標偏移問題',
+                '新增 parseHierarchyElements()：每回合實際抓取 UI 階層 XML，解析出可點擊/有文字描述的元件清單，每個元件的座標是系統回報的真實觸控座標（不是截圖像素，不需要任何縮放換算）',
+                '新增 tap_element 動作類型：AI 優先用文字/描述/id 從元件清單指定要點的目標，程式直接算出該元件的真實中心點去點擊，準確度遠高於視覺估算；找不到對應元件時才退回原本的視覺估算 tap',
+                '修正次要問題：傳給 Gemini 的截圖其實是 JPEG，但先前 API 呼叫宣告的 mime_type 卻寫成 image/png，已修正為 image/jpeg'
+            ]},
+            { v: '2.4.9', date: '2026-07-19', notes: [
+                '截圖顯示功能（v2.4.8）立刻找到真正問題：裝置開發人員選項的「指標位置」偵錯疊層一直顯示在畫面最上方，把真正的搜尋列往下擠了一排，AI 一直誤判座標點在偵錯文字或狀態列上，難怪畫面回合之間完全沒有變化',
+                '好消息：疊層數值本身回合之間有變化，證實觸控事件其實真的有送達系統，不是又一次的假成功——純粹是座標判斷被這排多出來的偵錯文字帶偏',
+                '建議直接在裝置「設定 → 開發人員選項 → 指標位置」關閉這個疊層；同時在 AI 決策 prompt 加入提醒，遇到類似技術性偵錯疊層時要納入判斷、假設真正介面被往下擠一排'
+            ]},
             { v: '2.4.8', date: '2026-07-19', notes: [
                 '重大調整：這幾輪的除錯之所以一直在猜，是因為使用者跟 AI 都只能看到「指令有沒有報錯」，完全看不到手機畫面實際上長什麼樣子，導致「exitCode:0」被反覆誤判成「真的有效果」',
                 '現在每一回合截圖都會直接顯示在聊天室（📸 第X回合截圖），這張圖就是 AI 用來判斷下一步的依據——使用者可以直接核對畫面上到底有沒有游標、鍵盤、輸入框反白等真實反應，不用再靠猜測'
@@ -6903,9 +6918,74 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 return { width: info.displayWidth, height: info.displayHeight, screenOn: info.screenOn };
             }
 
+            // 對應 uiautomator2 的 app_current()：查詢系統目前真正的前景 App 套件名稱，
+            // 讓 AI 不用只靠截圖猜測「我還在不在目標 App 裡」，減少無謂的重新開啟 App。
+            async function getCurrentForegroundApp() {
+                try {
+                    const out = await shellExec('dumpsys window windows');
+                    const m = String(out).match(/mCurrentFocus=Window\{[^\s]+\s+(?:u\d+\s+)?([a-zA-Z0-9_.]+)\/([a-zA-Z0-9_.]+)\}/);
+                    if (m) return { package: m[1], activity: m[2] };
+                } catch (_) { /* 查不到就算了，不影響任務繼續 */ }
+                return null;
+            }
+
             async function getHierarchyDump() {
                 try { return await rpc('dumpWindowHierarchy', [false]); }
                 catch (e) { return ''; }
+            }
+
+            // 把 UI 階層 XML 解析成一份精簡的「畫面元件列表」。
+            // 這是這次最重要的架構升級：hierarchy 裡回報的 bounds 座標本來就是裝置真實觸控座標
+            // （不是螢幕截圖像素），所以只要 AI 能透過 text/resource-id/描述指到某個元件，
+            // 我們就能直接算出它的中心點去點擊——完全不需要screenshot縮放/裝置解析度換算，
+            // 也不會被「指標位置」偵錯疊層這類畫面雜訊誤導，因為那些疊層根本不在 App 的 view tree 裡。
+            function parseHierarchyElements(xml, maxCount = 60) {
+                if (!xml) return [];
+                try {
+                    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+                    const nodes = doc.getElementsByTagName('node');
+                    const out = [];
+                    for (let i = 0; i < nodes.length; i++) {
+                        const n = nodes[i];
+                        const text = (n.getAttribute('text') || '').trim();
+                        const desc = (n.getAttribute('content-desc') || '').trim();
+                        const rid = (n.getAttribute('resource-id') || '').trim();
+                        const clickable = n.getAttribute('clickable') === 'true';
+                        const bounds = n.getAttribute('bounds') || '';
+                        const m = bounds.match(/\[(\-?\d+),(\-?\d+)\]\[(\-?\d+),(\-?\d+)\]/);
+                        if (!m) continue;
+                        const x1 = +m[1], y1 = +m[2], x2 = +m[3], y2 = +m[4];
+                        if (x2 <= x1 || y2 <= y1) continue;
+                        if (!clickable && !text && !desc) continue; // 沒有文字/描述又不可點擊，對 AI 判斷沒幫助
+                        out.push({ text, desc, rid: (rid.split('/').pop() || rid), clickable, x1, y1, x2, y2 });
+                    }
+                    out.sort((a, b) => (b.clickable - a.clickable)); // 可點擊的優先排前面
+                    return out.slice(0, maxCount);
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function formatElementsForPrompt(els) {
+                if (!els.length) return '（這次沒有拿到有效的畫面元件清單，只能靠截圖自行估計座標）';
+                return els.map((e, i) => {
+                    const cx = Math.round((e.x1 + e.x2) / 2), cy = Math.round((e.y1 + e.y2) / 2);
+                    return `[${i}] ${e.clickable ? '可點擊' : '僅文字'} text="${e.text}" desc="${e.desc}" id="${e.rid}" 中心座標=(${cx},${cy})`;
+                }).join('\n');
+            }
+
+            // 對應教學文章裡的 auto_handle_popups：常見的廣告/系統彈窗關閉按鈕文字。
+            // 每回合抓到元件清單後，如果比對到這些字樣，直接關掉，不用消耗一次 AI 判斷（省時間、省額度），
+            // 也能避免這類彈窗一直卡住任務進度。故意保持列表精簡、只挑非常明確的通用字樣，
+            // 降低誤點到任務本身真正需要的按鈕的風險。
+            const AUTO_DISMISS_TEXTS = ['關閉', '取消', '跳過', '我知道了', '知道了', '不用了', '以後再說', '稍後再說', '稍後', 'Skip', 'Close', 'Cancel', 'Not now', 'No thanks'];
+            function findAutoDismissElement(els) {
+                for (const e of els) {
+                    if (!e.clickable) continue;
+                    const t = (e.text || e.desc || '').trim();
+                    if (AUTO_DISMISS_TEXTS.includes(t)) return e;
+                }
+                return null;
             }
 
             // 文字輸入不能用 /jsonrpc/0 的 setText（那是針對「特定 UiObject 選擇器」的方法，
@@ -7013,12 +7093,13 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             // 呼叫 Gemini（視覺模型），依目前畫面截圖 + 任務目標 + 歷史，決定下一步動作
-            async function decideNextAction(goal, history, screenshotB64) {
+            async function decideNextAction(goal, history, screenshotB64, elementsText) {
                 const key = appState.keys.gemini;
                 if (!key) throw new Error('尚未設定 Gemini API Key，無法進行自主任務畫面判斷');
                 const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
-你會看到目前手機畫面的截圖。請判斷下一步該做的「單一」動作，並只回傳 JSON（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
-{"type":"tap","x":數字,"y":數字,"say":"這一步在做什麼（給使用者看的一句話）"}
+你會看到目前手機畫面的截圖，以及一份「畫面元件列表」（從系統的 UI 階層直接讀出來的真實元件，包含文字/描述/id 跟中心座標，這份清單的座標是裝置真實觸控座標，不是截圖像素，非常精準）。請判斷下一步該做的「單一」動作，並只回傳 JSON（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
+{"type":"tap_element","index":元件列表中的編號,"say":"這一步在做什麼（給使用者看的一句話）"}
+{"type":"tap","x":數字,"y":數字,"say":"..."}
 {"type":"long_press","x":數字,"y":數字,"say":"..."}
 {"type":"swipe","x1":數字,"y1":數字,"x2":數字,"y2":數字,"say":"..."}
 {"type":"text","text":"要輸入的文字","say":"..."}
@@ -7027,13 +7108,18 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"wait","ms":毫秒數,"say":"..."}
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
-座標請直接以這張截圖上你看到的實際像素位置回傳（截圖沒有縮放，圖片座標＝裝置真實座標，不需要做任何換算或乘除）。
-重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先用 type:"tap" 點擊該輸入框（確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
-重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新 tap 該輸入框、再重新輸入一次文字，不要直接按 Enter。
-如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個座標點擊沒有生效（點到空白處或元件辨識錯誤），請仔細觀察這次截圖，重新選一個更精準對到文字/圖示中心點的座標，不要重複點擊幾乎相同的位置。
+⚠️ 極重要的優先順序：如果你要點的東西（按鈕、輸入框、連結、選單項目...）能在下面的「畫面元件列表」裡找到對應的 text/desc/id，一定要優先用 type:"tap_element" 並填正確的 index——這是最精準的方式，座標由系統直接算好，不會有截圖估算誤差。只有在元件列表裡真的找不到對應項目時（例如要點一張純圖片、地圖上某個位置、畫面上沒有文字標籤的圖示區域），才退而求其次用 type:"tap" 並自己從截圖估計座標。
+座標請直接以這張截圖上你看到的實際像素位置回傳（截圖已縮小處理過，但已內建自動換算，你只需要照著這張圖回答座標即可）。這條規則只適用於 type:"tap"/"long_press"/"swipe"，不適用於 tap_element（那個直接用元件列表的 index）。
+⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
+重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
+重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新點擊該輸入框、再重新輸入一次文字，不要直接按 Enter。
+如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個動作沒有生效，請仔細觀察這次截圖跟畫面元件列表，重新選一個更精準的目標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
 ⚠️ 極重要：回傳 type:"done" 之前，必須在這一回合拿到的「最新截圖」裡親眼看到明確的完成證據（例如：你要送出的訊息真的以對話泡泡的形式出現在畫面上、頁面已經跳轉到預期的結果頁、輸入框裡確實顯示你要的文字等），不能只因為前幾回合的指令沒有回傳錯誤就假設任務成功——之前已經發生過好幾次「指令沒報錯」但畫面上其實什麼都沒發生的案例（點擊沒點到、文字沒真的打進去），所以「沒有錯誤」≠「有效果」。如果這次截圖看不出明確的完成證據，請不要回傳 done，改成先做一個能幫助你確認現況的動作（例如再點一次同一個地方、或用 wait 等一下再截圖看看），並在 say 欄位具體描述你在截圖上看到的證據是什麼。
-如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。`;
+如果連續嘗試都無法找到需要的畫面元素，請回傳 type:"fail"。
+
+畫面元件列表（優先從這裡找目標，用 tap_element 的 index 指定）：
+${elementsText}`;
 
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
                     method: 'POST',
@@ -7042,7 +7128,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         contents: [{
                             parts: [
                                 { text: sysPrompt },
-                                { inline_data: { mime_type: 'image/png', data: screenshotB64 } }
+                                { inline_data: { mime_type: 'image/jpeg', data: screenshotB64 } }
                             ]
                         }],
                         generationConfig: { temperature: 0.2 }
@@ -7106,15 +7192,67 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             addMessage(`📸 第 ${round}/${maxRounds} 回合截圖（AI 依此畫面判斷下一步）`, 'system', null, [],
                                 { category: 'image', data: 'data:image/jpeg;base64,' + shot.b64, name: `ap_round${round}.jpg` });
 
-                            const rawAction = await decideNextAction(goal, history, shot.b64);
+                            // 架構升級：同時抓取 UI 階層（dumpWindowHierarchy）並解析成元件清單。
+                            // 這份清單的座標是系統回報的真實觸控座標，不是螢幕截圖像素，AI 可以直接
+                            // 用文字/描述/id 精準指到目標元件，不需要再靠視覺估算座標，準確度高很多，
+                            // 也完全不受螢幕縮放比例或「指標位置」偵錯疊層這類畫面雜訊影響。
+                            let currentElements = [];
+                            let elementsText = '（本回合沒有拿到有效的畫面元件清單）';
+                            try {
+                                const hierarchyXml = await getHierarchyDump();
+                                currentElements = parseHierarchyElements(hierarchyXml);
+                                elementsText = formatElementsForPrompt(currentElements);
+                            } catch (hierErr) {
+                                elementsText = `（讀取畫面元件清單失敗：${hierErr.message}，AI 只能靠截圖自行估計座標）`;
+                            }
+
+                            // 常見廣告/系統彈窗，直接關掉不消耗一次 AI 判斷，省時間也避免卡住任務。
+                            const dismissEl = findAutoDismissElement(currentElements);
+                            if (dismissEl) {
+                                const dcx = Math.round((dismissEl.x1 + dismissEl.x2) / 2);
+                                const dcy = Math.round((dismissEl.y1 + dismissEl.y2) / 2);
+                                addMessage(`🔔 偵測到彈窗按鈕「${dismissEl.text || dismissEl.desc}」，自動關閉後繼續下一回合（不消耗 AI 判斷次數）`, 'system');
+                                try {
+                                    await shellExec(`input tap ${dcx} ${dcy}`);
+                                    history.push({ round, action: { type: 'tap_element_auto_dismiss', text: dismissEl.text || dismissEl.desc }, result: '自動關閉彈窗成功' });
+                                } catch (dismissErr) {
+                                    addMessage(`⚠️ 自動關閉彈窗失敗：${dismissErr.message}，交給下一回合 AI 自行處理`, 'system');
+                                }
+                                clearTimeout(roundTimer);
+                                await new Promise(r => setTimeout(r, 500));
+                                continue; // 這回合只用來關彈窗，不占用 AI 判斷，直接進入下一回合
+                            }
+
+                            // 對應 app_current()：讓 AI 知道系統回報的真正前景 App，減少單靠截圖誤判、
+                            // 反覆重新開啟同一個 App 的狀況。
+                            let appInfoNote = '';
+                            const fgApp = await getCurrentForegroundApp();
+                            if (fgApp) {
+                                elementsText = `目前系統回報的前景 App 套件名稱：${fgApp.package}（如果這跟任務目標的 App 不一致，代表畫面可能已經跳出目標 App，優先考慮用 open_app 或 key back 處理，不要單靠截圖判斷）\n\n` + elementsText;
+                            }
+
+                            const rawAction = await decideNextAction(goal, history, shot.b64, elementsText);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
-                            // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
-                            // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
-                            // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
                             let action = rawAction;
                             let scaleNote = '';
-                            if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
+                            if (rawAction.type === 'tap_element') {
+                                // 元件清單的座標已經是裝置真實觸控座標，直接算中心點即可，完全不需要縮放換算。
+                                const el = currentElements[rawAction.index];
+                                if (!el) {
+                                    throw new Error(`tap_element 指定的 index ${rawAction.index} 找不到對應的畫面元件（這一回合共有 ${currentElements.length} 個元件）`);
+                                }
+                                action = {
+                                    type: 'tap',
+                                    x: Math.round((el.x1 + el.x2) / 2),
+                                    y: Math.round((el.y1 + el.y2) / 2),
+                                    say: rawAction.say
+                                };
+                                scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標精準點擊，未經任何縮放換算）`;
+                            } else if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
+                                // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
+                                // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
+                                // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
                                 try {
                                     const disp = await getDeviceDisplaySize();
                                     const scaleX = disp.width / shot.width;
