@@ -1895,8 +1895,16 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.4.6';
+        const NOVA_APP_VERSION = '2.4.8';
         const NOVA_CHANGELOG = [
+            { v: '2.4.8', date: '2026-07-19', notes: [
+                '重大調整：這幾輪的除錯之所以一直在猜，是因為使用者跟 AI 都只能看到「指令有沒有報錯」，完全看不到手機畫面實際上長什麼樣子，導致「exitCode:0」被反覆誤判成「真的有效果」',
+                '現在每一回合截圖都會直接顯示在聊天室（📸 第X回合截圖），這張圖就是 AI 用來判斷下一步的依據——使用者可以直接核對畫面上到底有沒有游標、鍵盤、輸入框反白等真實反應，不用再靠猜測'
+            ]},
+            { v: '2.4.7', date: '2026-07-19', notes: [
+                '截圖縮圖確認生效（364x768），裝置端執行也是秒級完成，剩餘的延遲判斷是 Gemini API 網路來回時間，非上傳大小或觸控問題',
+                '修正不合理的行為：動作明明執行成功，卻只因為「這回合總耗時」超過逾時秒數就把整個任務直接中止、放棄已經做完的進度。改成動作成功時逾時只顯示提醒訊息並繼續下一回合；只有在動作都還沒執行成功前就卡住逾時，才會真的中止任務（這種才代表我們不知道發生了什麼事，繼續也沒意義）'
+            ]},
             { v: '2.4.6', date: '2026-07-19', notes: [
                 '找到「跑不到20回合就逾時中止」的原因：v2.3.6 為了修座標偏移拿掉了截圖縮放，改成抓裝置原始解析度（如 1080x2280）截圖直接送給 Gemini，但這個尺寸上傳到 Gemini API 常常太慢，光是等 AI 判斷下一步就可能吃掉大半個 120 秒單回合逾時額度，跟座標、觸控本身完全無關',
                 '修正：截圖仍以裝置原始解析度從 atx-agent 抓取（維持座標精準度來源），但改用 canvas 縮小成最長邊 768px 的 JPEG 再送給 Gemini，大幅縮短上傳等待時間；座標換算邏輯不變，只是換算來源尺寸從原始解析度改成縮小後的尺寸，準確度不受影響'
@@ -7093,6 +7101,11 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             const shot = await getScreenshotBase64();
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
+                            // 要求：直接把這一回合 AI 實際看到的截圖顯示在聊天室裡，讓使用者能親眼核對
+                            // 手機畫面到底有沒有真的反應，而不是只能相信「沒有錯誤」這種間接訊號。
+                            addMessage(`📸 第 ${round}/${maxRounds} 回合截圖（AI 依此畫面判斷下一步）`, 'system', null, [],
+                                { category: 'image', data: 'data:image/jpeg;base64,' + shot.b64, name: `ap_round${round}.jpg` });
+
                             const rawAction = await decideNextAction(goal, history, shot.b64);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
@@ -7182,14 +7195,22 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             clearTimeout(roundTimer);
 
                             const elapsed = Date.now() - roundStart;
-                            if (elapsed >= roundTimeoutMs) throw new Error('__ROUND_TIMEOUT__');
+                            if (elapsed >= roundTimeoutMs) {
+                                // 動作本身已經成功送出、確實影響了裝置畫面，只是「這一回合花的總時間」
+                                // （截圖+等 AI 判斷+執行）超過設定值，通常是網路延遲造成，不是操作本身失敗。
+                                // 這種情況不該把已經做完的事直接丟棄、中止整個任務——改成提醒一下、
+                                // 繼續下一回合，回合數上限仍然有效，不會真的失控跑到天長地久。
+                                addMessage(`⏱️ 提醒：第 ${round} 回合雖然執行成功，但這回合總耗時超過 ${settings.roundTimeoutSec} 秒（通常是等待 AI 判斷時網路較慢），繼續下一回合。`, 'system');
+                            }
 
                             // 動作間短暫等待畫面反應
                             await new Promise(r => setTimeout(r, 800));
                         } catch (roundErr) {
                             clearTimeout(roundTimer);
                             if (roundErr.message === '__ROUND_TIMEOUT__' || (Date.now() - roundStart) >= roundTimeoutMs) {
-                                addMessage(`⏱️ 第 ${round} 回合超過 ${settings.roundTimeoutSec} 秒逾時限制，已中止自主任務。`, 'system');
+                                // 這裡指的是「動作都還沒執行成功」就逾時（例如截圖或 AI 判斷卡住太久），
+                                // 這種才是真的需要中止，因為我們甚至不知道這回合原本想做什麼、有沒有送出。
+                                addMessage(`⏱️ 第 ${round} 回合在動作執行成功前就超過 ${settings.roundTimeoutSec} 秒逾時限制，已中止自主任務。`, 'system');
                                 setStatus('⏱️ 因逾時中止', false);
                                 running = false;
                                 return;
