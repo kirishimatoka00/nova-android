@@ -1895,8 +1895,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.5.1';
+        const NOVA_APP_VERSION = '2.5.2';
         const NOVA_CHANGELOG = [
+            { v: '2.5.2', date: '2026-07-21', notes: [
+                '找到重大 bug：v2.5.0 之後 history 裡存的是換算過的裝置真實座標（action），不是 AI 原始回答的截圖像素座標（rawAction），但下一回合的 prompt 又告訴 AI「歷史紀錄的座標是截圖像素空間」——AI 把已經放大過的真實座標誤認為截圖座標沿用，我們的程式再對它套一次縮放，一路雪球式暴衝（1187→2374→5044→8604→11868），導致點擊全部超出螢幕範圍，畫面完全沒反應',
+                '修正：history 一律存 rawAction（AI 原始回答，截圖像素空間），不存內部換算過的 action，確保座標系統在整個對話歷史中保持一致，不會被重複縮放'
+            ]},
             { v: '2.5.1', date: '2026-07-20', notes: [
                 '新增 getCurrentForegroundApp()（對應 uiautomator2 的 app_current()）：透過 dumpsys window windows 查詢系統回報的真正前景 App 套件名稱，寫進每回合的判斷提示裡，減少 AI 只靠截圖誤判、反覆重新開啟同一個 App 的狀況',
                 '新增自動關閉常見彈窗（對應教學文章的 auto_handle_popups）：每回合解析出的元件清單如果比對到「關閉/取消/跳過/我知道了」等通用字樣的可點擊按鈕，直接關掉、不消耗一次 AI 判斷，省時間也避免任務被廣告/系統彈窗卡住；清單刻意保持精簡以降低誤點到任務本身按鈕的風險'
@@ -7310,7 +7314,11 @@ ${elementsText}`;
                             }
 
                             if (softFailMsg) {
-                                history.push({ round, action, result: 'FAILED: ' + softFailMsg });
+                                // 重要修正：history 存的必須是 AI 原始回答的座標（rawAction，截圖像素空間），
+                                // 不能存我們內部換算過的 action（裝置真實座標）。之前存錯，導致下一回合
+                                // AI 把「已經是真實座標」的歷史數字誤認為「截圖像素座標」，我們的程式又
+                                // 對它再套一次 ×2.967 的縮放，一路雪球式暴衝到 11868 這種完全超出螢幕的離譜座標。
+                                history.push({ round, action: rawAction, result: 'FAILED: ' + softFailMsg });
                                 consecutiveSoftFails++;
                                 // 連續 2 次以上動作沒生效，極可能是 uiautomator session 又壞掉了，
                                 // 不要傻傻再試第 3、4 次相同座標——直接重啟 session 再繼續。
@@ -7328,7 +7336,7 @@ ${elementsText}`;
                                     ? '(無回傳內容，但呼叫未回報錯誤)'
                                     : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
                                 addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
-                                history.push({ round, action, result: resultText });
+                                history.push({ round, action: rawAction, result: resultText });
                             }
                             clearTimeout(roundTimer);
 
