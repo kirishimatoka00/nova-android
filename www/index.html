@@ -1895,8 +1895,18 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.5.4';
+        const NOVA_APP_VERSION = '2.6.0';
         const NOVA_CHANGELOG = [
+            { v: '2.6.0', date: '2026-07-22', notes: [
+                '使用者實測回報：即使確認 AdbKeyboard 已切換成功（mCurMethodId 顯示正確），文字廣播還是沒有真的打進搜尋框，這個問題已經反覆修過好幾輪但每次都是治標，改採根本不同的路線',
+                '新增 typeViaOnscreenKeyboard()：純英數字（ASCII）文字改成直接用 UI 階層抓螢幕上系統原生鍵盤（例如三星輸入法）每個按鍵的真實位置，像真人一樣逐字點擊輸入，完全不經過 IME 切換或廣播——只要鍵盤畫面上看得到那個按鍵，點擊必定有效，徹底跳過 AdbKeyboard 這個一直不穩定的環節',
+                '中文/非 ASCII 文字維持使用 AdbKeyboard 廣播（螢幕鍵盤逐字點擊無法處理拼音組字/候選字選字，這種情況沒有更好的替代方案），text 動作會依內容自動判斷該用哪種方式，AI 端不需要改變任何用法'
+            ]},
+            { v: '2.5.5', date: '2026-07-22', notes: [
+                '查證官方 uiautomator2 python client 原始碼行為（wait_fastinput_ime）：光確認「預設輸入法」設定值已改變還不夠，那只代表系統設定變了，不保證目前有焦點的輸入框已經把輸入連線重新綁定到新 IME（常見競態條件）。官方作法是輪詢最多 5 秒直到真正切換完成',
+                '改用 dumpsys input_method 的 mCurMethodId（代表實際綁定中的輸入法）取代單次的 settings get 檢查，最多輪詢 5 次、每次間隔 500ms，中途仍未成功會重試 ime set，比原本單次 800ms 等待更接近官方可靠度',
+                '確認 IME 名稱（AdbKeyboard）與廣播協定（ADB_INPUT_B64）本身正確，問題出在切換完成的判斷時機太早，不是名稱或協定寫錯'
+            ]},
             { v: '2.5.4', date: '2026-07-22', notes: [
                 '收到外部 AI（Kimi）的程式碼審查，逐條對照實際程式碼後確認：tap_element 崩潰、action 物件原地修改污染 history、consecutiveSoftFails 重置範圍過窄、screenOn 誤判喚醒這 4 點都與目前程式碼不符（tap_element 在呼叫 performAction 前就已轉換成 tap；history 存的是 rawAction；重置邏輯涵蓋所有動作類型；screenOn 判斷邏輯在 v2.4.0 就已隨 RPC click 一起移除），研判該次審查依據的是舊版或非本檔案的程式碼',
                 '唯一成立的一點：AUTO_DISMISS_TEXTS 清單裡的「我知道了」「知道了」「不用了」可能出現在隱私權政策/使用條款同意畫面上，自動點掉等於幫使用者同意條款，已從清單移除，只保留明確不涉及同意行為的關閉/跳過字樣'
@@ -7004,6 +7014,72 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 return null;
             }
 
+            async function tapElementCenter(el) {
+                const cx = Math.round((el.x1 + el.x2) / 2), cy = Math.round((el.y1 + el.y2) / 2);
+                return shellExec(`input tap ${cx} ${cy}`);
+            }
+
+            function findKeyElement(els, char) {
+                const target = char.toLowerCase();
+                for (const e of els) {
+                    if (!e.clickable) continue;
+                    const t = (e.text || '').trim().toLowerCase();
+                    const d = (e.desc || '').trim().toLowerCase();
+                    if (t === target || d === target) return e;
+                }
+                return null;
+            }
+
+            function findSpecialKey(els, patterns) {
+                for (const e of els) {
+                    if (!e.clickable) continue;
+                    const t = (e.text || '').toLowerCase(), d = (e.desc || '').toLowerCase(), id = (e.rid || '').toLowerCase();
+                    if (patterns.some(p => t.includes(p) || d.includes(p) || id.includes(p))) return e;
+                }
+                return null;
+            }
+
+            // 使用者直接觀察到：AdbKeyboard 廣播即使確認已切換成功，文字還是沒有真的打進搜尋框
+            // （這種靜默失效我們已經修過好幾輪，但每次都是治標）。既然螢幕上就顯示著系統原生鍵盤，
+            // 乾脆換一個徹底不同的思路：直接用 UI 階層抓每個按鍵的真實位置，像真人一樣一個字一個字
+            // 點下去——完全不依賴 IME 切換或廣播，只要鍵盤畫面上看得到那個按鍵，點擊就一定有效。
+            // 這個方法只適用英數字（ASCII），因為中文輸入需要拼音組字+候選字選字，
+            // 逐鍵點擊無法處理，中文還是得靠 AdbKeyboard 的 base64 廣播直接灌文字進去。
+            async function typeViaOnscreenKeyboard(text) {
+                let typed = 0;
+                const failedChars = [];
+                for (const ch of text) {
+                    const xml = await getHierarchyDump();
+                    const els = parseHierarchyElements(xml, 200); // 鍵盤按鍵數量多，放寬清單上限
+                    if (ch === ' ') {
+                        const key = findSpecialKey(els, ['space']);
+                        if (key) { await tapElementCenter(key); typed++; } else failedChars.push('(space)');
+                        await new Promise(r => setTimeout(r, 200));
+                        continue;
+                    }
+                    if (/[A-Z]/.test(ch)) {
+                        const shiftKey = findSpecialKey(els, ['shift']);
+                        if (shiftKey) {
+                            await tapElementCenter(shiftKey);
+                            await new Promise(r => setTimeout(r, 200));
+                            const xml2 = await getHierarchyDump();
+                            const els2 = parseHierarchyElements(xml2, 200);
+                            const key = findKeyElement(els2, ch);
+                            if (key) { await tapElementCenter(key); typed++; } else failedChars.push(ch);
+                            await new Promise(r => setTimeout(r, 150));
+                            continue;
+                        }
+                    }
+                    const key = findKeyElement(els, ch);
+                    if (key) { await tapElementCenter(key); typed++; } else failedChars.push(ch);
+                    await new Promise(r => setTimeout(r, 150));
+                }
+                if (failedChars.length) {
+                    return `透過螢幕鍵盤逐字點擊輸入，成功 ${typed}/${text.length} 個字元，找不到對應按鍵的字元：${failedChars.join('')}（可能鍵盤畫面上沒有顯示該字元，例如需要切換數字/符號鍵盤）`;
+                }
+                return `透過螢幕鍵盤逐字點擊輸入完成，共 ${typed} 個字元，未透過 AdbKeyboard`;
+            }
+
             // 文字輸入不能用 /jsonrpc/0 的 setText（那是針對「特定 UiObject 選擇器」的方法，
             // 需要 selector 才能定位元件，單純傳一個字串會得到 -32602 method parameters invalid）。
             // 正確做法：uiautomator2 init 時已自動安裝並可切換到 AdbKeyboard 這個 IME，
@@ -7018,22 +7094,41 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 await shellExec('ime enable com.github.uiautomator/.AdbKeyboard');
                 await new Promise(r => setTimeout(r, 300));
                 await shellExec('ime set com.github.uiautomator/.AdbKeyboard');
-                await new Promise(r => setTimeout(r, 800));
 
+                // 查證官方 uiautomator2 python client 的作法（wait_fastinput_ime）：光確認「預設輸入法」
+                // 已經改了還不夠——那只代表系統設定值變了，不代表目前有焦點的那個輸入框「真的」已經
+                // 把輸入連線重新綁定到新的 IME 上（這是常見的競態條件：畫面還沒重新整理輸入法連線）。
+                // 官方作法是輪詢最多 5 秒直到真正切換完成。改用 dumpsys input_method 的
+                // mCurMethodId（代表目前實際綁定中的輸入法，比 secure setting 的「預設值」更準確），
+                // 最多輪詢 5 次、每次間隔 500ms，比原本單次檢查 800ms 更接近官方的可靠度。
                 let imeCheck = '';
-                try {
-                    const cur = await shellExec('settings get secure default_input_method');
-                    imeCheck = String(cur).trim();
-                } catch (_) { /* 查不到就算了 */ }
+                let boundOk = false;
+                for (let i = 0; i < 5; i++) {
+                    await new Promise(r => setTimeout(r, 500));
+                    try {
+                        const dump = await shellExec('dumpsys input_method');
+                        const m = String(dump).match(/mCurMethodId[=:]\s*([^\s\n]+)/);
+                        imeCheck = m ? m[1] : '';
+                    } catch (_) {
+                        try {
+                            const cur = await shellExec('settings get secure default_input_method');
+                            imeCheck = String(cur).trim();
+                        } catch (_2) { /* 都查不到就算了 */ }
+                    }
+                    if (imeCheck.includes('AdbKeyboard')) { boundOk = true; break; }
+                    // 還沒切換成功，重試一次 ime set（跟官方 wait_fastinput_ime 的重試邏輯一致）
+                    try { await shellExec('ime set com.github.uiautomator/.AdbKeyboard'); } catch (_) { }
+                }
 
-                // 如果 enable + set 還是沒換成功，備用手段：直接寫入 secure setting
+                // 如果輪詢 5 次都還是沒換成功，備用手段：直接寫入 secure setting
                 // （這會繞過 ime set 內部「必須先 enable」的檢查邏輯，某些機型上更可靠）。
-                if (!imeCheck.includes('AdbKeyboard')) {
+                if (!boundOk) {
                     try {
                         await shellExec('settings put secure default_input_method com.github.uiautomator/.AdbKeyboard');
-                        await new Promise(r => setTimeout(r, 500));
+                        await new Promise(r => setTimeout(r, 800));
                         const cur2 = await shellExec('settings get secure default_input_method');
                         imeCheck = String(cur2).trim();
+                        boundOk = imeCheck.includes('AdbKeyboard');
                     } catch (_) { /* 備用手段也失敗就算了，下面照實回報 */ }
                 }
 
@@ -7045,8 +7140,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 const result = await shellExec(`am broadcast -a ADB_INPUT_B64 --es msg ${b64}`);
                 await new Promise(r => setTimeout(r, 500)); // 給 AdbKeyboard 一點時間真的把文字塞進輸入框
 
-                const imeOk = imeCheck.includes('AdbKeyboard');
-                return `${result}｜目前輸入法=${imeCheck || '未知'}${imeOk ? '' : '　⚠️ 可能還沒切換成 AdbKeyboard，文字可能沒有真的輸入進去'}`;
+                return `${result}｜目前輸入法=${imeCheck || '未知'}${boundOk ? '' : '　⚠️ 輪詢 5 次後仍未確認切換成 AdbKeyboard，文字可能沒有真的輸入進去'}`;
             }
 
             // 執行單一動作：AI 回傳的 action 物件會呼叫對應的 uiautomator2 操作
@@ -7056,7 +7150,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>`;
+                    case 'text': return /^[\x00-\x7E]*$/.test(action.text || '')
+                        ? `直接點擊螢幕鍵盤逐字輸入「${action.text || ''}」（不透過 AdbKeyboard）`
+                        : `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>（中文/非 ASCII 文字需要走 AdbKeyboard 廣播）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7084,8 +7180,15 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         return shellExec(`input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`);
                     case 'swipe':
                         return shellExec(`input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`);
-                    case 'text':
-                        return setImeText(action.text || '');
+                    case 'text': {
+                        const t = action.text || '';
+                        // 純英數字（ASCII）直接點螢幕鍵盤，完全繞過 AdbKeyboard 的切換/廣播流程；
+                        // 含中文等非 ASCII 字元才需要靠 AdbKeyboard 的 base64 廣播（螢幕鍵盤逐字點擊
+                        // 無法處理中文的拼音組字跟候選字選字）。
+                        return /^[\x00-\x7E]*$/.test(t) && t.length > 0
+                            ? typeViaOnscreenKeyboard(t)
+                            : setImeText(t);
+                    }
                     case 'key': {
                         // 例如 'back'、'home'、'enter'、'menu'，轉成對應的 Android keyevent 代碼
                         const keyMap = { back: 4, home: 3, enter: 66, menu: 82, power: 26, tab: 61, del: 67, search: 84 };
