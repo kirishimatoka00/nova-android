@@ -1895,8 +1895,17 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.5.2';
+        const NOVA_APP_VERSION = '2.5.4';
         const NOVA_CHANGELOG = [
+            { v: '2.5.4', date: '2026-07-22', notes: [
+                '收到外部 AI（Kimi）的程式碼審查，逐條對照實際程式碼後確認：tap_element 崩潰、action 物件原地修改污染 history、consecutiveSoftFails 重置範圍過窄、screenOn 誤判喚醒這 4 點都與目前程式碼不符（tap_element 在呼叫 performAction 前就已轉換成 tap；history 存的是 rawAction；重置邏輯涵蓋所有動作類型；screenOn 判斷邏輯在 v2.4.0 就已隨 RPC click 一起移除），研判該次審查依據的是舊版或非本檔案的程式碼',
+                '唯一成立的一點：AUTO_DISMISS_TEXTS 清單裡的「我知道了」「知道了」「不用了」可能出現在隱私權政策/使用條款同意畫面上，自動點掉等於幫使用者同意條款，已從清單移除，只保留明確不涉及同意行為的關閉/跳過字樣'
+            ]},
+            { v: '2.5.3', date: '2026-07-21', notes: [
+                '暴衝 bug（history 存錯座標系統）修好後，發現座標還是持續錯誤但不再成長：找到原因是 prompt 從沒告訴 AI 這張截圖實際的像素寬高數字，AI 只能憑「看圖」隱約估計，容易被同一個 prompt 裡另外出現的「元件列表真實裝置座標」帶偏，答出兩種座標系統之間的中間值',
+                '修正：prompt 現在明確告知這張截圖的實際寬高（例如「寬364px、高768px」），並要求 tap/long_press/swipe 的座標必須落在這個範圍內',
+                '新增座標範圍驗證：AI 回傳的座標若超出當次截圖的實際尺寸，直接擋下、不執行、記錄為該回合失敗並讓 AI 下一回合修正，不會再把不合理的座標硬套縮放公式產生一個點在螢幕外的觸控'
+            ]},
             { v: '2.5.2', date: '2026-07-21', notes: [
                 '找到重大 bug：v2.5.0 之後 history 裡存的是換算過的裝置真實座標（action），不是 AI 原始回答的截圖像素座標（rawAction），但下一回合的 prompt 又告訴 AI「歷史紀錄的座標是截圖像素空間」——AI 把已經放大過的真實座標誤認為截圖座標沿用，我們的程式再對它套一次縮放，一路雪球式暴衝（1187→2374→5044→8604→11868），導致點擊全部超出螢幕範圍，畫面完全沒反應',
                 '修正：history 一律存 rawAction（AI 原始回答，截圖像素空間），不存內部換算過的 action，確保座標系統在整個對話歷史中保持一致，不會被重複縮放'
@@ -6982,7 +6991,10 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 每回合抓到元件清單後，如果比對到這些字樣，直接關掉，不用消耗一次 AI 判斷（省時間、省額度），
             // 也能避免這類彈窗一直卡住任務進度。故意保持列表精簡、只挑非常明確的通用字樣，
             // 降低誤點到任務本身真正需要的按鈕的風險。
-            const AUTO_DISMISS_TEXTS = ['關閉', '取消', '跳過', '我知道了', '知道了', '不用了', '以後再說', '稍後再說', '稍後', 'Skip', 'Close', 'Cancel', 'Not now', 'No thanks'];
+            // 只留下明確「純粹關閉/跳過、不涉及任何同意行為」的字樣。之前的清單裡有「我知道了」
+            // 「知道了」「不用了」，這幾個詞也常出現在隱私權政策/使用條款同意畫面的按鈕上，
+            // 自動點掉等於幫使用者「同意」了條款，這不該是自動化任務可以擅自做的決定，拿掉。
+            const AUTO_DISMISS_TEXTS = ['關閉', '取消', '跳過', '稍後再說', '稍後', 'Skip', 'Close', 'Cancel'];
             function findAutoDismissElement(els) {
                 for (const e of els) {
                     if (!e.clickable) continue;
@@ -7097,7 +7109,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             // 呼叫 Gemini（視覺模型），依目前畫面截圖 + 任務目標 + 歷史，決定下一步動作
-            async function decideNextAction(goal, history, screenshotB64, elementsText) {
+            async function decideNextAction(goal, history, screenshotB64, elementsText, imgW, imgH) {
                 const key = appState.keys.gemini;
                 if (!key) throw new Error('尚未設定 Gemini API Key，無法進行自主任務畫面判斷');
                 const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
@@ -7113,7 +7125,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
 ⚠️ 極重要的優先順序：如果你要點的東西（按鈕、輸入框、連結、選單項目...）能在下面的「畫面元件列表」裡找到對應的 text/desc/id，一定要優先用 type:"tap_element" 並填正確的 index——這是最精準的方式，座標由系統直接算好，不會有截圖估算誤差。只有在元件列表裡真的找不到對應項目時（例如要點一張純圖片、地圖上某個位置、畫面上沒有文字標籤的圖示區域），才退而求其次用 type:"tap" 並自己從截圖估計座標。
-座標請直接以這張截圖上你看到的實際像素位置回傳（截圖已縮小處理過，但已內建自動換算，你只需要照著這張圖回答座標即可）。這條規則只適用於 type:"tap"/"long_press"/"swipe"，不適用於 tap_element（那個直接用元件列表的 index）。
+⚠️ 座標範圍極重要：這張截圖的實際像素尺寸是寬 ${imgW}px、高 ${imgH}px。type:"tap"/"long_press" 的 x 必須在 0～${imgW} 之間、y 必須在 0～${imgH} 之間；type:"swipe" 的 x1/x2 同樣要在 0～${imgW}、y1/y2 在 0～${imgH} 之間。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實座標，範圍會大很多，不要混淆兩種座標系統）。回傳超出這個範圍的座標是明確錯誤，程式會直接拒絕執行。
 ⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
 重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新點擊該輸入框、再重新輸入一次文字，不要直接按 Enter。
@@ -7235,48 +7247,68 @@ ${elementsText}`;
                                 elementsText = `目前系統回報的前景 App 套件名稱：${fgApp.package}（如果這跟任務目標的 App 不一致，代表畫面可能已經跳出目標 App，優先考慮用 open_app 或 key back 處理，不要單靠截圖判斷）\n\n` + elementsText;
                             }
 
-                            const rawAction = await decideNextAction(goal, history, shot.b64, elementsText);
+                            const rawAction = await decideNextAction(goal, history, shot.b64, elementsText, shot.width, shot.height);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
                             let action = rawAction;
                             let scaleNote = '';
-                            if (rawAction.type === 'tap_element') {
-                                // 元件清單的座標已經是裝置真實觸控座標，直接算中心點即可，完全不需要縮放換算。
-                                const el = currentElements[rawAction.index];
-                                if (!el) {
-                                    throw new Error(`tap_element 指定的 index ${rawAction.index} 找不到對應的畫面元件（這一回合共有 ${currentElements.length} 個元件）`);
-                                }
-                                action = {
-                                    type: 'tap',
-                                    x: Math.round((el.x1 + el.x2) / 2),
-                                    y: Math.round((el.y1 + el.y2) / 2),
-                                    say: rawAction.say
-                                };
-                                scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標精準點擊，未經任何縮放換算）`;
-                            } else if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
-                                // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
-                                // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
-                                // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
-                                try {
-                                    const disp = await getDeviceDisplaySize();
-                                    const scaleX = disp.width / shot.width;
-                                    const scaleY = disp.height / shot.height;
-                                    action = { ...rawAction };
-                                    if (rawAction.type === 'swipe') {
-                                        action.x1 = Math.round(rawAction.x1 * scaleX);
-                                        action.y1 = Math.round(rawAction.y1 * scaleY);
-                                        action.x2 = Math.round(rawAction.x2 * scaleX);
-                                        action.y2 = Math.round(rawAction.y2 * scaleY);
-                                    } else {
-                                        action.x = Math.round(rawAction.x * scaleX);
-                                        action.y = Math.round(rawAction.y * scaleY);
+                            try {
+                                if (rawAction.type === 'tap_element') {
+                                    // 元件清單的座標已經是裝置真實觸控座標，直接算中心點即可，完全不需要縮放換算。
+                                    const el = currentElements[rawAction.index];
+                                    if (!el) {
+                                        throw new Error(`tap_element 指定的 index ${rawAction.index} 找不到對應的畫面元件（這一回合共有 ${currentElements.length} 個元件）`);
                                     }
-                                    if (Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02) {
-                                        scaleNote = `（截圖 ${shot.width}x${shot.height} ≠ 裝置真實解析度 ${disp.width}x${disp.height}，座標已自動換算 ×${scaleX.toFixed(3)}/${scaleY.toFixed(3)}）`;
+                                    action = {
+                                        type: 'tap',
+                                        x: Math.round((el.x1 + el.x2) / 2),
+                                        y: Math.round((el.y1 + el.y2) / 2),
+                                        say: rawAction.say
+                                    };
+                                    scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標精準點擊，未經任何縮放換算）`;
+                                } else if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
+                                    // 安全檢查：AI 偶爾會算出超出截圖實際尺寸的離譜座標（例如把裝置真實座標
+                                    // 跟截圖像素座標搞混），與其硬套縮放公式產生一個「數學上算得出來但實際上
+                                    // 點在螢幕外」的座標，不如直接擋下來、當作這回合失敗，讓 AI 下一回合看到
+                                    // 明確的錯誤訊息重新判斷，而不是浪費一次觸控在空氣中。
+                                    const rawXs = rawAction.type === 'swipe' ? [rawAction.x1, rawAction.x2] : [rawAction.x];
+                                    const rawYs = rawAction.type === 'swipe' ? [rawAction.y1, rawAction.y2] : [rawAction.y];
+                                    const outOfBounds = rawXs.some(x => x < 0 || x > shot.width) || rawYs.some(y => y < 0 || y > shot.height);
+                                    if (outOfBounds) {
+                                        throw new NovaSoftFail(`AI 回傳的座標 (${rawXs.join(',')}, ${rawYs.join(',')}) 超出這次截圖的實際尺寸 ${shot.width}x${shot.height}，可能把裝置真實座標跟截圖像素座標搞混了，已略過此動作`);
                                     }
-                                } catch (dimErr) {
-                                    scaleNote = `（⚠️ 無法取得裝置真實解析度做座標換算：${dimErr.message}，直接使用截圖像素座標）`;
+                                    // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
+                                    // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
+                                    // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
+                                    try {
+                                        const disp = await getDeviceDisplaySize();
+                                        const scaleX = disp.width / shot.width;
+                                        const scaleY = disp.height / shot.height;
+                                        action = { ...rawAction };
+                                        if (rawAction.type === 'swipe') {
+                                            action.x1 = Math.round(rawAction.x1 * scaleX);
+                                            action.y1 = Math.round(rawAction.y1 * scaleY);
+                                            action.x2 = Math.round(rawAction.x2 * scaleX);
+                                            action.y2 = Math.round(rawAction.y2 * scaleY);
+                                        } else {
+                                            action.x = Math.round(rawAction.x * scaleX);
+                                            action.y = Math.round(rawAction.y * scaleY);
+                                        }
+                                        if (Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02) {
+                                            scaleNote = `（截圖 ${shot.width}x${shot.height} ≠ 裝置真實解析度 ${disp.width}x${disp.height}，座標已自動換算 ×${scaleX.toFixed(3)}/${scaleY.toFixed(3)}）`;
+                                        }
+                                    } catch (dimErr) {
+                                        scaleNote = `（⚠️ 無法取得裝置真實解析度做座標換算：${dimErr.message}，直接使用截圖像素座標）`;
+                                    }
                                 }
+                            } catch (resolveErr) {
+                                // 座標驗證失敗（超出範圍）或 tap_element 找不到元件：都當成這回合軟失敗，
+                                // 記錄下來讓 AI 下一回合知道要修正，但不中止整個任務。
+                                addMessage(`⚠️ 第 ${round} 回合動作未執行：${resolveErr.message}`, 'system');
+                                history.push({ round, action: rawAction, result: 'FAILED: ' + resolveErr.message });
+                                clearTimeout(roundTimer);
+                                await new Promise(r => setTimeout(r, 500));
+                                continue;
                             }
 
                             // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
