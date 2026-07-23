@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.0';
+        const NOVA_APP_VERSION = '2.6.1';
         const NOVA_CHANGELOG = [
+            { v: '2.6.1', date: '2026-07-22', notes: [
+                '找到最早（v2.3.3）放棄 /jsonrpc/0 setText 方法的真正原因：官方 python client 實際呼叫的是 jsonrpc.setText(selector, text)，需要兩個參數（選擇器 + 文字），我們當初只傳了 rpc(\'setText\', [text]) 少了選擇器，得到 -32602 就誤判「這條路不通」直接放棄，改走 AdbKeyboard，其實只是少了一個參數',
+                '改為優先呼叫 rpc(\'setText\', [{focused:true}, text])：對「目前有焦點」的欄位直接透過 Accessibility 的 ACTION_SET_TEXT 寫入文字，完全不需要任何輸入法、不需要螢幕上看得到鍵盤，中英文都適用，是這幾輪嘗試過的方法裡最直接可靠的一種',
+                '保留原本兩種模擬方式（螢幕鍵盤逐字點擊、AdbKeyboard 廣播）作為 setText RPC 失敗時的備援，不會因為新方法在某些欄位上不適用就完全沒有退路'
+            ]},
             { v: '2.6.0', date: '2026-07-22', notes: [
                 '使用者實測回報：即使確認 AdbKeyboard 已切換成功（mCurMethodId 顯示正確），文字廣播還是沒有真的打進搜尋框，這個問題已經反覆修過好幾輪但每次都是治標，改採根本不同的路線',
                 '新增 typeViaOnscreenKeyboard()：純英數字（ASCII）文字改成直接用 UI 階層抓螢幕上系統原生鍵盤（例如三星輸入法）每個按鍵的真實位置，像真人一樣逐字點擊輸入，完全不經過 IME 切換或廣播——只要鍵盤畫面上看得到那個按鍵，點擊必定有效，徹底跳過 AdbKeyboard 這個一直不穩定的環節',
@@ -7150,9 +7155,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return /^[\x00-\x7E]*$/.test(action.text || '')
-                        ? `直接點擊螢幕鍵盤逐字輸入「${action.text || ''}」（不透過 AdbKeyboard）`
-                        : `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>（中文/非 ASCII 文字需要走 AdbKeyboard 廣播）`;
+                    case 'text': return `rpc: setText({focused:true}, "${action.text || ''}")　（若失敗才退回：${/^[\x00-\x7E]*$/.test(action.text || '') ? '直接點螢幕鍵盤逐字輸入' : 'AdbKeyboard base64 廣播'}）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7182,12 +7185,25 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         return shellExec(`input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`);
                     case 'text': {
                         const t = action.text || '';
-                        // 純英數字（ASCII）直接點螢幕鍵盤，完全繞過 AdbKeyboard 的切換/廣播流程；
-                        // 含中文等非 ASCII 字元才需要靠 AdbKeyboard 的 base64 廣播（螢幕鍵盤逐字點擊
-                        // 無法處理中文的拼音組字跟候選字選字）。
-                        return /^[\x00-\x7E]*$/.test(t) && t.length > 0
-                            ? typeViaOnscreenKeyboard(t)
-                            : setImeText(t);
+                        if (!t) return '(空字串，略過)';
+                        // 查到真正正確的官方用法：uiautomator2 python client 呼叫的是
+                        // jsonrpc.setText(selector, text) —— 兩個參數，一個選擇器 + 文字。
+                        // 我們最早（v2.3.3）試過 rpc('setText', [text])，只傳了文字沒有選擇器，
+                        // 那次得到 -32602 就直接判定「這條路不通」放棄了，其實只是少了選擇器參數。
+                        // 這個方法透過 Accessibility 的 ACTION_SET_TEXT 直接把文字寫進「目前有焦點」
+                        // 的欄位，不需要任何輸入法、不需要螢幕上看得到鍵盤，中英文都適用，理論上
+                        // 是最可靠的方式，改成優先嘗試這個，失敗才退回原本兩種手動模擬的方式。
+                        try {
+                            const res = await rpc('setText', [{ focused: true }, t]);
+                            return `已透過 Accessibility ACTION_SET_TEXT 直接設定焦點欄位文字（不經過任何輸入法）：${JSON.stringify(res)}`;
+                        } catch (rpcErr) {
+                            // 官方 RPC 方式這台裝置上失敗，退回原本兩種模擬方式：
+                            // 純英數字（ASCII）直接點螢幕鍵盤；含中文等非 ASCII 字元才需要 AdbKeyboard 廣播。
+                            const fallbackResult = /^[\x00-\x7E]*$/.test(t)
+                                ? await typeViaOnscreenKeyboard(t)
+                                : await setImeText(t);
+                            return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用備用方式：${fallbackResult}`;
+                        }
                     }
                     case 'key': {
                         // 例如 'back'、'home'、'enter'、'menu'，轉成對應的 Android keyevent 代碼
