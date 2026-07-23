@@ -1895,8 +1895,15 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.1';
+        const NOVA_APP_VERSION = '2.6.2';
         const NOVA_CHANGELOG = [
+            { v: '2.6.2', date: '2026-07-22', notes: [
+                '實測回收：setText RPC 得到 -32001 UiObjectNotFoundException + data:"UiSelector[]"，代表 {focused:true} 沒有被正確解析成選擇器（官方 client 的 Selector 物件序列化格式含 mask 等欄位，遠比單純的 flat dict複雜，沒有精確規格書就用猜的風險太高，放棄這條路，不再猜格式',
+                '螢幕鍵盤逐字點擊 0/6 全部失敗，證實鍵盤視窗大概率根本不在 dumpWindowHierarchy 的回傳範圍內（多視窗擷取需要額外的 accessibility 設定，這個環境目前沒有）',
+                '改用更簡單直接的路：input tap / input keyevent 已經證實在這台裝置上完全可靠，input text 是同一個 input 指令家族的子命令，一樣透過 shell 層級把文字直接灌進焦點欄位，不需要切換輸入法、不需要 accessibility selector，改為 ASCII 文字的主要方式，失敗才退回螢幕鍵盤點擊',
+                '文字裡的空白改用 input text 指令本身支援的 %s 寫法，避免被 atx-agent /shell 的空白切割 argv 機制打斷',
+                '中文/非 ASCII 文字維持走 AdbKeyboard 廣播（目前沒有更可靠的替代方案）'
+            ]},
             { v: '2.6.1', date: '2026-07-22', notes: [
                 '找到最早（v2.3.3）放棄 /jsonrpc/0 setText 方法的真正原因：官方 python client 實際呼叫的是 jsonrpc.setText(selector, text)，需要兩個參數（選擇器 + 文字），我們當初只傳了 rpc(\'setText\', [text]) 少了選擇器，得到 -32602 就誤判「這條路不通」直接放棄，改走 AdbKeyboard，其實只是少了一個參數',
                 '改為優先呼叫 rpc(\'setText\', [{focused:true}, text])：對「目前有焦點」的欄位直接透過 Accessibility 的 ACTION_SET_TEXT 寫入文字，完全不需要任何輸入法、不需要螢幕上看得到鍵盤，中英文都適用，是這幾輪嘗試過的方法裡最直接可靠的一種',
@@ -7155,7 +7162,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return `rpc: setText({focused:true}, "${action.text || ''}")　（若失敗才退回：${/^[\x00-\x7E]*$/.test(action.text || '') ? '直接點螢幕鍵盤逐字輸入' : 'AdbKeyboard base64 廣播'}）`;
+                    case 'text': return /^[\x00-\x7E]*$/.test(action.text || '')
+                        ? `shell: input text ${(action.text || '').replace(/ /g, '%s')}`
+                        : `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>（中文/非 ASCII 文字需要走 AdbKeyboard 廣播）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7186,24 +7195,27 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'text': {
                         const t = action.text || '';
                         if (!t) return '(空字串，略過)';
-                        // 查到真正正確的官方用法：uiautomator2 python client 呼叫的是
-                        // jsonrpc.setText(selector, text) —— 兩個參數，一個選擇器 + 文字。
-                        // 我們最早（v2.3.3）試過 rpc('setText', [text])，只傳了文字沒有選擇器，
-                        // 那次得到 -32602 就直接判定「這條路不通」放棄了，其實只是少了選擇器參數。
-                        // 這個方法透過 Accessibility 的 ACTION_SET_TEXT 直接把文字寫進「目前有焦點」
-                        // 的欄位，不需要任何輸入法、不需要螢幕上看得到鍵盤，中英文都適用，理論上
-                        // 是最可靠的方式，改成優先嘗試這個，失敗才退回原本兩種手動模擬的方式。
-                        try {
-                            const res = await rpc('setText', [{ focused: true }, t]);
-                            return `已透過 Accessibility ACTION_SET_TEXT 直接設定焦點欄位文字（不經過任何輸入法）：${JSON.stringify(res)}`;
-                        } catch (rpcErr) {
-                            // 官方 RPC 方式這台裝置上失敗，退回原本兩種模擬方式：
-                            // 純英數字（ASCII）直接點螢幕鍵盤；含中文等非 ASCII 字元才需要 AdbKeyboard 廣播。
-                            const fallbackResult = /^[\x00-\x7E]*$/.test(t)
-                                ? await typeViaOnscreenKeyboard(t)
-                                : await setImeText(t);
-                            return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用備用方式：${fallbackResult}`;
+                        // 實測結果回收：setText RPC 因為選擇器序列化格式不明（官方 client 用的
+                        // Selector 物件內部還有 mask 等欄位，不是單純的 {focused:true}），送出去變成
+                        // 空的 UiSelector[]，這條路先放棄，不要再猜格式浪費時間。
+                        // 改用更簡單直接的路：input tap/input keyevent 已經證實在這台裝置上完全可靠，
+                        // 而 input text 是同一個 input 指令家族裡的子命令，一樣透過 shell 層級直接把
+                        // 文字灌進目前有焦點的欄位，不需要切換輸入法、不需要 accessibility selector。
+                        if (/^[\x00-\x7E]*$/.test(t)) {
+                            // atx-agent 的 /shell 是用空白切 argv（不是真的跑 shell），所以文字裡的空白
+                            // 要換成 input text 指令本身支援的 %s 寫法，避免被硬生生切成好幾個參數。
+                            const escaped = t.replace(/ /g, '%s');
+                            try {
+                                const result = await shellExec(`input text ${escaped}`);
+                                return `已透過 input text 指令直接輸入（不需切換任何輸入法）：${result || '(無輸出，但未回報錯誤)'}`;
+                            } catch (inputErr) {
+                                const fallbackResult = await typeViaOnscreenKeyboard(t);
+                                return `⚠️ input text 失敗（${inputErr.message}），已改用備用方式：${fallbackResult}`;
+                            }
                         }
+                        // 中文等非 ASCII 字元：input text 對 CJK 支援不穩定（不是靠字元注入能處理的
+                        // 拼音組字/候選字機制），仍需要走 AdbKeyboard 廣播。
+                        return setImeText(t);
                     }
                     case 'key': {
                         // 例如 'back'、'home'、'enter'、'menu'，轉成對應的 Android keyevent 代碼
