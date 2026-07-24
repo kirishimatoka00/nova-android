@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.2';
+        const NOVA_APP_VERSION = '2.6.3';
         const NOVA_CHANGELOG = [
+            { v: '2.6.3', date: '2026-07-22', notes: [
+                '直接查證 openatx/uiautomator2 官方原始碼 _selector.py，找到真正正確的 Selector 序列化格式：不是單純的 flat dict，而是要附上一個 mask 位元遮罩（每設定一個條件就 OR 上對應的位元）加上兩個固定的空陣列欄位 childOrSibling/childOrSiblingSelector。focused 條件對應的位元是 0x020000（十進位 131072）',
+                '這次不是用猜的，是直接對照原始碼確認格式：{mask:131072, childOrSibling:[], childOrSiblingSelector:[], focused:true}，改成優先呼叫 rpc(\'setText\', [這個正確格式, text])，理論上中英文都適用，且完全不需要任何輸入法切換',
+                '保留 input text（ASCII 備援）與 AdbKeyboard 廣播（非 ASCII 備援）、螢幕鍵盤逐字點擊（最後備援）的三層架構，setText RPC 若在此裝置上仍然失敗才會往下退'
+            ]},
             { v: '2.6.2', date: '2026-07-22', notes: [
                 '實測回收：setText RPC 得到 -32001 UiObjectNotFoundException + data:"UiSelector[]"，代表 {focused:true} 沒有被正確解析成選擇器（官方 client 的 Selector 物件序列化格式含 mask 等欄位，遠比單純的 flat dict複雜，沒有精確規格書就用猜的風險太高，放棄這條路，不再猜格式',
                 '螢幕鍵盤逐字點擊 0/6 全部失敗，證實鍵盤視窗大概率根本不在 dumpWindowHierarchy 的回傳範圍內（多視窗擷取需要額外的 accessibility 設定，這個環境目前沒有）',
@@ -7162,9 +7167,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return /^[\x00-\x7E]*$/.test(action.text || '')
-                        ? `shell: input text ${(action.text || '').replace(/ /g, '%s')}`
-                        : `shell: ime enable com.github.uiautomator/.AdbKeyboard\nshell: ime set com.github.uiautomator/.AdbKeyboard\nshell: am broadcast -a ADB_INPUT_B64 --es msg <base64: ${action.text || ''}>（中文/非 ASCII 文字需要走 AdbKeyboard 廣播）`;
+                    case 'text': return `rpc: setText({mask:131072,focused:true,...}, "${action.text || ''}")　（若失敗才退回：${/^[\x00-\x7E]*$/.test(action.text || '') ? 'input text 指令' : 'AdbKeyboard base64 廣播'}）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7195,27 +7198,32 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'text': {
                         const t = action.text || '';
                         if (!t) return '(空字串，略過)';
-                        // 實測結果回收：setText RPC 因為選擇器序列化格式不明（官方 client 用的
-                        // Selector 物件內部還有 mask 等欄位，不是單純的 {focused:true}），送出去變成
-                        // 空的 UiSelector[]，這條路先放棄，不要再猜格式浪費時間。
-                        // 改用更簡單直接的路：input tap/input keyevent 已經證實在這台裝置上完全可靠，
-                        // 而 input text 是同一個 input 指令家族裡的子命令，一樣透過 shell 層級直接把
-                        // 文字灌進目前有焦點的欄位，不需要切換輸入法、不需要 accessibility selector。
-                        if (/^[\x00-\x7E]*$/.test(t)) {
-                            // atx-agent 的 /shell 是用空白切 argv（不是真的跑 shell），所以文字裡的空白
-                            // 要換成 input text 指令本身支援的 %s 寫法，避免被硬生生切成好幾個參數。
-                            const escaped = t.replace(/ /g, '%s');
-                            try {
-                                const result = await shellExec(`input text ${escaped}`);
-                                return `已透過 input text 指令直接輸入（不需切換任何輸入法）：${result || '(無輸出，但未回報錯誤)'}`;
-                            } catch (inputErr) {
-                                const fallbackResult = await typeViaOnscreenKeyboard(t);
-                                return `⚠️ input text 失敗（${inputErr.message}），已改用備用方式：${fallbackResult}`;
+                        // 找到真正正確的 Selector 序列化格式了（直接查證 openatx/uiautomator2 原始碼
+                        // _selector.py）：Selector 不是單純的 flat dict，Python 端的 __setitem__ 每設定
+                        // 一個條件，就會同時更新一個 mask 位元遮罩（告訴 Java 端「這次帶了哪些條件」），
+                        // 而且一定會附上兩個固定的空陣列欄位 childOrSibling / childOrSiblingSelector。
+                        // focused 這個條件對應的位元是 0x020000（十進位 131072，MASK_FOCUSED）。
+                        // 這是目前唯一有實際原始碼佐證、不是用猜的格式，改成優先嘗試這個。
+                        const FOCUSED_SELECTOR = { mask: 0x020000, childOrSibling: [], childOrSiblingSelector: [], focused: true };
+                        try {
+                            const res = await rpc('setText', [FOCUSED_SELECTOR, t]);
+                            return `已透過 Accessibility setText 直接設定焦點欄位文字（正確的 Selector 格式，不經過任何輸入法，中英文皆適用）：${JSON.stringify(res)}`;
+                        } catch (rpcErr) {
+                            // 就算格式正確也可能因為裝置/版本差異而失敗，這時才退回原本兩種模擬方式：
+                            // 純英數字（ASCII）用 input text；中文等非 ASCII 字元用 AdbKeyboard 廣播。
+                            if (/^[\x00-\x7E]*$/.test(t)) {
+                                const escaped = t.replace(/ /g, '%s');
+                                try {
+                                    const result = await shellExec(`input text ${escaped}`);
+                                    return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用 input text 指令：${result || '(無輸出，但未回報錯誤)'}`;
+                                } catch (inputErr) {
+                                    const fallbackResult = await typeViaOnscreenKeyboard(t);
+                                    return `⚠️ setText RPC 與 input text 皆失敗，已改用螢幕鍵盤逐字點擊：${fallbackResult}`;
+                                }
                             }
+                            const fallbackResult = await setImeText(t);
+                            return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用 AdbKeyboard 廣播：${fallbackResult}`;
                         }
-                        // 中文等非 ASCII 字元：input text 對 CJK 支援不穩定（不是靠字元注入能處理的
-                        // 拼音組字/候選字機制），仍需要走 AdbKeyboard 廣播。
-                        return setImeText(t);
                     }
                     case 'key': {
                         // 例如 'back'、'home'、'enter'、'menu'，轉成對應的 Android keyevent 代碼
