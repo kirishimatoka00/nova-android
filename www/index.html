@@ -1895,8 +1895,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.3';
+        const NOVA_APP_VERSION = '2.6.4';
         const NOVA_CHANGELOG = [
+            { v: '2.6.4', date: '2026-07-22', notes: [
+                '實測確認 Selector 格式修正後真的有效：錯誤訊息從空的 UiSelector[] 變成正確解析出的 UiSelector[FOCUSED=true]，代表 mask 格式修正是對的方向',
+                '但 focused=true 選不到任何元件（UiObjectNotFoundException）。提出一個可能的統一解釋：tap 跟 text 是分開兩個 AI 決策回合執行的，中間隔了一次完整的截圖 + 等待 Gemini 判斷（有時要 30-90 秒），這段空檔可能讓輸入框的 Android 焦點狀態過期或被系統收回，這也可能同時解釋了為什麼連 AdbKeyboard 廣播都送達成功卻沒有文字出現——不是輸入法的問題，而是目標欄位已經不在監聽狀態',
+                '新增第二層 setText 嘗試：改用 classNameMatches 選擇「畫面上目前看得到的 EditText 類元件」，不依賴容易過期的 Android 焦點旗標；focused 選擇器失敗才會嘗試這個，兩者都失敗才退回 input text/AdbKeyboard/螢幕鍵盤這幾種模擬方式'
+            ]},
             { v: '2.6.3', date: '2026-07-22', notes: [
                 '直接查證 openatx/uiautomator2 官方原始碼 _selector.py，找到真正正確的 Selector 序列化格式：不是單純的 flat dict，而是要附上一個 mask 位元遮罩（每設定一個條件就 OR 上對應的位元）加上兩個固定的空陣列欄位 childOrSibling/childOrSiblingSelector。focused 條件對應的位元是 0x020000（十進位 131072）',
                 '這次不是用猜的，是直接對照原始碼確認格式：{mask:131072, childOrSibling:[], childOrSiblingSelector:[], focused:true}，改成優先呼叫 rpc(\'setText\', [這個正確格式, text])，理論上中英文都適用，且完全不需要任何輸入法切換',
@@ -7203,26 +7208,37 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 一個條件，就會同時更新一個 mask 位元遮罩（告訴 Java 端「這次帶了哪些條件」），
                         // 而且一定會附上兩個固定的空陣列欄位 childOrSibling / childOrSiblingSelector。
                         // focused 這個條件對應的位元是 0x020000（十進位 131072，MASK_FOCUSED）。
-                        // 這是目前唯一有實際原始碼佐證、不是用猜的格式，改成優先嘗試這個。
                         const FOCUSED_SELECTOR = { mask: 0x020000, childOrSibling: [], childOrSiblingSelector: [], focused: true };
+                        // 實測發現：focused=true 選不到任何元件（UiObjectNotFoundException）。可能原因：
+                        // tap 動作跟 text 動作是分開兩個回合執行的，中間隔了一次完整的截圖+等待 Gemini
+                        // 判斷（有時要 30-90 秒），這段空檔可能足以讓輸入框的「Android 焦點」狀態過期
+                        // 或被系統收回，就算畫面上看起來還停在同一頁。與其依賴容易過期的焦點狀態，
+                        // 改成直接找畫面上「目前看得到的 EditText 類元件」（classNameMatches），
+                        // 不管 Android 內部焦點旗標為何，這樣比較不受這個時間差影響。
+                        const EDITTEXT_SELECTOR = { mask: 0x20, childOrSibling: [], childOrSiblingSelector: [], classNameMatches: '.*EditText.*' };
                         try {
                             const res = await rpc('setText', [FOCUSED_SELECTOR, t]);
                             return `已透過 Accessibility setText 直接設定焦點欄位文字（正確的 Selector 格式，不經過任何輸入法，中英文皆適用）：${JSON.stringify(res)}`;
-                        } catch (rpcErr) {
-                            // 就算格式正確也可能因為裝置/版本差異而失敗，這時才退回原本兩種模擬方式：
-                            // 純英數字（ASCII）用 input text；中文等非 ASCII 字元用 AdbKeyboard 廣播。
-                            if (/^[\x00-\x7E]*$/.test(t)) {
-                                const escaped = t.replace(/ /g, '%s');
-                                try {
-                                    const result = await shellExec(`input text ${escaped}`);
-                                    return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用 input text 指令：${result || '(無輸出，但未回報錯誤)'}`;
-                                } catch (inputErr) {
-                                    const fallbackResult = await typeViaOnscreenKeyboard(t);
-                                    return `⚠️ setText RPC 與 input text 皆失敗，已改用螢幕鍵盤逐字點擊：${fallbackResult}`;
+                        } catch (focusedErr) {
+                            try {
+                                const res2 = await rpc('setText', [EDITTEXT_SELECTOR, t]);
+                                return `⚠️ focused 選擇器找不到元件（可能是回合間延遲讓焦點狀態過期），改用「畫面上的 EditText 元件」設定文字成功：${JSON.stringify(res2)}`;
+                            } catch (editTextErr) {
+                                // 兩種 setText 選擇器都失敗，才退回原本兩種模擬方式：
+                                // 純英數字（ASCII）用 input text；中文等非 ASCII 字元用 AdbKeyboard 廣播。
+                                if (/^[\x00-\x7E]*$/.test(t)) {
+                                    const escaped = t.replace(/ /g, '%s');
+                                    try {
+                                        const result = await shellExec(`input text ${escaped}`);
+                                        return `⚠️ setText RPC 兩種選擇器皆失敗（${editTextErr.message}），已改用 input text 指令：${result || '(無輸出，但未回報錯誤)'}`;
+                                    } catch (inputErr) {
+                                        const fallbackResult = await typeViaOnscreenKeyboard(t);
+                                        return `⚠️ setText RPC 與 input text 皆失敗，已改用螢幕鍵盤逐字點擊：${fallbackResult}`;
+                                    }
                                 }
+                                const fallbackResult = await setImeText(t);
+                                return `⚠️ setText RPC 兩種選擇器皆失敗（${editTextErr.message}），已改用 AdbKeyboard 廣播：${fallbackResult}`;
                             }
-                            const fallbackResult = await setImeText(t);
-                            return `⚠️ setText RPC 失敗（${rpcErr.message}），已改用 AdbKeyboard 廣播：${fallbackResult}`;
                         }
                     }
                     case 'key': {
