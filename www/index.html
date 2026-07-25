@@ -1491,6 +1491,8 @@
                              <!-- Grok 子模型選擇 -->
                              <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
+                                 <option value="grok-latest">Grok Latest</option>
+                                 <option value="grok-build-latest">Grok Build Latest</option>
                                  <option value="grok-4-1-fast-reasoning">Grok 4.1 Fast Reasoning</option>
                                  <option value="grok-4-1-fast-non-reasoning">Grok 4.1 Fast Non-Reasoning</option>
                                  <option value="grok-code-fast-1">Grok Code Fast 1</option>
@@ -1502,22 +1504,19 @@
                              <!-- Gemini 子模型選擇 -->
                              <select id="gemini-sub-model-select" onchange="setGeminiModel(this.value)" class="bg-blue-900 border border-blue-500/50 text-blue-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-blue-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="gemini-multi">⚡ 智慧切換 (Auto)</option>
-                                 <optgroup label="Imagen 4.0 生成">
-                                     <option value="imagen-4.0-generate-001">Imagen 4.0 Standard</option>
-                                     <option value="imagen-4.0-ultra-generate-001">Imagen 4.0 Ultra</option>
-                                     <option value="imagen-4.0-fast-generate-001">Imagen 4.0 Fast</option>
-                                 </optgroup>
-                                 <optgroup label="Gemini 3 預覽系列">
+                                 <optgroup label="Gemini LLM">
+                                     <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
                                      <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                                      <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                                      <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-                                     <option value="gemini-3.1-flash-image">Gemini 3.1 Flash-Image</option>
-                                     <option value="gemini-3.1-pro-image">Gemini 3.1 Pro-Image</option>
-                                 </optgroup>
-                                 <optgroup label="Gemini 2.5 穩定系列">
                                      <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                                      <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                                 </optgroup>
+                                 <optgroup label="Gemini 圖片生成">
+                                     <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
+                                     <option value="gemini-3.1-flash-image">Gemini 3.1 Flash-Image</option>
+                                     <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite-Image</option>
                                      <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
                                  </optgroup>
                              </select>
@@ -1895,8 +1894,14 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.4';
+        const NOVA_APP_VERSION = '2.6.5';
         const NOVA_CHANGELOG = [
+            { v: '2.6.5', date: '2026-07-25', notes: [
+                '更新 Gemini 模型選單：新增 gemini-3.5-flash、gemini-3.1-flash-lite、gemini-3-flash-preview、gemini-3.1-pro-preview、gemini-2.5-pro、gemini-2.5-flash、gemini-2.5-flash-lite（LLM 系列），以及 gemini-3.1-flash-lite-image、gemini-3.1-flash-image、gemini-3-pro-image、gemini-2.5-flash-image（圖片生成系列）',
+                '移除已下架的 Imagen 4.0 系列（imagen-4.0-generate-001、imagen-4.0-ultra-generate-001、imagen-4.0-fast-generate-001），Gemini 選單不再分「Imagen 生成」這個獨立分組，圖片生成統一改用 Gemini 原生圖片模型',
+                '更新 Grok 模型選單：新增 grok-latest、grok-build-latest',
+                '「自動配圖模型」「多代理研究」等其他會動態帶入子模型清單的下拉選單，都是直接讀取 Gemini/Grok 主選單的 innerHTML 組成，這次更新會自動同步套用，不需要另外改'
+            ]},
             { v: '2.6.4', date: '2026-07-22', notes: [
                 '實測確認 Selector 格式修正後真的有效：錯誤訊息從空的 UiSelector[] 變成正確解析出的 UiSelector[FOCUSED=true]，代表 mask 格式修正是對的方向',
                 '但 focused=true 選不到任何元件（UiObjectNotFoundException）。提出一個可能的統一解釋：tap 跟 text 是分開兩個 AI 決策回合執行的，中間隔了一次完整的截圖 + 等待 Gemini 判斷（有時要 30-90 秒），這段空檔可能讓輸入框的 Android 焦點狀態過期或被系統收回，這也可能同時解釋了為什麼連 AdbKeyboard 廣播都送達成功卻沒有文字出現——不是輸入法的問題，而是目標欄位已經不在監聽狀態',
