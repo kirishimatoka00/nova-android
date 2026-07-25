@@ -6948,6 +6948,48 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 return { b64, width: w, height: h };
             }
 
+            // 新增：畫面「有沒有真的變化」偵測。之前的問題是 shell input tap 這類指令即使沒點中任何
+            // 東西也一律回傳 exitCode:0，程式判定成功、history 也記成功，AI 完全不知道畫面其實沒反應，
+            // 於是卡在同一個畫面卻沒有任何修正動作。這裡用簡易 aHash（8x8 灰階平均雜湊）比對「這回合截圖」
+            // 跟「上一回合截圖」的相似度，如果上一回合是 tap/swipe 這類預期會改變畫面的動作，但兩張圖幾乎
+            // 一樣，就視為「疑似未生效」，主動把這個事實寫回 history 並提示 AI 這一回合要修正，而不是沿用
+            // 舊座標繼續空點。
+            async function computeImageHash(b64) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        try {
+                            const size = 8;
+                            const canvas = document.createElement('canvas');
+                            canvas.width = size; canvas.height = size;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, size, size);
+                            const data = ctx.getImageData(0, 0, size, size).data;
+                            const gray = [];
+                            for (let i = 0; i < data.length; i += 4) {
+                                gray.push((data[i] + data[i + 1] + data[i + 2]) / 3);
+                            }
+                            const avg = gray.reduce((a, b) => a + b, 0) / gray.length;
+                            resolve(gray.map(v => v >= avg ? '1' : '0').join(''));
+                        } catch (e) { reject(e); }
+                    };
+                    img.onerror = () => reject(new Error('畫面雜湊計算失敗：圖片解碼錯誤'));
+                    img.src = 'data:image/jpeg;base64,' + b64;
+                });
+            }
+            function hashDiff(h1, h2) {
+                if (!h1 || !h2 || h1.length !== h2.length) return 64; // 無法比對就當作完全不同，不誤判
+                let diff = 0;
+                for (let i = 0; i < h1.length; i++) if (h1[i] !== h2[i]) diff++;
+                return diff;
+            }
+            // Hamming distance 門檻：8x8=64 bits，經驗上 <=3 代表畫面幾乎沒有肉眼可辨的變化
+            // （容許截圖雜訊、時間顯示等極小區域變動），大於這個值代表畫面確實有實質改變。
+            const SCREEN_UNCHANGED_THRESHOLD = 3;
+            // 哪些動作類型「理應」會讓畫面產生變化，才需要拿來做這個比對；
+            // wait/key(某些按鍵可能無反應也正常)/text 等不強制檢查，避免誤判。
+            const SCREEN_CHANGE_EXPECTED_TYPES = ['tap', 'tap_element', 'long_press', 'swipe'];
+
             async function getScreenshotBase64() {
                 const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
@@ -7321,6 +7363,11 @@ ${elementsText}`;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
                 const history = [];
                 let consecutiveSoftFails = 0;
+                // 畫面變化偵測狀態：記錄「上一回合截圖的雜湊」與「上一回合是否執行了預期會改變畫面的動作」，
+                // 用來判斷這一回合截圖跟上一回合幾乎一樣時，是不是上一動作根本沒生效。
+                let lastShotHash = null;
+                let lastActionExpectedChange = false;
+                let lastActionDesc = '';
                 setStatus(`執行中（0/${maxRounds} 回合）`, null);
 
                 try {
@@ -7363,6 +7410,35 @@ ${elementsText}`;
                             addMessage(`📸 第 ${round}/${maxRounds} 回合截圖（AI 依此畫面判斷下一步）`, 'system', null, [],
                                 { category: 'image', data: 'data:image/jpeg;base64,' + shot.b64, name: `ap_round${round}.jpg` });
 
+                            // 畫面變化偵測：這回合的截圖如果跟上一回合幾乎一模一樣，但上一回合執行的是
+                            // tap/swipe 這類理應會改變畫面的動作，代表那個動作大概率沒生效（點空了/座標偏移/
+                            // WebView 內元素點不到等），必須明確告訴 AI，不能讓它以為上一步成功了就繼續往下走。
+                            let screenUnchangedNote = '';
+                            try {
+                                const currentShotHash = await computeImageHash(shot.b64);
+                                if (lastShotHash && lastActionExpectedChange) {
+                                    const diff = hashDiff(lastShotHash, currentShotHash);
+                                    if (diff <= SCREEN_UNCHANGED_THRESHOLD) {
+                                        screenUnchangedNote = `⚠️【系統畫面比對警告】上一回合執行的動作「${lastActionDesc}」之後，這一回合的截圖跟上一回合幾乎完全相同（圖像差異度 ${diff}/64），代表這個動作極可能沒有真正生效（常見原因：座標算錯/偏移、目標其實是 WebView 內的 HTML 元素不在元件清單中、畫面根本沒反應）。請不要重複使用同樣的座標或動作，這一回合務必先重新分析截圖與元件清單，換一個方式或修正座標再嘗試。\n\n`;
+                                        addMessage(`🔁 偵測到畫面與上一回合幾乎沒有變化（上一動作：${lastActionDesc}），已提醒 AI 這回合需要修正，避免重複空點。`, 'system');
+                                        // 同步回頭修正 history 裡上一筆紀錄，讓後續回合的歷史紀錄本身也反映事實，
+                                        // 不會一直顯示「執行成功」誤導 AI。
+                                        if (history.length) {
+                                            const lastEntry = history[history.length - 1];
+                                            if (typeof lastEntry.result === 'string' && !lastEntry.result.startsWith('FAILED') && !lastEntry.result.startsWith('SUSPECT_NO_EFFECT')) {
+                                                lastEntry.result = 'SUSPECT_NO_EFFECT（下一回合截圖比對顯示畫面幾乎沒有變化，此動作疑似未真正生效）: ' + lastEntry.result;
+                                            }
+                                        }
+                                    }
+                                }
+                                lastShotHash = currentShotHash;
+                            } catch (hashErr) {
+                                // 雜湊計算失敗不影響主流程，純粹跳過這次比對
+                                lastShotHash = null;
+                            }
+                            // 這回合還沒決定動作，先重置，等下面決定完 rawAction 後再依實際動作類型設定。
+                            lastActionExpectedChange = false;
+
                             // 架構升級：同時抓取 UI 階層（dumpWindowHierarchy）並解析成元件清單。
                             // 這份清單的座標是系統回報的真實觸控座標，不是螢幕截圖像素，AI 可以直接
                             // 用文字/描述/id 精準指到目標元件，不需要再靠視覺估算座標，準確度高很多，
@@ -7400,6 +7476,10 @@ ${elementsText}`;
                             const fgApp = await getCurrentForegroundApp();
                             if (fgApp) {
                                 elementsText = `目前系統回報的前景 App 套件名稱：${fgApp.package}（如果這跟任務目標的 App 不一致，代表畫面可能已經跳出目標 App，優先考慮用 open_app 或 key back 處理，不要單靠截圖判斷）\n\n` + elementsText;
+                            }
+
+                            if (screenUnchangedNote) {
+                                elementsText = screenUnchangedNote + elementsText;
                             }
 
                             const rawAction = await decideNextAction(goal, history, shot.b64, elementsText, shot.width, shot.height);
@@ -7465,6 +7545,10 @@ ${elementsText}`;
                                 await new Promise(r => setTimeout(r, 500));
                                 continue;
                             }
+
+                            // 記錄這回合實際要執行的動作類型，供下一回合開頭做「畫面有沒有真的變化」比對用。
+                            lastActionExpectedChange = SCREEN_CHANGE_EXPECTED_TYPES.includes(rawAction.type);
+                            lastActionDesc = rawAction.say || rawAction.type;
 
                             // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
                             addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}${scaleNote}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
