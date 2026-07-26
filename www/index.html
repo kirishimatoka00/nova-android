@@ -1897,8 +1897,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.10';
+        const NOVA_APP_VERSION = '2.6.11';
         const NOVA_CHANGELOG = [
+            { v: '2.6.11', date: '2026-07-26', notes: [
+                '新增「決策時效性檢查」修正點擊常常點不準的問題：比對使用者提供的「AI 判斷當下的截圖」跟「實際手機畫面」，發現像 Google 搜尋結果頁的 AI 摘要區塊，來源圖示/引用標籤是非同步載入的，載入完成後會把下面內容整個往下推擠——AI 從看到截圖到判斷完成、真正送出點擊，中間常常要好幾秒到幾十秒，這段時間畫面已經自己變了，座標卻還是照著舊畫面算的，點下去自然落在錯誤位置',
+                '修法：真正執行 tap/tap_element/long_press/swipe 之前，先快速重截一張圖跟這回合開始時那張（AI 判斷依據的那張）比對，差異超過門檻就代表決策已經過期，直接放棄這次動作、跳到下一回合用最新畫面重新判斷，不會硬用過期座標賭一把，也不會佔用軟失敗計數（因為問題不是點擊本身失準，是判斷依據太舊）'
+            ]},
             { v: '2.6.10', date: '2026-07-26', notes: [
                 '縮小第一次點擊自我校正時的長寬比差異：實測發現 deviceInfo RPC 回報的裝置解析度，跟截圖實際像素尺寸的長寬比可能對不起來（曾實測差 9%），代表兩者不是同一個座標空間，用它們算出來的 scaleX/scaleY 拿去點擊必然不準。UI 階層 dump 的根節點 bounds 才是「點擊真正生效」的第一手資料，因為 tap 本身就是透過同一套 accessibility API 送出的，保證跟這個座標空間一致。改成優先用當回合已經抓到的 UI 階層根節點 bounds 校正裝置解析度，deviceInfo 只在階層拿不到時當備援，校正訊息也會標示這次用的是哪個來源',
                 '如果改用階層 bounds 後長寬比差距依然超過 3%，校正訊息會明確指出問題大概率出在截圖本身（例如含有額外留白/信箱化黑邊，或分割畫面/懸浮視窗導致擷取範圍跟實際觸控區域對不上），而不是換算公式錯誤，方便下一步判斷方向'
@@ -7652,8 +7656,9 @@ ${elementsText}`;
                             // tap/swipe 這類理應會改變畫面的動作，代表那個動作大概率沒生效（點空了/座標偏移/
                             // WebView 內元素點不到等），必須明確告訴 AI，不能讓它以為上一步成功了就繼續往下走。
                             let screenUnchangedNote = '';
+                            let currentShotHash = null;
                             try {
-                                const currentShotHash = await computeImageHash(shot.b64);
+                                currentShotHash = await computeImageHash(shot.b64);
                                 if (lastShotHash && lastActionExpectedChange) {
                                     const diff = hashDiff(lastShotHash, currentShotHash);
                                     if (diff <= SCREEN_UNCHANGED_THRESHOLD) {
@@ -7823,6 +7828,27 @@ ${elementsText}`;
                             // 記錄這回合實際要執行的動作類型，供下一回合開頭做「畫面有沒有真的變化」比對用。
                             lastActionExpectedChange = SCREEN_CHANGE_EXPECTED_TYPES.includes(rawAction.type);
                             lastActionDesc = rawAction.say || rawAction.type;
+
+                            // 決策時效性檢查：AI 判斷這一步要點哪裡，是根據「這回合開始時」那張截圖決定的，
+                            // 但從截圖到現在，中間經過了 UI 階層 dump + AI 判斷（實測常常要好幾秒到幾十秒），
+                            // 如果畫面在這段時間內自己變了（例如 Google 搜尋結果頁的 AI 摘要區塊，圖示/來源
+                            // 標籤是非同步載入的，載入完成後會讓下面內容整個往下推擠，這正是「AI 看到的截圖」
+                            // 跟「執行當下的實際畫面」對不起來、點擊落在錯誤位置最常見的原因之一），
+                            // 那麼這個座標就是根據「已經過期的畫面」算出來的，繼續點下去大概率點錯地方。
+                            // 這裡在真正點下去之前，先快速重截一張圖跟決策當下那張比對，差太多就直接放棄
+                            // 這次動作、跳到下一回合用最新畫面重新判斷，而不是硬用過期座標賭一把。
+                            if (currentShotHash && SCREEN_CHANGE_EXPECTED_TYPES.includes(action.type)) {
+                                try {
+                                    const freshShot = await getScreenshotBase64();
+                                    const freshHash = await computeImageHash(freshShot.b64);
+                                    const staleDiff = hashDiff(currentShotHash, freshHash);
+                                    if (staleDiff > SCREEN_UNCHANGED_THRESHOLD) {
+                                        addMessage(`⏸️ 偵測到畫面在 AI 判斷期間已經改變（跟決策當下的截圖差異度 ${staleDiff}/64，超過門檻），這一步的點擊座標是根據已經過期的畫面算出來的，繼續點下去大概率會點錯地方。已跳過這個動作，直接用最新畫面重新判斷下一步（不佔用額外的失敗計數）。`, 'system');
+                                        clearTimeout(roundTimer);
+                                        continue;
+                                    }
+                                } catch (staleCheckErr) { /* 重截圖或比對失敗不影響主流程，照原計畫繼續執行 */ }
+                            }
 
                             // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
                             addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}${scaleNote}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
