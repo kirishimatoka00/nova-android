@@ -1897,8 +1897,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.11';
+        const NOVA_APP_VERSION = '2.6.12';
         const NOVA_CHANGELOG = [
+            { v: '2.6.12', date: '2026-07-26', notes: [
+                '找到「文字打不進去」這次的真正原因，澄清一下：不是 setText/剪貼簿/AdbKeyboard 這條輸入鏈本身壞掉，是根本沒機會執行到那一步——實測截圖顯示 AI 一直卡在對 Google 首頁的搜尋框連續 tap（估計座標、不是用元件清單的 tap_element），畫面卻完全沒反應，代表那個搜尋框是網頁本身渲染的 HTML 內容（Chrome WebView/Blink），不在 UI 階層清單裡，AI 只能退回視覺估算座標去點，而這種元件常常怎麼點都點不進去（這是專案很早期就記錄過、一直沒解決的架構限制，不是這幾版新出現的迴歸）。連「點擊聚焦輸入框」這一步都沒成功，後面的 type:"text" 動作自然也不會被執行到',
+                '新增 open_url 動作類型，作為這種情況的正面繞道方案：需要在瀏覽器裡搜尋或前往某個網址時，直接組出目標網址、用 Android 原生的 VIEW intent 開啟（am start -a android.intent.action.VIEW -d "..."），完全不需要點擊/聚焦網頁裡的搜尋框，徹底避開 WebView 內元件常點不到的問題。已更新 AI 判斷提示詞：偵測到目標元件不在畫面元件清單裡、且同一個位置連續點擊 2 次都沒有讓畫面產生變化時，改用 open_url 而不是繼續重複嘗試點擊'
+            ]},
             { v: '2.6.11', date: '2026-07-26', notes: [
                 '新增「決策時效性檢查」修正點擊常常點不準的問題：比對使用者提供的「AI 判斷當下的截圖」跟「實際手機畫面」，發現像 Google 搜尋結果頁的 AI 摘要區塊，來源圖示/引用標籤是非同步載入的，載入完成後會把下面內容整個往下推擠——AI 從看到截圖到判斷完成、真正送出點擊，中間常常要好幾秒到幾十秒，這段時間畫面已經自己變了，座標卻還是照著舊畫面算的，點下去自然落在錯誤位置',
                 '修法：真正執行 tap/tap_element/long_press/swipe 之前，先快速重截一張圖跟這回合開始時那張（AI 判斷依據的那張）比對，差異超過門檻就代表決策已經過期，直接放棄這次動作、跳到下一回合用最新畫面重新判斷，不會硬用過期座標賭一把，也不會佔用軟失敗計數（因為問題不是點擊本身失準，是判斷依據太舊）'
@@ -7352,6 +7356,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
                         : `shell: monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
+                    case 'open_url': return `shell: am start -a android.intent.action.VIEW -d "${action.url || ''}"　（繞過網頁內搜尋框，直接組網址開啟，避開 WebView 內元件常點不到的問題）`;
                     case 'wait': return `等待 ${action.ms || 1000}ms`;
                     case 'done': return '(任務判定完成)';
                     case 'fail': return '(任務判定無法繼續)';
@@ -7457,6 +7462,17 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             ? `am start -n ${action.package}/${action.activity}`
                             : `monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
                         return shellExec(cmd);
+                    case 'open_url': {
+                        // 已知長期未解的問題：點擊 Chrome 這類瀏覽器裡「網頁內容渲染出來的」HTML 元件
+                        // （例如 Google 首頁那個搜尋框，是 WebView/Blink 渲染的網頁內容，不是 Chrome 原生
+                        // UI），常常怎麼點座標都對不上、畫面完全沒反應——這不是這幾版新出現的迴歸，是
+                        // 從很早期就一直卡著的架構限制。與其一直重試點擊這種常常點不進去的元件，
+                        // 需要「搜尋」或「前往某個網址」時，直接組出目標網址、用 Android 原生的 VIEW
+                        // intent 開啟，完全繞過網頁內搜尋框，從根本上避開這個問題。
+                        if (!action.url) throw new Error('open_url 動作缺少 url 參數');
+                        const escapedUrl = action.url.replace(/"/g, '\\"');
+                        return shellExec(`am start -a android.intent.action.VIEW -d "${escapedUrl}"`);
+                    }
                     case 'wait':
                         return new Promise(r => setTimeout(r, Math.min(action.ms || 1000, 5000)));
                     case 'done':
@@ -7481,10 +7497,12 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"text","text":"要輸入的文字","say":"..."}
 {"type":"key","key":"back|home|enter","say":"..."}
 {"type":"open_app","package":"套件名稱","say":"..."}
+{"type":"open_url","url":"完整網址（含 https://）","say":"..."}
 {"type":"wait","ms":毫秒數,"say":"..."}
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
 ⚠️ 極重要的優先順序：如果你要點的東西（按鈕、輸入框、連結、選單項目...）能在下面的「畫面元件列表」裡找到對應的 text/desc/id，一定要優先用 type:"tap_element" 並填正確的 index——這是最精準的方式，座標由系統直接算好，不會有截圖估算誤差。只有在元件列表裡真的找不到對應項目時（例如要點一張純圖片、地圖上某個位置、畫面上沒有文字標籤的圖示區域），才退而求其次用 type:"tap" 並自己從截圖估計座標。
+⚠️ 已知的架構限制（重要，請據此調整策略）：如果目前是在 Chrome 或其他瀏覽器裡，畫面上看起來像輸入框/按鈕的東西，卻完全沒有出現在「畫面元件列表」裡——代表那是網頁本身渲染出來的 HTML 內容（WebView/Blink 渲染），不是原生 Android UI，這種元件用視覺估計座標去 tap，經常完全沒有反應（不會報錯，但點了跟沒點一樣，畫面不會有任何變化）。這種情況下，如果目標是「搜尋某個關鍵字」或「前往某個網址」，不要一直重複嘗試用 tap 去點網頁裡的搜尋框——改用 type:"open_url"，自己組出目標網址（例如要在 Google 搜尋「台北101」就用 https://www.google.com/search?q=台北101），直接用 Android 原生的方式開啟，完全繞過網頁內搜尋框，這樣可以徹底避開這個問題，比一直嘗試點擊可靠得多。同一個網頁搜尋框如果已經連續 2 次點擊都沒有讓畫面產生任何變化（可以參考下方歷史紀錄跟畫面比對警告），請直接改用 open_url，不要再繼續嘗試點擊。
 ⚠️ 座標範圍極重要：這張截圖的實際像素尺寸是寬 ${imgW}px、高 ${imgH}px。type:"tap"/"long_press" 的 x 必須在 0～${imgW} 之間、y 必須在 0～${imgH} 之間；type:"swipe" 的 x1/x2 同樣要在 0～${imgW}、y1/y2 在 0～${imgH} 之間。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實座標，範圍會大很多，不要混淆兩種座標系統）。回傳超出這個範圍的座標是明確錯誤，程式會直接拒絕執行。
 ⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
