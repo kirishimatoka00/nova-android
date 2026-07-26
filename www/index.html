@@ -1897,8 +1897,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.13';
+        const NOVA_APP_VERSION = '2.6.14';
         const NOVA_CHANGELOG = [
+            { v: '2.6.14', date: '2026-07-26', notes: [
+                '剪貼簿貼上（Capacitor Clipboard plugin）確認中文可靠後，改為文字輸入的首選方式，英文/ASCII 文字也走同一條路，不再優先嘗試兩次注定失敗的 setText RPC——setText RPC 與 input text/AdbKeyboard 廣播都改成剪貼簿真的失敗時才用的備援',
+                '重大架構調整：tap/long_press/swipe 的座標改成 AI 回傳 0.0～1.0 的相對比例（例如畫面正中央就是 x:0.5,y:0.5），不再是截圖像素座標。程式直接拿裝置真實解析度乘上比例換算，徹底不需要知道截圖被縮放成幾 px，一次消除「截圖尺寸跟裝置解析度長寬比對不上」這整類換算誤差的根源，也不受多模態模型內部可能對圖片做的縮放/切塊影響（座標系統改成跟著圖片本身走，而不是跟著某個外部宣稱的像素數字走）',
+                'AI 判斷提示詞新增：tap/tap_element/long_press 動作前，要求先在 say 欄位寫下判斷這是正確目標的簡短依據，降低點到視覺相似但功能不同按鈕（例如「取消」點成「確認」）的機率'
+            ]},
             { v: '2.6.13', date: '2026-07-26', notes: [
                 '修正剪貼簿貼上出現「-32602 method parameters invalid」：這是 atx-agent 的 setClipboard RPC 在這台裝置上的 uiautomator-server 版本參數格式不符（甚至可能根本沒實作），屬於第三方元件本身的限制。既然 NOVA 自己就是 Capacitor App，改成直接呼叫 Capacitor 官方的 Clipboard plugin（跟本檔案別處讀取剪貼簿用的是同一個 plugin，已經驗證過能正常運作）寫入系統剪貼簿，完全不經過 atx-agent 這層，不受第三方 uiautomator-server 版本影響，只有在 Capacitor Clipboard plugin 真的不可用時才退回原本的 RPC 當備援'
             ]},
@@ -7370,7 +7375,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return `rpc: setText({focused:true}, "${action.text || ''}")　（兩種選擇器皆失敗才退回：剪貼簿貼上 → ${/^[\x00-\x7E]*$/.test(action.text || '') ? 'input text 指令' : 'AdbKeyboard base64 廣播'}）`;
+                    case 'text': return `剪貼簿貼上（Capacitor Clipboard plugin 寫入 + KEYCODE_PASTE，中英文皆適用）"${action.text || ''}"　（若失敗才退回：setText RPC → ${/^[\x00-\x7E]*$/.test(action.text || '') ? 'input text 指令' : 'AdbKeyboard base64 廣播'}）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7408,12 +7413,6 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 而且一定會附上兩個固定的空陣列欄位 childOrSibling / childOrSiblingSelector。
                         // focused 這個條件對應的位元是 0x020000（十進位 131072，MASK_FOCUSED）。
                         const FOCUSED_SELECTOR = { mask: 0x020000, childOrSibling: [], childOrSiblingSelector: [], focused: true };
-                        // 實測發現：focused=true 選不到任何元件（UiObjectNotFoundException）。可能原因：
-                        // tap 動作跟 text 動作是分開兩個回合執行的，中間隔了一次完整的截圖+等待 Gemini
-                        // 判斷（有時要 30-90 秒），這段空檔可能足以讓輸入框的「Android 焦點」狀態過期
-                        // 或被系統收回，就算畫面上看起來還停在同一頁。與其依賴容易過期的焦點狀態，
-                        // 改成直接找畫面上「目前看得到的 EditText 類元件」（classNameMatches），
-                        // 不管 Android 內部焦點旗標為何，這樣比較不受這個時間差影響。
                         const EDITTEXT_SELECTOR = { mask: 0x20, childOrSibling: [], childOrSiblingSelector: [], classNameMatches: '.*EditText.*' };
 
                         // 最終備援（input text / AdbKeyboard），統一收斂訊息用語：
@@ -7433,41 +7432,36 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             return `ℹ️ ${reasonPrefix}，已改用 AdbKeyboard 廣播輸入（中文/非 ASCII 文字）：${fallbackResult}`;
                         };
 
-                        // 剪貼簿貼上：作為「setText RPC 兩種選擇器都失敗（累計失敗 2 次）」之後的終極備援，
-                        // 排在 input text/AdbKeyboard 之前——剪貼簿內容是 Unicode 字串，中英文/emoji
-                        // 都不會有編碼問題，比繼續切換輸入法更可靠，值得在真的要退到 IME 備援之前先試一次。
-                        const tryClipboardThenFallback = async (reasonPrefix) => {
-                            if (!clipboardPasteKnownBroken) {
+                        // setText RPC 備援鏈：剪貼簿失敗才會走到這裡。
+                        const trySetTextThenFallback = async (reasonPrefix) => {
+                            if (setTextRpcKnownBroken) {
+                                return runTextFallback(`${reasonPrefix}；此裝置的 setText RPC 已知不支援（本次 session 稍早已確認過，不再重複嘗試）`);
+                            }
+                            try {
+                                const res = await rpc('setText', [FOCUSED_SELECTOR, t]);
+                                return `ℹ️ ${reasonPrefix}，已改用 Accessibility setText 直接設定焦點欄位文字成功：${JSON.stringify(res)}`;
+                            } catch (focusedErr) {
                                 try {
-                                    const pasteResult = await pasteViaClipboard(t);
-                                    return `ℹ️ ${reasonPrefix}，已改用剪貼簿貼上成功：${pasteResult}`;
-                                } catch (clipErr) {
-                                    // 這台裝置的 uiautomator2 server 可能沒有 setClipboard 這個 RPC method（版本較舊），
-                                    // 記住這件事，同一次 session 內不再重複嘗試，直接退到最後一道備援。
-                                    clipboardPasteKnownBroken = true;
-                                    reasonPrefix += `；剪貼簿貼上也失敗（${clipErr.message}，可能是此裝置不支援 setClipboard，本次 session 不再重試）`;
+                                    const res2 = await rpc('setText', [EDITTEXT_SELECTOR, t]);
+                                    return `ℹ️ ${reasonPrefix}，已改用「畫面上的 EditText 元件」設定文字成功：${JSON.stringify(res2)}`;
+                                } catch (editTextErr) {
+                                    setTextRpcKnownBroken = true;
+                                    return runTextFallback(`${reasonPrefix}；setText RPC 兩種選擇器也都失敗（${editTextErr.message}）`);
                                 }
                             }
-                            return runTextFallback(reasonPrefix);
                         };
 
-                        if (setTextRpcKnownBroken) {
-                            return tryClipboardThenFallback('此裝置的 setText RPC 已知不支援（本次 session 稍早已確認過，不再重複嘗試以節省時間）');
+                        // 剪貼簿貼上現在是首選方式：改用 NOVA 自己的 Capacitor Clipboard plugin 寫入
+                        // （不再經過 atx-agent 的 setClipboard RPC），實測中文可靠，英文/ASCII 文字走同一條
+                        // 路一樣穩定，比原本「先試兩次注定失敗的 setText RPC」要快，也比切換輸入法可靠。
+                        if (clipboardPasteKnownBroken) {
+                            return trySetTextThenFallback('剪貼簿貼上已知不可用（本次 session 稍早已確認過，不再重複嘗試以節省時間）');
                         }
-
                         try {
-                            const res = await rpc('setText', [FOCUSED_SELECTOR, t]);
-                            return `已透過 Accessibility setText 直接設定焦點欄位文字（正確的 Selector 格式，不經過任何輸入法，中英文皆適用）：${JSON.stringify(res)}`;
-                        } catch (focusedErr) {
-                            try {
-                                const res2 = await rpc('setText', [EDITTEXT_SELECTOR, t]);
-                                return `已透過「畫面上的 EditText 元件」設定文字成功（focused 選擇器過期，改用這個備援選擇器）：${JSON.stringify(res2)}`;
-                            } catch (editTextErr) {
-                                // 兩種 setText 選擇器都失敗（累計失敗 2 次），記住這台裝置不支援，
-                                // 之後直接跳過這兩次注定失敗的嘗試，改走剪貼簿終極備援。
-                                setTextRpcKnownBroken = true;
-                                return tryClipboardThenFallback(`此裝置的 setText RPC 兩種選擇器皆不支援（${editTextErr.message}）`);
-                            }
+                            return await pasteViaClipboard(t);
+                        } catch (clipErr) {
+                            clipboardPasteKnownBroken = true;
+                            return trySetTextThenFallback(`剪貼簿貼上失敗（${clipErr.message}）`);
                         }
                     }
                     case 'key': {
@@ -7510,9 +7504,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
 你會看到目前手機畫面的截圖，以及一份「畫面元件列表」（從系統的 UI 階層直接讀出來的真實元件，包含文字/描述/id 跟中心座標，這份清單的座標是裝置真實觸控座標，不是截圖像素，非常精準）。請判斷下一步該做的「單一」動作，並只回傳 JSON（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
 {"type":"tap_element","index":元件列表中的編號,"say":"這一步在做什麼（給使用者看的一句話）"}
-{"type":"tap","x":數字,"y":數字,"say":"..."}
-{"type":"long_press","x":數字,"y":數字,"say":"..."}
-{"type":"swipe","x1":數字,"y1":數字,"x2":數字,"y2":數字,"say":"..."}
+{"type":"tap","x":0.000～1.000之間的小數,"y":0.000～1.000之間的小數,"say":"..."}
+{"type":"long_press","x":0.000～1.000之間的小數,"y":0.000～1.000之間的小數,"say":"..."}
+{"type":"swipe","x1":0.000～1.000之間的小數,"y1":0.000～1.000之間的小數,"x2":0.000～1.000之間的小數,"y2":0.000～1.000之間的小數,"say":"..."}
 {"type":"text","text":"要輸入的文字","say":"..."}
 {"type":"key","key":"back|home|enter","say":"..."}
 {"type":"open_app","package":"套件名稱","say":"..."}
@@ -7521,8 +7515,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
 ⚠️ 極重要的優先順序：如果你要點的東西（按鈕、輸入框、連結、選單項目...）能在下面的「畫面元件列表」裡找到對應的 text/desc/id，一定要優先用 type:"tap_element" 並填正確的 index——這是最精準的方式，座標由系統直接算好，不會有截圖估算誤差。只有在元件列表裡真的找不到對應項目時（例如要點一張純圖片、地圖上某個位置、畫面上沒有文字標籤的圖示區域），才退而求其次用 type:"tap" 並自己從截圖估計座標。
+⚠️ 每次要 tap/tap_element/long_press 之前，先在 say 欄位簡短寫下你判斷這是正確目標的依據（例如：「畫面右上角、文字寫著『確認』的藍色按鈕，跟旁邊灰色的『取消』按鈕位置不同」），再給出動作——這個檢查能幫你自己先確認一次，避免點到視覺上相似但功能不同的按鈕（例如把「取消」點成「確認」）。
 ⚠️ 已知的架構限制（重要，請據此調整策略）：如果目前是在 Chrome 或其他瀏覽器裡，畫面上看起來像輸入框/按鈕的東西，卻完全沒有出現在「畫面元件列表」裡——代表那是網頁本身渲染出來的 HTML 內容（WebView/Blink 渲染），不是原生 Android UI，這種元件用視覺估計座標去 tap，經常完全沒有反應（不會報錯，但點了跟沒點一樣，畫面不會有任何變化）。這種情況下，如果目標是「搜尋某個關鍵字」或「前往某個網址」，不要一直重複嘗試用 tap 去點網頁裡的搜尋框——改用 type:"open_url"，自己組出目標網址（例如要在 Google 搜尋「台北101」就用 https://www.google.com/search?q=台北101），直接用 Android 原生的方式開啟，完全繞過網頁內搜尋框，這樣可以徹底避開這個問題，比一直嘗試點擊可靠得多。同一個網頁搜尋框如果已經連續 2 次點擊都沒有讓畫面產生任何變化（可以參考下方歷史紀錄跟畫面比對警告），請直接改用 open_url，不要再繼續嘗試點擊。
-⚠️ 座標範圍極重要：這張截圖的實際像素尺寸是寬 ${imgW}px、高 ${imgH}px。type:"tap"/"long_press" 的 x 必須在 0～${imgW} 之間、y 必須在 0～${imgH} 之間；type:"swipe" 的 x1/x2 同樣要在 0～${imgW}、y1/y2 在 0～${imgH} 之間。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實座標，範圍會大很多，不要混淆兩種座標系統）。回傳超出這個範圍的座標是明確錯誤，程式會直接拒絕執行。
+⚠️ 座標一律使用相對比例（0.000～1.000），不要用截圖的像素座標：type:"tap"/"long_press" 的 x/y、type:"swipe" 的 x1/y1/x2/y2，全部都是「這個點位在畫面寬度/高度的第幾分之幾」，例如畫面正中央是 x:0.5, y:0.5，畫面右上角接近 x:0.95, y:0.05。這樣寫的好處是完全不用管截圖實際被縮放成幾 px、也不用管截圖尺寸跟裝置真實解析度是否一致，你只要看著這張截圖本身的比例位置回答就好，程式會自動乘上裝置真實解析度換算成正確的觸控座標，不會再有「截圖跟裝置解析度長寬比對不上」這類換算誤差。範圍規則：0.0 ≤ x ≤ 1.0、0.0 ≤ y ≤ 1.0，超出這個範圍是明確錯誤。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實像素座標，數值範圍完全不同，不要混淆兩種座標系統）。
 ⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
 重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新點擊該輸入框、再重新輸入一次文字，不要直接按 Enter。
@@ -7791,65 +7786,49 @@ ${elementsText}`;
                                     };
                                     scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標精準點擊，未經任何縮放換算）`;
                                 } else if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
-                                    // 安全檢查：AI 偶爾會算出超出截圖實際尺寸的離譜座標（例如把裝置真實座標
-                                    // 跟截圖像素座標搞混），與其硬套縮放公式產生一個「數學上算得出來但實際上
-                                    // 點在螢幕外」的座標，不如直接擋下來、當作這回合失敗，讓 AI 下一回合看到
-                                    // 明確的錯誤訊息重新判斷，而不是浪費一次觸控在空氣中。
+                                    // 安全檢查：AI 現在回傳的是 0.0～1.0 的相對比例座標，不是截圖像素座標了。
+                                    // 偶爾還是可能算錯（例如不小心回傳成百分比 0～100，或誤植了像素座標），
+                                    // 與其硬套換算公式產生一個「數學上算得出來但實際上點在螢幕外」的座標，
+                                    // 不如直接擋下來、當作這回合失敗，讓 AI 下一回合看到明確的錯誤訊息重新判斷。
                                     const rawXs = rawAction.type === 'swipe' ? [rawAction.x1, rawAction.x2] : [rawAction.x];
                                     const rawYs = rawAction.type === 'swipe' ? [rawAction.y1, rawAction.y2] : [rawAction.y];
-                                    const outOfBounds = rawXs.some(x => x < 0 || x > shot.width) || rawYs.some(y => y < 0 || y > shot.height);
+                                    const outOfBounds = rawXs.some(x => typeof x !== 'number' || x < 0 || x > 1) || rawYs.some(y => typeof y !== 'number' || y < 0 || y > 1);
                                     if (outOfBounds) {
-                                        throw new NovaSoftFail(`AI 回傳的座標 (${rawXs.join(',')}, ${rawYs.join(',')}) 超出這次截圖的實際尺寸 ${shot.width}x${shot.height}，可能把裝置真實座標跟截圖像素座標搞混了，已略過此動作`);
+                                        throw new NovaSoftFail(`AI 回傳的座標 (${rawXs.join(',')}, ${rawYs.join(',')}) 不在 0.0～1.0 的相對比例範圍內，可能誤用了像素座標或百分比，已略過此動作`);
                                     }
-                                    // 座標換算：AI 是根據「截圖的像素」回答座標，但截圖尺寸不一定等於裝置真實觸控解析度
-                                    // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
-                                    // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
+                                    // 座標換算：改用相對比例座標後，直接拿裝置真實解析度乘上比例即可，
+                                    // 完全不需要知道截圖被縮放成幾 px、也不用管截圖尺寸是否跟裝置真實解析度
+                                    // 成比例——這一步徹底消除了先前反覆出現的「截圖 vs 裝置解析度長寬比對不上」
+                                    // 這整類換算誤差的根源（AI 不用再心算截圖像素，程式也不用再猜換算比例）。
                                     try {
                                         const disp = await getDeviceDisplaySize(hierarchyXml);
-                                        const scaleX = disp.width / shot.width;
-                                        const scaleY = disp.height / shot.height;
 
                                         if (!firstTapCalibrationDone) {
                                             firstTapCalibrationDone = true;
-                                            // 自我校正檢查 1：截圖比例跟裝置真實比例的長寬比是否吻合。
-                                            // 正常情況 scaleX 應該約等於 scaleY（同一張圖只是整體等比縮放）；
-                                            // 如果兩者差距明顯，代表截圖可能被不等比裁切/縮放過（例如截圖裡
-                                            // 混進了額外的邊框、或跟裝置回報的解析度根本對不上同一個畫面），
-                                            // 這種情況下不管怎麼換算都會點錯，需要提早示警而不是悶著頭繼續點。
-                                            const ratioDiffPct = Math.abs(scaleX - scaleY) / scaleX * 100;
-                                            const calibLines = [
+                                            addMessage([
                                                 `📐 第一次點擊前自我校正：`,
-                                                `　• 截圖實際像素尺寸：${shot.width} x ${shot.height}`,
+                                                `　• 座標系統：AI 回傳相對比例座標（0.0～1.0），不再依賴截圖像素尺寸換算，天生不受截圖縮放/長寬比影響`,
                                                 `　• 裝置真實觸控解析度：${disp.width} x ${disp.height}（來源：${disp.source}）`,
-                                                `　• 換算比例：scaleX=×${scaleX.toFixed(4)}　scaleY=×${scaleY.toFixed(4)}（長寬比差異 ${ratioDiffPct.toFixed(2)}%）`,
-                                                `　• 這回合座標範例：截圖座標(${rawXs.join(',')}, ${rawYs.join(',')}) → 換算後真實座標約 (${Math.round(rawXs[0]*scaleX)}, ${Math.round(rawYs[0]*scaleY)})`
-                                            ];
-                                            if (ratioDiffPct > 3) {
-                                                const extra = disp.source.includes('階層')
-                                                    ? '已經改用較可信的 UI 階層 bounds 校正，差距卻依然存在，代表問題出在截圖本身（例如螢幕截圖含有額外留白/信箱化黑邊，或分割畫面/懸浮視窗導致擷取範圍跟實際觸控區域對不上），不是換算公式的問題。'
-                                                    : '這次是用 deviceInfo RPC 的數字（沒有拿到可用的 UI 階層根節點 bounds 校正），建議留意下一回合的自動校正訊息是否有改用階層 bounds、差距是否縮小。';
-                                                calibLines.push(`　⚠️ scaleX 與 scaleY 差距超過 3%，截圖跟裝置解析度的長寬比對不太起來，換算出來的座標可能不準，後續幾回合請特別留意點擊是否有命中預期位置。${extra}`);
-                                            } else {
-                                                calibLines.push(`　✅ 長寬比一致，座標換算公式可信。`);
-                                            }
-                                            addMessage(calibLines.join('\n'), 'system');
+                                                `　• 這回合座標範例：相對座標(${rawXs[0].toFixed(3)}, ${rawYs[0].toFixed(3)}) → 換算後真實座標約 (${Math.round(rawXs[0] * disp.width)}, ${Math.round(rawYs[0] * disp.height)})`
+                                            ].join('\n'), 'system');
                                         }
 
                                         action = { ...rawAction };
                                         if (rawAction.type === 'swipe') {
-                                            action.x1 = Math.round(rawAction.x1 * scaleX);
-                                            action.y1 = Math.round(rawAction.y1 * scaleY);
-                                            action.x2 = Math.round(rawAction.x2 * scaleX);
-                                            action.y2 = Math.round(rawAction.y2 * scaleY);
+                                            action.x1 = Math.round(rawAction.x1 * disp.width);
+                                            action.y1 = Math.round(rawAction.y1 * disp.height);
+                                            action.x2 = Math.round(rawAction.x2 * disp.width);
+                                            action.y2 = Math.round(rawAction.y2 * disp.height);
                                         } else {
-                                            action.x = Math.round(rawAction.x * scaleX);
-                                            action.y = Math.round(rawAction.y * scaleY);
+                                            action.x = Math.round(rawAction.x * disp.width);
+                                            action.y = Math.round(rawAction.y * disp.height);
                                         }
-                                        if (Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02) {
-                                            scaleNote = `（截圖 ${shot.width}x${shot.height} ≠ 裝置真實解析度 ${disp.width}x${disp.height}，座標已自動換算 ×${scaleX.toFixed(3)}/${scaleY.toFixed(3)}）`;
-                                        }
+                                        scaleNote = `（相對座標(${rawXs[0].toFixed(3)}, ${rawYs[0].toFixed(3)}) × 裝置真實解析度 ${disp.width}x${disp.height} 換算）`;
                                     } catch (dimErr) {
-                                        scaleNote = `（⚠️ 無法取得裝置真實解析度做座標換算：${dimErr.message}，直接使用截圖像素座標）`;
+                                        // 相對座標一定要乘上裝置真實解析度才有意義，這裡拿不到解析度的話，
+                                        // 沒有「退而求其次用截圖像素座標」這個選項了（AI 根本沒回傳像素座標）。
+                                        // 直接往外拋，讓外層的 resolveErr 分支處理成這回合軟失敗、下一回合重試。
+                                        throw new Error(`無法取得裝置真實解析度，無法將相對座標換算成觸控座標：${dimErr.message}`);
                                     }
                                 }
                             } catch (resolveErr) {
