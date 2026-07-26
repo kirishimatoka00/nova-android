@@ -1897,8 +1897,11 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.12';
+        const NOVA_APP_VERSION = '2.6.13';
         const NOVA_CHANGELOG = [
+            { v: '2.6.13', date: '2026-07-26', notes: [
+                '修正剪貼簿貼上出現「-32602 method parameters invalid」：這是 atx-agent 的 setClipboard RPC 在這台裝置上的 uiautomator-server 版本參數格式不符（甚至可能根本沒實作），屬於第三方元件本身的限制。既然 NOVA 自己就是 Capacitor App，改成直接呼叫 Capacitor 官方的 Clipboard plugin（跟本檔案別處讀取剪貼簿用的是同一個 plugin，已經驗證過能正常運作）寫入系統剪貼簿，完全不經過 atx-agent 這層，不受第三方 uiautomator-server 版本影響，只有在 Capacitor Clipboard plugin 真的不可用時才退回原本的 RPC 當備援'
+            ]},
             { v: '2.6.12', date: '2026-07-26', notes: [
                 '找到「文字打不進去」這次的真正原因，澄清一下：不是 setText/剪貼簿/AdbKeyboard 這條輸入鏈本身壞掉，是根本沒機會執行到那一步——實測截圖顯示 AI 一直卡在對 Google 首頁的搜尋框連續 tap（估計座標、不是用元件清單的 tap_element），畫面卻完全沒反應，代表那個搜尋框是網頁本身渲染的 HTML 內容（Chrome WebView/Blink），不在 UI 階層清單裡，AI 只能退回視覺估算座標去點，而這種元件常常怎麼點都點不進去（這是專案很早期就記錄過、一直沒解決的架構限制，不是這幾版新出現的迴歸）。連「點擊聚焦輸入框」這一步都沒成功，後面的 type:"text" 動作自然也不會被執行到',
                 '新增 open_url 動作類型，作為這種情況的正面繞道方案：需要在瀏覽器裡搜尋或前往某個網址時，直接組出目標網址、用 Android 原生的 VIEW intent 開啟（am start -a android.intent.action.VIEW -d "..."），完全不需要點擊/聚焦網頁裡的搜尋框，徹底避開 WebView 內元件常點不到的問題。已更新 AI 判斷提示詞：偵測到目標元件不在畫面元件清單裡、且同一個位置連續點擊 2 次都沒有讓畫面產生變化時，改用 open_url 而不是繼續重複嘗試點擊'
@@ -6904,13 +6907,29 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 「中文打不出來」這兩個一直反覆修不好的問題。
             let clipboardPasteKnownBroken = false;
             async function pasteViaClipboard(text) {
-                // setClipboard 是 uiautomator2 官方 server（atx-agent 底層的 uiautomator-server apk）
-                // 內建支援的 RPC method，會呼叫 Android 的 ClipboardManager.setPrimaryClip。
-                await rpc('setClipboard', [text]);
+                // 寫入剪貼簿有兩條路可走：
+                // 1. NOVA 自己就是 Capacitor App，可以直接呼叫 Capacitor 官方的 Clipboard plugin
+                //    （window.Capacitor.Plugins.Clipboard，跟本檔案別處讀取剪貼簿用的是同一個 plugin）
+                //    寫入系統剪貼簿，完全不經過 atx-agent 那層——這條路更可靠，因為是 NOVA 自己的原生
+                //    橋接，不受第三方 uiautomator-server apk 有沒有實作某個 RPC method 影響。
+                //    實測遇過 atx-agent 回傳「-32602 method parameters invalid」，代表這台裝置的
+                //    uiautomator-server 版本的 setClipboard 參數格式跟預期不符（甚至可能根本沒實作），
+                //    屬於外部依賴本身的限制，繞開它比繼續猜參數格式更治本。
+                // 2. 只有在 Capacitor Clipboard plugin 真的不可用時（理論上不該發生，保險起見還是留著），
+                //    才退回 atx-agent 的 setClipboard RPC 當備援。
+                const CapClipboard = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Clipboard;
+                let writeMethod;
+                if (CapClipboard && typeof CapClipboard.write === 'function') {
+                    await CapClipboard.write({ string: text });
+                    writeMethod = 'Capacitor Clipboard plugin（NOVA 原生橋接，不經過 atx-agent）';
+                } else {
+                    await rpc('setClipboard', [text]);
+                    writeMethod = 'atx-agent setClipboard RPC（備援）';
+                }
                 await new Promise(r => setTimeout(r, 250)); // 給系統一點時間真的把內容寫進剪貼簿
                 const result = await shellExec('input keyevent 279'); // KEYCODE_PASTE
                 await new Promise(r => setTimeout(r, 300));
-                return `已透過剪貼簿貼上（setClipboard 寫入 + KEYCODE_PASTE 貼上按鍵，不經過任何輸入法，中英文/emoji 皆適用）：${result || '(無輸出，代表按鍵已送達)'}`;
+                return `已透過剪貼簿貼上（寫入方式：${writeMethod}　+ KEYCODE_PASTE 貼上按鍵，不經過任何輸入法，中英文/emoji 皆適用）：${result || '(無輸出，代表按鍵已送達)'}`;
             }
 
             // 中斷按鈕不能只放在自主任務設定面板裡——使用者執行任務時通常在看主聊天畫面（截圖/執行紀錄
