@@ -1897,8 +1897,12 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.9';
+        const NOVA_APP_VERSION = '2.6.10';
         const NOVA_CHANGELOG = [
+            { v: '2.6.10', date: '2026-07-26', notes: [
+                '縮小第一次點擊自我校正時的長寬比差異：實測發現 deviceInfo RPC 回報的裝置解析度，跟截圖實際像素尺寸的長寬比可能對不起來（曾實測差 9%），代表兩者不是同一個座標空間，用它們算出來的 scaleX/scaleY 拿去點擊必然不準。UI 階層 dump 的根節點 bounds 才是「點擊真正生效」的第一手資料，因為 tap 本身就是透過同一套 accessibility API 送出的，保證跟這個座標空間一致。改成優先用當回合已經抓到的 UI 階層根節點 bounds 校正裝置解析度，deviceInfo 只在階層拿不到時當備援，校正訊息也會標示這次用的是哪個來源',
+                '如果改用階層 bounds 後長寬比差距依然超過 3%，校正訊息會明確指出問題大概率出在截圖本身（例如含有額外留白/信箱化黑邊，或分割畫面/懸浮視窗導致擷取範圍跟實際觸控區域對不上），而不是換算公式錯誤，方便下一步判斷方向'
+            ]},
             { v: '2.6.9', date: '2026-07-26', notes: [
                 '修正自主任務截圖「圖片儲存失敗」的問題：根因是 Capacitor 的 directory:\'DOCUMENTS\' 在 Android 上實際落點是公開的 /storage/emulated/0/Documents/（不是 App 私有目錄），在 scoped storage 下寫入需要額外權限，沒有就會 EACCES。但這個備援分支走到之前，檔案早就已經成功寫進 App 一定有權限的 CACHE 目錄，圖片並沒有真的遺失——現在改成寫入公開 Documents 失敗時，回報「已安全暫存於 App 快取」而不是嚇人的❌錯誤',
                 '中斷任務按鈕改成用浮動按鈕直接疊在畫面上（執行中才會出現，任務結束自動移除），不用特地切去自主任務設定面板才找得到，/ap stop 文字指令依然可用',
@@ -7083,9 +7087,35 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             // 取得裝置「真實」解析度（觸控座標系統以此為準），用來跟截圖的實際像素尺寸比對換算。
-            async function getDeviceDisplaySize() {
+            //
+            // 修正：實測發現 deviceInfo RPC 回報的 displayWidth/displayHeight，在某些機型/顯示設定下
+            // 會跟「截圖實際像素尺寸」的長寬比對不起來（曾實測出現 9% 以上的長寬比差異，代表兩者根本
+            // 不是同一個座標空間，用它們算出來的 scaleX/scaleY 拿去點擊必然不準）。UI 階層 dump 的根
+            // 節點 bounds 才是「點擊真正會生效」的第一手資料——因為 tap 本身就是透過同一套 accessibility
+            // API 送出的，保證跟這個座標空間一致；deviceInfo 走的是另一條 WindowManager API，兩者不一定
+            // 同步。所以這裡改成：如果有拿到這一回合的 UI 階層 XML，優先用它的根節點 bounds 校正
+            // width/height，deviceInfo 只在階層拿不到時當備援。
+            async function getDeviceDisplaySize(hierarchyXml) {
                 const info = await rpc('deviceInfo', []);
-                return { width: info.displayWidth, height: info.displayHeight, screenOn: info.screenOn };
+                let width = info.displayWidth, height = info.displayHeight, source = 'deviceInfo RPC';
+                if (hierarchyXml) {
+                    try {
+                        const doc = new DOMParser().parseFromString(hierarchyXml, 'text/xml');
+                        const root = doc.getElementsByTagName('node')[0];
+                        const bounds = root && root.getAttribute('bounds');
+                        const m = bounds && bounds.match(/\[(\-?\d+),(\-?\d+)\]\[(\-?\d+),(\-?\d+)\]/);
+                        if (m) {
+                            const hw = +m[3] - +m[1], hh = +m[4] - +m[2];
+                            if (hw > 100 && hh > 100) {
+                                if (Math.abs(hw - width) > 5 || Math.abs(hh - height) > 5) {
+                                    console.warn(`[NOVA] deviceInfo 解析度(${width}x${height})與 UI 階層根節點 bounds(${hw}x${hh})不一致，改用階層 bounds 作為點擊座標換算基準（這個座標空間才是點擊實際生效的空間）`);
+                                }
+                                width = hw; height = hh; source = 'UI 階層根節點 bounds（較可信）';
+                            }
+                        }
+                    } catch (_) { /* 解析不出來就沿用 deviceInfo 的數字 */ }
+                }
+                return { width, height, screenOn: info.screenOn, source };
             }
 
             // 對應 uiautomator2 的 app_current()：查詢系統目前真正的前景 App 套件名稱，
@@ -7653,8 +7683,9 @@ ${elementsText}`;
                             // 也完全不受螢幕縮放比例或「指標位置」偵錯疊層這類畫面雜訊影響。
                             let currentElements = [];
                             let elementsText = '（本回合沒有拿到有效的畫面元件清單）';
+                            let hierarchyXml = '';
                             try {
-                                const hierarchyXml = await getHierarchyDump();
+                                hierarchyXml = await getHierarchyDump();
                                 currentElements = parseHierarchyElements(hierarchyXml);
                                 elementsText = formatElementsForPrompt(currentElements);
                             } catch (hierErr) {
@@ -7732,7 +7763,7 @@ ${elementsText}`;
                                     // （atx-agent 內部可能自行縮放截圖，不受我們控制）。這裡實際量測截圖尺寸，
                                     // 再跟裝置回報的真實解析度比對，用比例換算成正確的觸控座標，不讓 AI 自己心算。
                                     try {
-                                        const disp = await getDeviceDisplaySize();
+                                        const disp = await getDeviceDisplaySize(hierarchyXml);
                                         const scaleX = disp.width / shot.width;
                                         const scaleY = disp.height / shot.height;
 
@@ -7747,12 +7778,15 @@ ${elementsText}`;
                                             const calibLines = [
                                                 `📐 第一次點擊前自我校正：`,
                                                 `　• 截圖實際像素尺寸：${shot.width} x ${shot.height}`,
-                                                `　• 裝置真實觸控解析度：${disp.width} x ${disp.height}`,
+                                                `　• 裝置真實觸控解析度：${disp.width} x ${disp.height}（來源：${disp.source}）`,
                                                 `　• 換算比例：scaleX=×${scaleX.toFixed(4)}　scaleY=×${scaleY.toFixed(4)}（長寬比差異 ${ratioDiffPct.toFixed(2)}%）`,
                                                 `　• 這回合座標範例：截圖座標(${rawXs.join(',')}, ${rawYs.join(',')}) → 換算後真實座標約 (${Math.round(rawXs[0]*scaleX)}, ${Math.round(rawYs[0]*scaleY)})`
                                             ];
                                             if (ratioDiffPct > 3) {
-                                                calibLines.push(`　⚠️ scaleX 與 scaleY 差距超過 3%，截圖跟裝置解析度的長寬比對不太起來，換算出來的座標可能不準，後續幾回合請特別留意點擊是否有命中預期位置。`);
+                                                const extra = disp.source.includes('階層')
+                                                    ? '已經改用較可信的 UI 階層 bounds 校正，差距卻依然存在，代表問題出在截圖本身（例如螢幕截圖含有額外留白/信箱化黑邊，或分割畫面/懸浮視窗導致擷取範圍跟實際觸控區域對不上），不是換算公式的問題。'
+                                                    : '這次是用 deviceInfo RPC 的數字（沒有拿到可用的 UI 階層根節點 bounds 校正），建議留意下一回合的自動校正訊息是否有改用階層 bounds、差距是否縮小。';
+                                                calibLines.push(`　⚠️ scaleX 與 scaleY 差距超過 3%，截圖跟裝置解析度的長寬比對不太起來，換算出來的座標可能不準，後續幾回合請特別留意點擊是否有命中預期位置。${extra}`);
                                             } else {
                                                 calibLines.push(`　✅ 長寬比一致，座標換算公式可信。`);
                                             }
