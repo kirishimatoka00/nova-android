@@ -1894,8 +1894,13 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.5';
+        const NOVA_APP_VERSION = '2.6.6';
         const NOVA_CHANGELOG = [
+            { v: '2.6.6', date: '2026-07-26', notes: [
+                '修正自主任務執行到一半「無反應、必須切回 NOVA 再切回才會有下一步動作」：根因是 Android WebView 在螢幕關閉或非前景狀態時會暫停 JS 計時器/fetch 回呼排程（網路請求可能早就完成，只是回呼卡在暫停的事件迴圈裡），手動切回 App 觸發的 visibilitychange 才讓卡住的回呼補跑。改為在自主任務開始時借用錄音功能已有的完整保活機制（Foreground Service + 靜音 Web Audio 振盪器 + Screen Wake Lock + 定時喚醒），任務結束後若沒有其他功能（錄音/翻譯/連續模式）還在用才釋放',
+                '修正 setText RPC 失敗但已透過 input text/AdbKeyboard 成功輸入時，訊息卻顯示成 ⚠️ 警告的觀感問題：這其實是成功案例，只是走了備援路徑，改用 ℹ️ 用語清楚說明。同時新增 session 內記憶「這台裝置的 setText RPC 不支援」，確認失敗一次後，後續回合直接跳過兩次注定失敗的 RPC 呼叫，加快每回合速度、也不再重複跳出同樣的警告',
+                '中文/CJK 文字輸入仍常常打不出來：這個問題已經反覆修過好幾輪（IME 切換時機、enable 前提、輪詢確認…）但始終沒有直接證據能確定是「廣播沒被 AdbKeyboard 收到」還是「收到了但沒真的塞進輸入框」。這次先不再猜新原因，改成送出 AdbKeyboard 廣播前後清空並讀取 logcat，把 AdbKeyboard 有沒有真的收到廣播變成看得到的證據，回傳訊息會附上相關 log 片段，下次實測失敗時可以直接判斷問題出在哪一段，而不是繼續憑感覺猜'
+            ]},
             { v: '2.6.5', date: '2026-07-25', notes: [
                 '更新 Gemini 模型選單：新增 gemini-3.5-flash、gemini-3.1-flash-lite、gemini-3-flash-preview、gemini-3.1-pro-preview、gemini-2.5-pro、gemini-2.5-flash、gemini-2.5-flash-lite（LLM 系列），以及 gemini-3.1-flash-lite-image、gemini-3.1-flash-image、gemini-3-pro-image、gemini-2.5-flash-image（圖片生成系列）',
                 '移除已下架的 Imagen 4.0 系列（imagen-4.0-generate-001、imagen-4.0-ultra-generate-001、imagen-4.0-fast-generate-001），Gemini 選單不再分「Imagen 生成」這個獨立分組，圖片生成統一改用 Gemini 原生圖片模型',
@@ -6857,6 +6862,11 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
         // ══════════════════════════════════════════════════════════════
         window.novaAutoTask = (function() {
             let running = false;
+            // 這台裝置的 setText RPC（Accessibility ACTION_SET_TEXT）已知不支援，一旦第一次確認失敗，
+            // 同一次 session 內就不用再浪費兩次網路來回去重試注定失敗的 RPC，直接走 input text/AdbKeyboard，
+            // 這樣既能加快每一回合的速度（緩解「感覺卡住」的問題），聊天室訊息也不會每次都跳出看起來
+            // 像錯誤的 ⚠️ 警告——實際上文字有成功打進去，只是走的是備援路徑而已。
+            let setTextRpcKnownBroken = false;
 
             function setStatus(text, ok) {
                 const dot = document.getElementById('autotask-status-dot');
@@ -7206,10 +7216,26 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 // 之前 monkey 指令的 log 就顯示它把每個空白分隔的片段當成獨立 arg），
                 // 引號不會被當成「字串邊界」解析掉，只會變成字面上的字元混進去，導致廣播失敗。
                 // base64 字元集本身不含空白，所以不加引號也不會被切斷，直接傳即可。
+                //
+                // 這個功能已經反覆修過好幾輪（切換 IME 的時機、enable 前提、輪詢確認…）但中文還是
+                // 常常打不出來，每次都是猜一個新原因再修，一直沒有真正的證據能確定問題出在
+                // 「廣播根本沒被 AdbKeyboard 收到」還是「收到了但沒有真的把文字塞進輸入框」。
+                // 這次改成先清空 logcat 再送廣播，之後直接讀 AdbKeyboard 自己的 log tag，
+                // 把它有沒有真的收到廣播這件事變成看得到的證據，而不是繼續憑感覺猜。
+                try { await shellExec('logcat -c'); } catch (_) { /* 清不掉就算了，不影響主流程 */ }
                 const result = await shellExec(`am broadcast -a ADB_INPUT_B64 --es msg ${b64}`);
                 await new Promise(r => setTimeout(r, 500)); // 給 AdbKeyboard 一點時間真的把文字塞進輸入框
 
-                return `${result}｜目前輸入法=${imeCheck || '未知'}${boundOk ? '' : '　⚠️ 輪詢 5 次後仍未確認切換成 AdbKeyboard，文字可能沒有真的輸入進去'}`;
+                let receiveEvidence = '（無法讀取 logcat，無法確認是否收到廣播）';
+                try {
+                    const log = await shellExec('logcat -d -t 200 -s AdbKeyboard:V ADBKeyboard:V InputMethodService:V');
+                    const logStr = String(log || '').trim();
+                    receiveEvidence = logStr
+                        ? `AdbKeyboard 相關 log（最後片段）：${logStr.slice(-300)}`
+                        : '⚠️ logcat 完全沒有 AdbKeyboard 相關紀錄，代表廣播疑似沒有被 AdbKeyboard 收到（可能是 IME 雖然「已切換」但沒有真的在監聽廣播，或這台裝置的 AdbKeyboard 版本 log tag 名稱不同）';
+                } catch (_) { /* 讀不到 log 就維持預設訊息 */ }
+
+                return `${result}｜目前輸入法=${imeCheck || '未知'}${boundOk ? '' : '　⚠️ 輪詢 5 次後仍未確認切換成 AdbKeyboard，文字可能沒有真的輸入進去'}｜${receiveEvidence}`;
             }
 
             // 執行單一動作：AI 回傳的 action 物件會呼叫對應的 uiautomator2 操作
@@ -7263,28 +7289,39 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 改成直接找畫面上「目前看得到的 EditText 類元件」（classNameMatches），
                         // 不管 Android 內部焦點旗標為何，這樣比較不受這個時間差影響。
                         const EDITTEXT_SELECTOR = { mask: 0x20, childOrSibling: [], childOrSiblingSelector: [], classNameMatches: '.*EditText.*' };
+
+                        // 直接走備援方式（input text / AdbKeyboard），並統一收斂訊息用語：
+                        // 這不是「執行失敗」，是「這台裝置改用備援輸入法，且已成功打進文字」。
+                        const runTextFallback = async (reasonPrefix) => {
+                            if (/^[\x00-\x7E]*$/.test(t)) {
+                                const escaped = t.replace(/ /g, '%s');
+                                try {
+                                    const result = await shellExec(`input text ${escaped}`);
+                                    return `ℹ️ ${reasonPrefix}，已改用 input text 指令輸入成功：${result || '(無輸出，代表指令已送達)'}`;
+                                } catch (inputErr) {
+                                    const fallbackResult = await typeViaOnscreenKeyboard(t);
+                                    return `ℹ️ ${reasonPrefix}，input text 也失敗，已改用螢幕鍵盤逐字點擊完成：${fallbackResult}`;
+                                }
+                            }
+                            const fallbackResult = await setImeText(t);
+                            return `ℹ️ ${reasonPrefix}，已改用 AdbKeyboard 廣播輸入（中文/非 ASCII 文字）：${fallbackResult}`;
+                        };
+
+                        if (setTextRpcKnownBroken) {
+                            return runTextFallback('此裝置的 setText RPC 已知不支援（本次 session 稍早已確認過，不再重複嘗試以節省時間）');
+                        }
+
                         try {
                             const res = await rpc('setText', [FOCUSED_SELECTOR, t]);
                             return `已透過 Accessibility setText 直接設定焦點欄位文字（正確的 Selector 格式，不經過任何輸入法，中英文皆適用）：${JSON.stringify(res)}`;
                         } catch (focusedErr) {
                             try {
                                 const res2 = await rpc('setText', [EDITTEXT_SELECTOR, t]);
-                                return `⚠️ focused 選擇器找不到元件（可能是回合間延遲讓焦點狀態過期），改用「畫面上的 EditText 元件」設定文字成功：${JSON.stringify(res2)}`;
+                                return `已透過「畫面上的 EditText 元件」設定文字成功（focused 選擇器過期，改用這個備援選擇器）：${JSON.stringify(res2)}`;
                             } catch (editTextErr) {
-                                // 兩種 setText 選擇器都失敗，才退回原本兩種模擬方式：
-                                // 純英數字（ASCII）用 input text；中文等非 ASCII 字元用 AdbKeyboard 廣播。
-                                if (/^[\x00-\x7E]*$/.test(t)) {
-                                    const escaped = t.replace(/ /g, '%s');
-                                    try {
-                                        const result = await shellExec(`input text ${escaped}`);
-                                        return `⚠️ setText RPC 兩種選擇器皆失敗（${editTextErr.message}），已改用 input text 指令：${result || '(無輸出，但未回報錯誤)'}`;
-                                    } catch (inputErr) {
-                                        const fallbackResult = await typeViaOnscreenKeyboard(t);
-                                        return `⚠️ setText RPC 與 input text 皆失敗，已改用螢幕鍵盤逐字點擊：${fallbackResult}`;
-                                    }
-                                }
-                                const fallbackResult = await setImeText(t);
-                                return `⚠️ setText RPC 兩種選擇器皆失敗（${editTextErr.message}），已改用 AdbKeyboard 廣播：${fallbackResult}`;
+                                // 兩種 setText 選擇器都失敗，記住這台裝置不支援，之後直接跳過這兩次注定失敗的嘗試。
+                                setTextRpcKnownBroken = true;
+                                return runTextFallback(`此裝置的 setText RPC 兩種選擇器皆不支援（${editTextErr.message}）`);
                             }
                         }
                     }
@@ -7363,6 +7400,13 @@ ${elementsText}`;
             async function run(goal) {
                 if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
                 running = true;
+                // 修正「AI 自主任務執行到一半突然無反應，必須切回 NOVA 再切回才會有下一步動作」：
+                // 這其實是 Android WebView 在螢幕關閉/App 被系統判定為非前景時，會暫停 JS 計時器與
+                // fetch 回呼的排程（網路請求本身可能早就完成，只是回呼卡在暫停的事件迴圈裡等不到執行），
+                // 使用者手動切回 App 觸發 visibilitychange → resume，才讓卡住的回呼補跑，看起來像「叫醒」了 AI。
+                // 錄音功能已經有一套完整的保活機制（Foreground Service + 靜音 Web Audio 振盪器騙過 OS 判定播放中
+                // + Screen Wake Lock + 定時喚醒），自主任務一樣需要長時間背景等待網路回應，借用同一套機制即可。
+                enableBackgroundMode();
                 const settings = appState.autoTaskSettings || { maxRounds: 10, roundTimeoutSec: 120 };
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
@@ -7648,6 +7692,14 @@ ${elementsText}`;
                     setStatus(`⏹️ 已達回合上限（${maxRounds}）`, false);
                 } finally {
                     running = false;
+                    // 只有在沒有其他功能（錄音／即時翻譯／連續模式）還需要保活機制時才關閉，
+                    // 避免自主任務結束時，順手把其他正在進行中的背景保活也一起關掉。
+                    try {
+                        const isRecordingActive = document.getElementById('recording-status')?.classList.contains('flex');
+                        if (!isRecordingActive && appState.translateMode === 'off' && !appState.isContinuous) {
+                            disableBackgroundMode();
+                        }
+                    } catch (_) { /* 保活關閉失敗不影響任務結果，忽略即可 */ }
                 }
             }
 
