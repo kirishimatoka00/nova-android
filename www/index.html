@@ -1194,7 +1194,10 @@
                                     <span id="autotask-status-dot" class="w-2 h-2 rounded-full bg-slate-600 inline-block mr-1"></span>
                                     <span id="autotask-status-text" class="text-[11px] text-slate-400">尚未執行任何自主任務</span>
                                 </div>
-                                <button onclick="window.novaAutoTask && window.novaAutoTask.testConnection && window.novaAutoTask.testConnection()" class="px-3 py-1.5 text-[10px] bg-fuchsia-900/40 hover:bg-fuchsia-800/50 text-fuchsia-300 rounded-lg font-bold border border-fuchsia-500/30">🔍 測試連線</button>
+                                <div class="flex items-center gap-2">
+                                    <button id="autotask-stop-btn" onclick="window.novaAutoTask && window.novaAutoTask.cancel && window.novaAutoTask.cancel()" class="hidden px-3 py-1.5 text-[10px] bg-red-900/40 hover:bg-red-800/50 text-red-300 rounded-lg font-bold border border-red-500/30">⏹ 中斷任務</button>
+                                    <button onclick="window.novaAutoTask && window.novaAutoTask.testConnection && window.novaAutoTask.testConnection()" class="px-3 py-1.5 text-[10px] bg-fuchsia-900/40 hover:bg-fuchsia-800/50 text-fuchsia-300 rounded-lg font-bold border border-fuchsia-500/30">🔍 測試連線</button>
+                                </div>
                             </div>
                             <p class="text-[9px] text-slate-600 pt-1">目前版本 <span id="nova-version-label"></span></p>
                         </div>
@@ -1894,8 +1897,14 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.6';
+        const NOVA_APP_VERSION = '2.6.7';
         const NOVA_CHANGELOG = [
+            { v: '2.6.7', date: '2026-07-26', notes: [
+                '自主任務執行中不再跳出「⏳ 備份訊息 X/Y...」的 toast：這是背景 WAL 自動存檔觸發的提示，任務執行時每回合會產生好幾則訊息、頻繁觸發存檔，改成偵測到自主任務執行中時自動靜音，手動按「備份」按鈕時仍會照常顯示進度',
+                '新增「先規劃再執行」：任務開始前先讓 AI 依目標本身列出一份高層次步驟大綱，並在每一回合的判斷提示詞中都附上這份大綱當作參考方向，避免每回合都只憑當下截圖做缺乏整體脈絡的反應式判斷',
+                '新增「卡關求助」：偵測到重啟 uiautomator session 後仍持續卡關（連續軟失敗），會改用帶 Google 搜尋 grounding 工具的請求，讓 AI 依知識庫或上網查詢這類情況常見的正確做法，建議會顯示在聊天室並附進後續回合的判斷提示詞，同一任務最多觸發 2 次避免拖慢進度',
+                '新增中斷任務功能：自主任務設定面板新增「⏹ 中斷任務」按鈕（執行中才會顯示），也可以直接在對話框輸入 /ap stop 中斷；會在目前這一步動作做完後盡快安全停止，不會強制砍斷正在進行中的操作'
+            ]},
             { v: '2.6.6', date: '2026-07-26', notes: [
                 '修正自主任務執行到一半「無反應、必須切回 NOVA 再切回才會有下一步動作」：根因是 Android WebView 在螢幕關閉或非前景狀態時會暫停 JS 計時器/fetch 回呼排程（網路請求可能早就完成，只是回呼卡在暫停的事件迴圈裡），手動切回 App 觸發的 visibilitychange 才讓卡住的回呼補跑。改為在自主任務開始時借用錄音功能已有的完整保活機制（Foreground Service + 靜音 Web Audio 振盪器 + Screen Wake Lock + 定時喚醒），任務結束後若沒有其他功能（錄音/翻譯/連續模式）還在用才釋放',
                 '修正 setText RPC 失敗但已透過 input text/AdbKeyboard 成功輸入時，訊息卻顯示成 ⚠️ 警告的觀感問題：這其實是成功案例，只是走了備援路徑，改用 ℹ️ 用語清楚說明。同時新增 session 內記憶「這台裝置的 setText RPC 不支援」，確認失敗一次後，後續回合直接跳過兩次注定失敗的 RPC 呼叫，加快每回合速度、也不再重複跳出同樣的警告',
@@ -3132,7 +3141,10 @@ async function encodeMp3(audioBuffer) {
                 if (typeof window._novaStreamBackup === 'function') {
                     // _novaStreamBackup 寫到 CACHE，再用原生 copy 搬到 WAL 路徑
                     // ★ 絕不用 readFile+writeFile（會把整個檔案讀進 JS 記憶體導致 OOM 閃退）
-                    await window._novaStreamBackup(CapFS, _NOVA_WAL_SNAPSHOT, fullBackupData);
+                    // 自主任務執行中時，這個背景 WAL 自動存檔不需要跳出「⏳ 備份訊息 X/Y...」的 toast，
+                    // 每回合都會觸發好幾次 addMessage、進而觸發這個自動存檔，訊息疊在一起會很干擾。
+                    const _isAutoTaskRunning = typeof window.novaAutoTask?.isRunning === 'function' && window.novaAutoTask.isRunning();
+                    await window._novaStreamBackup(CapFS, _NOVA_WAL_SNAPSHOT, fullBackupData, _isAutoTaskRunning);
                     const dirsToTry = _novaWalDir ? [_novaWalDir, _NOVA_WAL_DIR_PRIMARY, _NOVA_WAL_DIR_FALLBACK] : [_NOVA_WAL_DIR_PRIMARY, _NOVA_WAL_DIR_FALLBACK];
                     let _snapMoved = false;
                     for (const dir of [...new Set(dirsToTry)]) {
@@ -5999,8 +6011,8 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
 
         // ★ 串流備份輔助：逐塊 append 到 CACHE 檔案
         // Capacitor Filesystem.appendFile 每次只處理一小塊，記憶體中不需要完整字串
-        window._novaStreamBackup = async function(CapFS, fileName, fullBackupData) {
-            const _prog = (msg) => { if(typeof showToast==='function') showToast(msg, 6000); };
+        window._novaStreamBackup = async function(CapFS, fileName, fullBackupData, silent) {
+            const _prog = (msg) => { if (!silent && typeof showToast === 'function') showToast(msg, 6000); };
 
             // ★ 寫入緩衝區：累積到一定大小才 appendFile，
             //   減少 IPC 呼叫次數（每次呼叫都是原生橋接，過於頻繁會很慢）
@@ -6862,6 +6874,15 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
         // ══════════════════════════════════════════════════════════════
         window.novaAutoTask = (function() {
             let running = false;
+            // 使用者按下「⏹ 中斷任務」或輸入 /ap stop 時設為 true；round 迴圈會在每個檢查點看這個旗標，
+            // 看到就儘快安全收尾停止，不會硬生生砍斷正在進行中的單一動作（避免留下不確定的中間狀態）。
+            let cancelRequested = false;
+            function cancel() {
+                if (!running) { addMessage('ℹ️ 目前沒有正在執行中的自主任務。', 'system'); return; }
+                if (cancelRequested) return; // 已經按過一次，避免重複顯示訊息
+                cancelRequested = true;
+                addMessage('⏹ 已收到中斷請求，將在這一步動作完成後盡快停止（不會強制切斷正在執行中的操作）。', 'system');
+            }
             // 這台裝置的 setText RPC（Accessibility ACTION_SET_TEXT）已知不支援，一旦第一次確認失敗，
             // 同一次 session 內就不用再浪費兩次網路來回去重試注定失敗的 RPC，直接走 input text/AdbKeyboard，
             // 這樣既能加快每一回合的速度（緩解「感覺卡住」的問題），聊天室訊息也不會每次都跳出看起來
@@ -6871,8 +6892,10 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             function setStatus(text, ok) {
                 const dot = document.getElementById('autotask-status-dot');
                 const label = document.getElementById('autotask-status-text');
+                const stopBtn = document.getElementById('autotask-stop-btn');
                 if (label) label.textContent = text;
                 if (dot) dot.className = 'w-2 h-2 rounded-full inline-block mr-1 ' + (ok === true ? 'bg-emerald-400' : ok === false ? 'bg-red-500' : 'bg-amber-400');
+                if (stopBtn) stopBtn.classList.toggle('hidden', !running);
             }
 
             function baseUrl() {
@@ -7397,9 +7420,61 @@ ${elementsText}`;
                 catch (e) { throw new Error('無法解析 AI 回傳的動作 JSON：' + txt.slice(0, 200)); }
             }
 
+            // 先規劃再執行：任務開始前，先請 AI 依目標本身（還不知道目前畫面長怎樣）想一個簡短的
+            // 高層次步驟大綱，之後每一回合的判斷提示詞都會附上這份大綱，讓 AI 不會每回合都只憑當下
+            // 那張截圖做完全獨立、缺乏整體方向感的反應式判斷，而是持續對照原本的計畫走。
+            async function planTask(goal) {
+                const key = appState.keys.gemini;
+                if (!key) return ''; // 沒有 key 的話交給後面 decideNextAction 去丟出真正的錯誤，這裡先安靜跳過
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `你是手機自動化操作代理人。使用者的任務目標是：「${goal}」。在還沒看到目前手機畫面之前，先依你對常見手機/App 操作流程的知識，列出完成這個目標大概會需要哪些高層次步驟（例如：開啟哪個 App → 找到哪個功能 → 輸入什麼 → 送出），3～6 點即可，純文字條列，不要 JSON、不要 Markdown 符號、每點一行、不要長篇解釋。這份大綱只是給後續逐步操作時參考的整體方向，實際畫面若跟預期不同以實際截圖為準。` }] }],
+                            generationConfig: { temperature: 0.3 }
+                        })
+                    });
+                    if (!res.ok) return '';
+                    const data = await res.json();
+                    const txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
+                    return txt.trim();
+                } catch (_) {
+                    return ''; // 規劃失敗不影響主流程，直接跳過即可，退化成原本的逐回合反應式判斷
+                }
+            }
+
+            // 卡關求助：連續多次動作沒生效（uiautomator session 重啟過也沒改善）時，
+            // 與其讓 AI 一直用同一種思路空轉，改用帶有 Google 搜尋 grounding 工具的請求，
+            // 讓它依自身知識或直接上網查詢「這種情況通常正確的操作方式」，回傳的建議會附進
+            // 下一回合的提示詞裡，幫助跳出原本卡住的思路。
+            async function consultForHelp(goal, recentHistory) {
+                const key = appState.keys.gemini;
+                if (!key) return '';
+                try {
+                    const historyDesc = recentHistory.slice(-5).map(h => `第${h.round}回合：${JSON.stringify(h.action)} → ${h.result}`).join('\n');
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `手機自動化任務卡住了，需要你的協助。任務目標：「${goal}」。最近幾回合的嘗試紀錄如下（同樣的作法一直沒有生效）：\n${historyDesc}\n\n請依你的知識，或視需要上網查詢，判斷這種情況常見的正確做法是什麼（例如：這個操作在這類 App 裡通常要先做什麼前置動作、有沒有更常見的替代路徑、UI 是不是需要先滑動才看得到目標）。給 2～4 點具體建議，純文字條列，不要 JSON、不要長篇解釋。` }] }],
+                            tools: [{ google_search: {} }],
+                            generationConfig: { temperature: 0.4 }
+                        })
+                    });
+                    if (!res.ok) return '';
+                    const data = await res.json();
+                    const txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
+                    return txt.trim();
+                } catch (_) {
+                    return ''; // 求助失敗不影響主流程，繼續原本的重試邏輯即可
+                }
+            }
+
             async function run(goal) {
                 if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
                 running = true;
+                cancelRequested = false;
                 // 修正「AI 自主任務執行到一半突然無反應，必須切回 NOVA 再切回才會有下一步動作」：
                 // 這其實是 Android WebView 在螢幕關閉/App 被系統判定為非前景時，會暫停 JS 計時器與
                 // fetch 回呼的排程（網路請求本身可能早就完成，只是回呼卡在暫停的事件迴圈裡等不到執行），
@@ -7412,11 +7487,20 @@ ${elementsText}`;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
                 const history = [];
                 let consecutiveSoftFails = 0;
+                // 卡關求助觸發過的次數，避免同一個任務裡無限重複呼叫（每次都要額外等待網路回應）。
+                let consultCount = 0;
+                let researchNote = '';
+                let stuckStreak = 0;
                 // 畫面變化偵測狀態：記錄「上一回合截圖的雜湊」與「上一回合是否執行了預期會改變畫面的動作」，
                 // 用來判斷這一回合截圖跟上一回合幾乎一樣時，是不是上一動作根本沒生效。
                 let lastShotHash = null;
                 let lastActionExpectedChange = false;
                 let lastActionDesc = '';
+                setStatus(`規劃中...`, null);
+                const taskPlan = await planTask(goal);
+                if (taskPlan) {
+                    addMessage(`🗺️ 執行前先規劃大致步驟：\n${taskPlan}`, 'system');
+                }
                 setStatus(`執行中（0/${maxRounds} 回合）`, null);
 
                 try {
@@ -7445,6 +7529,11 @@ ${elementsText}`;
                     }
 
                     for (let round = 1; round <= maxRounds; round++) {
+                        if (cancelRequested) {
+                            addMessage(`⏹ 自主任務已由使用者中斷（在第 ${round} 回合開始前停止）。`, 'system');
+                            setStatus('⏹ 已由使用者中斷', false);
+                            return;
+                        }
                         setStatus(`執行中（${round}/${maxRounds} 回合）`, null);
                         let roundTimedOut = false;
                         const roundTimer = setTimeout(() => { roundTimedOut = true; }, roundTimeoutMs);
@@ -7529,6 +7618,14 @@ ${elementsText}`;
 
                             if (screenUnchangedNote) {
                                 elementsText = screenUnchangedNote + elementsText;
+                            }
+
+                            if (researchNote) {
+                                elementsText = `🔎【卡關求助建議】任務先前卡住過，已依知識/搜尋得到以下建議，請參考並嘗試換個方式：\n${researchNote}\n\n` + elementsText;
+                            }
+
+                            if (taskPlan) {
+                                elementsText = `【原本規劃的大致步驟，僅供參考方向，實際請以這回合截圖為準】\n${taskPlan}\n\n` + elementsText;
                             }
 
                             const rawAction = await decideNextAction(goal, history, shot.b64, elementsText, shot.width, shot.height);
@@ -7640,6 +7737,7 @@ ${elementsText}`;
                                 // 對它再套一次 ×2.967 的縮放，一路雪球式暴衝到 11868 這種完全超出螢幕的離譜座標。
                                 history.push({ round, action: rawAction, result: 'FAILED: ' + softFailMsg });
                                 consecutiveSoftFails++;
+                                stuckStreak++;
                                 // 連續 2 次以上動作沒生效，極可能是 uiautomator session 又壞掉了，
                                 // 不要傻傻再試第 3、4 次相同座標——直接重啟 session 再繼續。
                                 if (consecutiveSoftFails >= 2) {
@@ -7650,8 +7748,23 @@ ${elementsText}`;
                                         consecutiveSoftFails = 0;
                                     } catch (_) { /* 重啟失敗就繼續往下跑，不中止任務 */ }
                                 }
+                                // stuckStreak 不會因為重啟 session 而歸零：重啟只解決「session 失效」這種
+                                // 底層問題，如果重啟後還是持續卡關，代表問題大概不在這裡，換個方向求助
+                                // 比繼續空轉更有效率。同一個任務最多求助 2 次，避免無限重複呼叫拖慢進度。
+                                if (stuckStreak >= 3 && consultCount < 2) {
+                                    consultCount++;
+                                    stuckStreak = 0;
+                                    addMessage(`🔎 任務似乎卡關了，正在依知識庫/上網查詢可能的正確做法（第 ${consultCount} 次求助）...`, 'system');
+                                    const advice = await consultForHelp(goal, history);
+                                    if (advice) {
+                                        researchNote = advice;
+                                        addMessage(`💡 求助建議：\n${advice}`, 'system');
+                                    }
+                                }
                             } else {
                                 consecutiveSoftFails = 0;
+                                stuckStreak = 0;
+                                researchNote = ''; // 求助建議只給卡關那幾回合參考，一旦動作成功就不再需要，避免干擾後續判斷
                                 const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
                                     ? '(無回傳內容，但呼叫未回報錯誤)'
                                     : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
@@ -7671,6 +7784,14 @@ ${elementsText}`;
 
                             // 動作間短暫等待畫面反應
                             await new Promise(r => setTimeout(r, 800));
+
+                            // 第二個中斷檢查點：這一步動作已經完整做完，趁還沒開始下一回合的截圖+AI判斷
+                            // （可能要 30-90 秒）之前先確認一次，讓中斷指令能更快生效，不用整整多等一回合。
+                            if (cancelRequested) {
+                                addMessage(`⏹ 自主任務已由使用者中斷（第 ${round} 回合動作執行完畢後停止）。`, 'system');
+                                setStatus('⏹ 已由使用者中斷', false);
+                                return;
+                            }
                         } catch (roundErr) {
                             clearTimeout(roundTimer);
                             if (roundErr.message === '__ROUND_TIMEOUT__' || (Date.now() - roundStart) >= roundTimeoutMs) {
@@ -7703,7 +7824,7 @@ ${elementsText}`;
                 }
             }
 
-            return { run, testConnection, isRunning: () => running };
+            return { run, testConnection, isRunning: () => running, cancel };
         })();
 
 window.clearChatHistory = async function() {
@@ -14258,6 +14379,15 @@ window.startMultiAgentResearch = async function() {
 
 // ====== 新增：AI 自主任務（uiautomator2）指令攔截器 ======
             // 這是 AI 自主任務的唯一識別旗標：只有明確以 /ap 開頭才會啟動免逐步確認的自主操控迴圈。
+            if (text.toLowerCase() === "/ap stop" || text.toLowerCase() === "/ap cancel") {
+                input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                if (window.novaAutoTask && typeof window.novaAutoTask.isRunning === 'function' && window.novaAutoTask.isRunning()) {
+                    window.novaAutoTask.cancel();
+                } else {
+                    addMessage('ℹ️ 目前沒有正在執行中的自主任務。', 'system');
+                }
+                return;
+            }
             if (text.toLowerCase().startsWith("/ap ") || text.toLowerCase() === "/ap") {
                 const taskGoal = text.length > 3 ? text.substring(3).trim() : '';
                 input.value = ''; autoResizeInput(input); chatInitialInput = '';
