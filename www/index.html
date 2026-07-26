@@ -1897,8 +1897,14 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.8';
+        const NOVA_APP_VERSION = '2.6.9';
         const NOVA_CHANGELOG = [
+            { v: '2.6.9', date: '2026-07-26', notes: [
+                '修正自主任務截圖「圖片儲存失敗」的問題：根因是 Capacitor 的 directory:\'DOCUMENTS\' 在 Android 上實際落點是公開的 /storage/emulated/0/Documents/（不是 App 私有目錄），在 scoped storage 下寫入需要額外權限，沒有就會 EACCES。但這個備援分支走到之前，檔案早就已經成功寫進 App 一定有權限的 CACHE 目錄，圖片並沒有真的遺失——現在改成寫入公開 Documents 失敗時，回報「已安全暫存於 App 快取」而不是嚇人的❌錯誤',
+                '中斷任務按鈕改成用浮動按鈕直接疊在畫面上（執行中才會出現，任務結束自動移除），不用特地切去自主任務設定面板才找得到，/ap stop 文字指令依然可用',
+                '文字輸入的備援順序依需求調整為：setText RPC 兩種選擇器（累計失敗 2 次）→ 剪貼簿貼上（終極備援，不需切換輸入法、中英文皆適用）→ 兩者都失敗才退回 input text / AdbKeyboard 廣播這條最後防線',
+                '新增「第一次點擊前自我校正」：任務第一次執行 tap/long_press/swipe 前，先攤開顯示截圖尺寸、裝置真實解析度、換算比例（scaleX/scaleY）與長寬比一致性檢查，長寬比差距超過 3% 會明確示警，讓座標系統本身有沒有問題在第一次點擊前就看得到，而不是等到點擊全部落空才回頭懷疑'
+            ]},
             { v: '2.6.8', date: '2026-07-26', notes: [
                 '新增剪貼簿貼上作為文字輸入的優先方式：AI 決定好的文字先透過 uiautomator2 的 setClipboard RPC 寫進系統剪貼簿，再送出 KEYCODE_PASTE（279）貼上按鍵，完全不需要切換/確認輸入法，剪貼簿內容本身是 Unicode 字串，中文/日文/emoji 都不會有編碼問題，一次解掉「輸入法不穩」跟「中文打不出來」這兩個反覆修不好的問題',
                 '若這台裝置的 uiautomator2 server 版本較舊、不支援 setClipboard RPC，會記住這件事並在同一次 session 內不再重複嘗試，直接退回原本 setText RPC → input text/AdbKeyboard 的備援鏈，不影響任務繼續執行'
@@ -6895,6 +6901,23 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 return `已透過剪貼簿貼上（setClipboard 寫入 + KEYCODE_PASTE 貼上按鍵，不經過任何輸入法，中英文/emoji 皆適用）：${result || '(無輸出，代表按鍵已送達)'}`;
             }
 
+            // 中斷按鈕不能只放在自主任務設定面板裡——使用者執行任務時通常在看主聊天畫面（截圖/執行紀錄
+            // 一直捲動），不會特地切去設定面板找按鈕。改成用 JS 直接在畫面上疊一顆固定位置的浮動按鈕，
+            // 不管目前開著哪個畫面／面板都看得到，任務結束就移除。
+            function showFloatingStopButton() {
+                if (document.getElementById('nova-ap-float-stop')) return;
+                const btn = document.createElement('button');
+                btn.id = 'nova-ap-float-stop';
+                btn.textContent = '⏹ 中斷自主任務';
+                btn.style.cssText = 'position:fixed;bottom:96px;right:16px;z-index:99999;background:#b91c1c;color:#fff;padding:10px 16px;border-radius:9999px;font-size:13px;font-weight:bold;box-shadow:0 4px 14px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.25);';
+                btn.onclick = () => { if (window.novaAutoTask && window.novaAutoTask.cancel) window.novaAutoTask.cancel(); };
+                document.body.appendChild(btn);
+            }
+            function hideFloatingStopButton() {
+                const btn = document.getElementById('nova-ap-float-stop');
+                if (btn) btn.remove();
+            }
+
             let running = false;
             // 使用者按下「⏹ 中斷任務」或輸入 /ap stop 時設為 true；round 迴圈會在每個檢查點看這個旗標，
             // 看到就儘快安全收尾停止，不會硬生生砍斷正在進行中的單一動作（避免留下不確定的中間狀態）。
@@ -7290,7 +7313,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'tap': return `shell: input tap ${action.x} ${action.y}`;
                     case 'long_press': return `shell: input swipe ${action.x} ${action.y} ${action.x} ${action.y} 800`;
                     case 'swipe': return `shell: input swipe ${action.x1} ${action.y1} ${action.x2} ${action.y2} ${action.duration_ms || 300}`;
-                    case 'text': return `優先：剪貼簿貼上（setClipboard "${action.text || ''}" + KEYCODE_PASTE）　備援：rpc setText({focused:true}, ...) → ${/^[\x00-\x7E]*$/.test(action.text || '') ? 'input text 指令' : 'AdbKeyboard base64 廣播'}`;
+                    case 'text': return `rpc: setText({focused:true}, "${action.text || ''}")　（兩種選擇器皆失敗才退回：剪貼簿貼上 → ${/^[\x00-\x7E]*$/.test(action.text || '') ? 'input text 指令' : 'AdbKeyboard base64 廣播'}）`;
                     case 'key': return `shell: input keyevent ${action.key}`;
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
@@ -7335,8 +7358,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         // 不管 Android 內部焦點旗標為何，這樣比較不受這個時間差影響。
                         const EDITTEXT_SELECTOR = { mask: 0x20, childOrSibling: [], childOrSiblingSelector: [], classNameMatches: '.*EditText.*' };
 
-                        // 直接走備援方式（input text / AdbKeyboard），並統一收斂訊息用語：
-                        // 這不是「執行失敗」，是「這台裝置改用備援輸入法，且已成功打進文字」。
+                        // 最終備援（input text / AdbKeyboard），統一收斂訊息用語：
+                        // 這不是「執行失敗」，是「已改用最後一道備援方式，且已成功打進文字」。
                         const runTextFallback = async (reasonPrefix) => {
                             if (/^[\x00-\x7E]*$/.test(t)) {
                                 const escaped = t.replace(/ /g, '%s');
@@ -7352,21 +7375,26 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                             return `ℹ️ ${reasonPrefix}，已改用 AdbKeyboard 廣播輸入（中文/非 ASCII 文字）：${fallbackResult}`;
                         };
 
-                        if (setTextRpcKnownBroken) {
-                            return runTextFallback('此裝置的 setText RPC 已知不支援（本次 session 稍早已確認過，不再重複嘗試以節省時間）');
-                        }
-
-                        // 優先嘗試剪貼簿貼上：不需要切換輸入法、不受 IME 綁定競態條件影響，
-                        // 中英文/emoji 都是同一套流程，是目前測試過最可靠的方式，優先於 setText RPC 嘗試。
-                        if (!clipboardPasteKnownBroken) {
-                            try {
-                                return await pasteViaClipboard(t);
-                            } catch (clipErr) {
-                                // 這台裝置的 uiautomator2 server 可能沒有 setClipboard 這個 RPC method（版本較舊），
-                                // 記住這件事，同一次 session 內不再重複嘗試，直接退到原本的 setText/輸入法備援鏈。
-                                clipboardPasteKnownBroken = true;
-                                addMessage(`ℹ️ 剪貼簿貼上失敗（${clipErr.message}），這台裝置可能不支援 setClipboard，改回原本的輸入方式（本次 session 不再重試剪貼簿）`, 'system');
+                        // 剪貼簿貼上：作為「setText RPC 兩種選擇器都失敗（累計失敗 2 次）」之後的終極備援，
+                        // 排在 input text/AdbKeyboard 之前——剪貼簿內容是 Unicode 字串，中英文/emoji
+                        // 都不會有編碼問題，比繼續切換輸入法更可靠，值得在真的要退到 IME 備援之前先試一次。
+                        const tryClipboardThenFallback = async (reasonPrefix) => {
+                            if (!clipboardPasteKnownBroken) {
+                                try {
+                                    const pasteResult = await pasteViaClipboard(t);
+                                    return `ℹ️ ${reasonPrefix}，已改用剪貼簿貼上成功：${pasteResult}`;
+                                } catch (clipErr) {
+                                    // 這台裝置的 uiautomator2 server 可能沒有 setClipboard 這個 RPC method（版本較舊），
+                                    // 記住這件事，同一次 session 內不再重複嘗試，直接退到最後一道備援。
+                                    clipboardPasteKnownBroken = true;
+                                    reasonPrefix += `；剪貼簿貼上也失敗（${clipErr.message}，可能是此裝置不支援 setClipboard，本次 session 不再重試）`;
+                                }
                             }
+                            return runTextFallback(reasonPrefix);
+                        };
+
+                        if (setTextRpcKnownBroken) {
+                            return tryClipboardThenFallback('此裝置的 setText RPC 已知不支援（本次 session 稍早已確認過，不再重複嘗試以節省時間）');
                         }
 
                         try {
@@ -7377,9 +7405,10 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                                 const res2 = await rpc('setText', [EDITTEXT_SELECTOR, t]);
                                 return `已透過「畫面上的 EditText 元件」設定文字成功（focused 選擇器過期，改用這個備援選擇器）：${JSON.stringify(res2)}`;
                             } catch (editTextErr) {
-                                // 兩種 setText 選擇器都失敗，記住這台裝置不支援，之後直接跳過這兩次注定失敗的嘗試。
+                                // 兩種 setText 選擇器都失敗（累計失敗 2 次），記住這台裝置不支援，
+                                // 之後直接跳過這兩次注定失敗的嘗試，改走剪貼簿終極備援。
                                 setTextRpcKnownBroken = true;
-                                return runTextFallback(`此裝置的 setText RPC 兩種選擇器皆不支援（${editTextErr.message}）`);
+                                return tryClipboardThenFallback(`此裝置的 setText RPC 兩種選擇器皆不支援（${editTextErr.message}）`);
                             }
                         }
                     }
@@ -7517,6 +7546,7 @@ ${elementsText}`;
                 // 錄音功能已經有一套完整的保活機制（Foreground Service + 靜音 Web Audio 振盪器騙過 OS 判定播放中
                 // + Screen Wake Lock + 定時喚醒），自主任務一樣需要長時間背景等待網路回應，借用同一套機制即可。
                 enableBackgroundMode();
+                showFloatingStopButton();
                 const settings = appState.autoTaskSettings || { maxRounds: 10, roundTimeoutSec: 120 };
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
@@ -7526,6 +7556,11 @@ ${elementsText}`;
                 let consultCount = 0;
                 let researchNote = '';
                 let stuckStreak = 0;
+                // 第一次點擊前的自我校正：只在任務的第一次 tap/long_press/swipe 執行前做一次，
+                // 明確攤開「截圖比例 vs 裝置真實比例」的換算細節與合理性檢查，而不是每回合都默默算完
+                // 就直接點下去。如果算出來的東西本身就有問題（例如長寬比對不上），這裡就能先攔下來，
+                // 不用等到點擊全部落空了才回頭懷疑座標系統。
+                let firstTapCalibrationDone = false;
                 // 畫面變化偵測狀態：記錄「上一回合截圖的雜湊」與「上一回合是否執行了預期會改變畫面的動作」，
                 // 用來判斷這一回合截圖跟上一回合幾乎一樣時，是不是上一動作根本沒生效。
                 let lastShotHash = null;
@@ -7700,6 +7735,30 @@ ${elementsText}`;
                                         const disp = await getDeviceDisplaySize();
                                         const scaleX = disp.width / shot.width;
                                         const scaleY = disp.height / shot.height;
+
+                                        if (!firstTapCalibrationDone) {
+                                            firstTapCalibrationDone = true;
+                                            // 自我校正檢查 1：截圖比例跟裝置真實比例的長寬比是否吻合。
+                                            // 正常情況 scaleX 應該約等於 scaleY（同一張圖只是整體等比縮放）；
+                                            // 如果兩者差距明顯，代表截圖可能被不等比裁切/縮放過（例如截圖裡
+                                            // 混進了額外的邊框、或跟裝置回報的解析度根本對不上同一個畫面），
+                                            // 這種情況下不管怎麼換算都會點錯，需要提早示警而不是悶著頭繼續點。
+                                            const ratioDiffPct = Math.abs(scaleX - scaleY) / scaleX * 100;
+                                            const calibLines = [
+                                                `📐 第一次點擊前自我校正：`,
+                                                `　• 截圖實際像素尺寸：${shot.width} x ${shot.height}`,
+                                                `　• 裝置真實觸控解析度：${disp.width} x ${disp.height}`,
+                                                `　• 換算比例：scaleX=×${scaleX.toFixed(4)}　scaleY=×${scaleY.toFixed(4)}（長寬比差異 ${ratioDiffPct.toFixed(2)}%）`,
+                                                `　• 這回合座標範例：截圖座標(${rawXs.join(',')}, ${rawYs.join(',')}) → 換算後真實座標約 (${Math.round(rawXs[0]*scaleX)}, ${Math.round(rawYs[0]*scaleY)})`
+                                            ];
+                                            if (ratioDiffPct > 3) {
+                                                calibLines.push(`　⚠️ scaleX 與 scaleY 差距超過 3%，截圖跟裝置解析度的長寬比對不太起來，換算出來的座標可能不準，後續幾回合請特別留意點擊是否有命中預期位置。`);
+                                            } else {
+                                                calibLines.push(`　✅ 長寬比一致，座標換算公式可信。`);
+                                            }
+                                            addMessage(calibLines.join('\n'), 'system');
+                                        }
+
                                         action = { ...rawAction };
                                         if (rawAction.type === 'swipe') {
                                             action.x1 = Math.round(rawAction.x1 * scaleX);
@@ -7848,6 +7907,7 @@ ${elementsText}`;
                     setStatus(`⏹️ 已達回合上限（${maxRounds}）`, false);
                 } finally {
                     running = false;
+                    hideFloatingStopButton();
                     // 只有在沒有其他功能（錄音／即時翻譯／連續模式）還需要保活機制時才關閉，
                     // 避免自主任務結束時，順手把其他正在進行中的背景保活也一起關掉。
                     try {
@@ -10267,7 +10327,14 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                         }
 
                         if (!_saved) {
-                            // Fallback：Share 不可用或失敗 → 寫到 DOCUMENTS（app 私有）
+                            // Fallback：Share 不可用或失敗 → 寫到 DOCUMENTS。
+                            // ⚠️ 修正一個錯誤認知：Capacitor 的 directory:'DOCUMENTS' 在 Android 上實際落點是
+                            // 公開的 /storage/emulated/0/Documents/（不是 App 私有目錄），這代表在 Android
+                            // 10+ 的 scoped storage 下寫入需要額外權限，沒有的話就會出現 EACCES。
+                            // 但這個分支走到這裡之前，檔案早就已經成功寫進 CACHE（App 一定有權限，不受
+                            // scoped storage 限制），只是還沒被搬到公開目錄而已——不是真的存檔失敗，
+                            // 圖片本身沒有遺失，還是可以在對話裡看到。所以這裡失敗時不該顯示嚇人的
+                            // ❌ 錯誤，而是老實告知「已安全暫存在 App 內，公開目錄搬移失敗」。
                             try {
                                 const docResult = await CapFS.writeFile({
                                     path: `NOVA_Images/${_safeName}`,
@@ -10281,10 +10348,13 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                                 _resultDetail = `已儲存至 Documents/NOVA_Images/${_safeName}（App 私有目錄，一般檔案管理員看不到，需透過 App 內對應的匯出功能取出）`;
                                 if(typeof showToast === 'function') showToast(`✅ 已儲存至 Documents/NOVA_Images/${_safeName}（App 私有目錄）`);
                             } catch(docErr) {
-                                console.error('[NOVA] 圖片寫入 DOCUMENTS 也失敗:', docErr);
-                                _resultMethod = 'failed';
-                                _resultDetail = (_resultDetail ? _resultDetail + '；' : '') + 'DOCUMENTS 寫入也失敗: ' + docErr.message;
-                                if(typeof showToast === 'function') showToast('❌ 圖片儲存失敗：' + docErr.message);
+                                console.error('[NOVA] 圖片寫入公開 Documents 目錄失敗（權限不足），但 CACHE 副本仍在:', docErr);
+                                _resultMethod = 'cache_only';
+                                _resultDetail = (_resultDetail ? _resultDetail + '；' : '') + `無法搬到公開 Documents 目錄（權限不足：${docErr.message}），但圖片已安全暫存於 App 快取，不會遺失：${_safeName}`;
+                                // 沒有真的遺失資料，_finalUri 這時仍指向 CACHE 裡那份，回傳成功而非失敗，
+                                // 讓呼叫端（例如自主任務截圖）不會誤判成「圖片救不回來了」。
+                                _saved = !!_finalUri;
+                                if(typeof showToast === 'function') showToast(_saved ? `⚠️ 圖片已暫存於 App 快取（沒有存取公開儲存空間的權限，未遺失）：${_safeName}` : ('❌ 圖片儲存失敗：' + docErr.message));
                             }
                         } else if (_resultMethod === 'share') {
                             // Share 成功（使用者操作完成）
