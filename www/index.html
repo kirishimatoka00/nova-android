@@ -1897,8 +1897,16 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.14';
+        const NOVA_APP_VERSION = '2.6.16';
         const NOVA_CHANGELOG = [
+            { v: '2.6.16', date: '2026-07-27', notes: [
+                '修正上一版新增的「tap 前先在 say 欄位寫判斷依據」提示詞造成的迴歸：措辭裡的「先...再給出動作」被 AI 理解成「先輸出一段說明文字、再輸出 JSON」，導致回覆變成「文字＋JSON」而不是純 JSON，解析失敗直接把整個 30 回合的自主任務中止掉。已改成明確要求判斷依據必須寫在 JSON 內的 say 欄位，且整段回覆從頭到尾都必須是同一個 JSON 物件，不能有任何 JSON 外的文字',
+                'JSON 解析新增保險機制：就算 AI 這次還是不小心在 JSON 前面多加了文字，程式會先嘗試抓出文字裡第一個 { 到最後一個 } 的區間單獨解析，很多時候真正的 JSON 其實是完整正確的，只是被多餘文字包住',
+                '「無法解析 AI 回傳的動作 JSON」這類格式瑕疵，不再直接中止整個自主任務——改成當這一回合沒拿到有效動作、跳到下一回合重新判斷即可，只有連續失敗超過 3 次才代表可能是更根本的問題，這時才真的中止'
+            ]},
+            { v: '2.6.15', date: '2026-07-26', notes: [
+                '修正畫面有局部持續播放動畫/廣告輪播/跑馬燈時，AI 因為「決策時效性檢查」一直判定畫面過期而卡住不前進的問題：這個檢查原本的門檻是為了抓「整頁大改版」設計的，對局部持續變動的小區塊太敏感，每次重截圖幾乎一定會超過門檻，導致每回合都被攔下來重來，永遠走不到下一步。改成：① 這個檢查的門檻獨立拉高，不再跟「畫面完全沒變化」共用同一組嚴格門檻，局部小範圍的動畫不會誤觸發；② 加上安全閥，連續判定過期超過 2 次就不再攔截、直接放行執行，避免真的卡死在同一回合出不去'
+            ]},
             { v: '2.6.14', date: '2026-07-26', notes: [
                 '剪貼簿貼上（Capacitor Clipboard plugin）確認中文可靠後，改為文字輸入的首選方式，英文/ASCII 文字也走同一條路，不再優先嘗試兩次注定失敗的 setText RPC——setText RPC 與 input text/AdbKeyboard 廣播都改成剪貼簿真的失敗時才用的備援',
                 '重大架構調整：tap/long_press/swipe 的座標改成 AI 回傳 0.0～1.0 的相對比例（例如畫面正中央就是 x:0.5,y:0.5），不再是截圖像素座標。程式直接拿裝置真實解析度乘上比例換算，徹底不需要知道截圖被縮放成幾 px，一次消除「截圖尺寸跟裝置解析度長寬比對不上」這整類換算誤差的根源，也不受多模態模型內部可能對圖片做的縮放/切塊影響（座標系統改成跟著圖片本身走，而不是跟著某個外部宣稱的像素數字走）',
@@ -7105,6 +7113,14 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // Hamming distance 門檻：8x8=64 bits，經驗上 <=3 代表畫面幾乎沒有肉眼可辨的變化
             // （容許截圖雜訊、時間顯示等極小區域變動），大於這個值代表畫面確實有實質改變。
             const SCREEN_UNCHANGED_THRESHOLD = 3;
+            // 決策時效性檢查用的門檻刻意設得比「畫面幾乎沒變化」的門檻寬鬆很多：閃爍動畫、跑馬燈、
+            // 影片縮圖、廣告輪播這類局部持續變動的區塊，每次重截圖幾乎一定會跟前一張有差異，但那不是
+            // 「畫面整個換掉了」，只是某個小區塊一直在動而已，不該被當成「決策過期」。這個檢查真正要抓的
+            // 是「整頁內容大幅位移/切換」這種會讓座標整組作廢的情況，門檻拉高才不會被局部動畫誤觸發。
+            const STALE_DECISION_THRESHOLD = 14;
+            // 就算真的遇到一直被判定「過期」的畫面（例如整個畫面本身就是一直在變的動態內容），也不能
+            // 無限期一直跳過、卡在原地不前進——連續跳過太多次之後，改成不再攔，直接照原計畫執行這次動作，
+            // 讓任務至少能繼續往下走，總比卡死在同一回合好。
             // 哪些動作類型「理應」會讓畫面產生變化，才需要拿來做這個比對；
             // wait/key(某些按鍵可能無反應也正常)/text 等不強制檢查，避免誤判。
             const SCREEN_CHANGE_EXPECTED_TYPES = ['tap', 'tap_element', 'long_press', 'swipe'];
@@ -7515,7 +7531,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
 ⚠️ 極重要的優先順序：如果你要點的東西（按鈕、輸入框、連結、選單項目...）能在下面的「畫面元件列表」裡找到對應的 text/desc/id，一定要優先用 type:"tap_element" 並填正確的 index——這是最精準的方式，座標由系統直接算好，不會有截圖估算誤差。只有在元件列表裡真的找不到對應項目時（例如要點一張純圖片、地圖上某個位置、畫面上沒有文字標籤的圖示區域），才退而求其次用 type:"tap" 並自己從截圖估計座標。
-⚠️ 每次要 tap/tap_element/long_press 之前，先在 say 欄位簡短寫下你判斷這是正確目標的依據（例如：「畫面右上角、文字寫著『確認』的藍色按鈕，跟旁邊灰色的『取消』按鈕位置不同」），再給出動作——這個檢查能幫你自己先確認一次，避免點到視覺上相似但功能不同的按鈕（例如把「取消」點成「確認」）。
+⚠️ 每次要 tap/tap_element/long_press 之前，判斷依據要直接寫在這個動作 JSON 物件的 say 欄位裡（例如 say 寫「畫面右上角、文字寫著『確認』的藍色按鈕，跟旁邊灰色的『取消』按鈕位置不同」），幫你自己先確認一次，避免點到視覺上相似但功能不同的按鈕（例如把「取消」點成「確認」）。⚠️ 絕對不要把這個判斷依據寫成 JSON 物件「外面」的一般說明文字——你的整個回覆從第一個字到最後一個字都必須是那一個 JSON 物件本身，不能在 JSON 前面或後面加上任何其他文字，否則程式會直接解析失敗、整個動作作廢。
 ⚠️ 已知的架構限制（重要，請據此調整策略）：如果目前是在 Chrome 或其他瀏覽器裡，畫面上看起來像輸入框/按鈕的東西，卻完全沒有出現在「畫面元件列表」裡——代表那是網頁本身渲染出來的 HTML 內容（WebView/Blink 渲染），不是原生 Android UI，這種元件用視覺估計座標去 tap，經常完全沒有反應（不會報錯，但點了跟沒點一樣，畫面不會有任何變化）。這種情況下，如果目標是「搜尋某個關鍵字」或「前往某個網址」，不要一直重複嘗試用 tap 去點網頁裡的搜尋框——改用 type:"open_url"，自己組出目標網址（例如要在 Google 搜尋「台北101」就用 https://www.google.com/search?q=台北101），直接用 Android 原生的方式開啟，完全繞過網頁內搜尋框，這樣可以徹底避開這個問題，比一直嘗試點擊可靠得多。同一個網頁搜尋框如果已經連續 2 次點擊都沒有讓畫面產生任何變化（可以參考下方歷史紀錄跟畫面比對警告），請直接改用 open_url，不要再繼續嘗試點擊。
 ⚠️ 座標一律使用相對比例（0.000～1.000），不要用截圖的像素座標：type:"tap"/"long_press" 的 x/y、type:"swipe" 的 x1/y1/x2/y2，全部都是「這個點位在畫面寬度/高度的第幾分之幾」，例如畫面正中央是 x:0.5, y:0.5，畫面右上角接近 x:0.95, y:0.05。這樣寫的好處是完全不用管截圖實際被縮放成幾 px、也不用管截圖尺寸跟裝置真實解析度是否一致，你只要看著這張截圖本身的比例位置回答就好，程式會自動乘上裝置真實解析度換算成正確的觸控座標，不會再有「截圖跟裝置解析度長寬比對不上」這類換算誤差。範圍規則：0.0 ≤ x ≤ 1.0、0.0 ≤ y ≤ 1.0，超出這個範圍是明確錯誤。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實像素座標，數值範圍完全不同，不要混淆兩種座標系統）。
 ⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
@@ -7547,7 +7563,21 @@ ${elementsText}`;
                 let txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
                 txt = txt.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
                 try { return JSON.parse(txt); }
-                catch (e) { throw new Error('無法解析 AI 回傳的動作 JSON：' + txt.slice(0, 200)); }
+                catch (e) {
+                    // 保險機制：如果 AI 沒有嚴格遵守「只回傳 JSON」的規則，在 JSON 前面多加了一段
+                    // 說明文字（例如把判斷依據寫成前綴的一般文字，而不是塞進 JSON 內的 say 欄位），
+                    // 直接整段丟給 JSON.parse 會失敗。與其讓這種格式瑕疵直接讓整個任務中止，
+                    // 先試著找出文字裡第一個 { 到最後一個 } 的區間單獨解析看看，很多時候真正的
+                    // JSON 物件其實是完整、正確的，只是前面被多餘的文字包住了。
+                    const firstBrace = txt.indexOf('{');
+                    const lastBrace = txt.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace > firstBrace) {
+                        try {
+                            return JSON.parse(txt.slice(firstBrace, lastBrace + 1));
+                        } catch (e2) { /* 還是解析不出來，才真的當成錯誤往外拋 */ }
+                    }
+                    throw new Error('無法解析 AI 回傳的動作 JSON：' + txt.slice(0, 200));
+                }
             }
 
             // 先規劃再執行：任務開始前，先請 AI 依目標本身（還不知道目前畫面長怎樣）想一個簡短的
@@ -7627,6 +7657,13 @@ ${elementsText}`;
                 // 就直接點下去。如果算出來的東西本身就有問題（例如長寬比對不上），這裡就能先攔下來，
                 // 不用等到點擊全部落空了才回頭懷疑座標系統。
                 let firstTapCalibrationDone = false;
+                // 決策時效性檢查連續跳過次數：遇到畫面持續變動（例如閃爍動畫/廣告輪播）時的安全閥。
+                let staleSkipStreak = 0;
+                // AI 回傳的動作 JSON 解析失敗次數：這種格式瑕疵通常是單次的（AI 這回合剛好沒有嚴格照
+                // 格式回覆），不代表整個任務壞掉了，不應該直接中止整個 30 回合的任務——應該當成這一回合
+                // 沒有拿到有效動作，跳到下一回合重新請 AI 判斷即可。只有連續發生太多次，才代表可能是更根本
+                // 的問題（例如 API 本身持續異常），這時才真的中止。
+                let malformedResponseStreak = 0;
                 // 畫面變化偵測狀態：記錄「上一回合截圖的雜湊」與「上一回合是否執行了預期會改變畫面的動作」，
                 // 用來判斷這一回合截圖跟上一回合幾乎一樣時，是不是上一動作根本沒生效。
                 let lastShotHash = null;
@@ -7858,10 +7895,21 @@ ${elementsText}`;
                                     const freshShot = await getScreenshotBase64();
                                     const freshHash = await computeImageHash(freshShot.b64);
                                     const staleDiff = hashDiff(currentShotHash, freshHash);
-                                    if (staleDiff > SCREEN_UNCHANGED_THRESHOLD) {
-                                        addMessage(`⏸️ 偵測到畫面在 AI 判斷期間已經改變（跟決策當下的截圖差異度 ${staleDiff}/64，超過門檻），這一步的點擊座標是根據已經過期的畫面算出來的，繼續點下去大概率會點錯地方。已跳過這個動作，直接用最新畫面重新判斷下一步（不佔用額外的失敗計數）。`, 'system');
-                                        clearTimeout(roundTimer);
-                                        continue;
+                                    if (staleDiff > STALE_DECISION_THRESHOLD) {
+                                        staleSkipStreak++;
+                                        // 安全閥：連續跳過太多次，代表大概率是畫面本身持續在動（閃爍動畫、
+                                        // 廣告輪播、跑馬燈之類），不是真的每次都剛好遇到頁面大改版，繼續跳下去
+                                        // 只會卡死在同一回合不動。這種情況下改成照原計畫執行，不再攔。
+                                        if (staleSkipStreak > 2) {
+                                            addMessage(`⚠️ 已連續 ${staleSkipStreak} 次偵測到畫面變動（差異度 ${staleDiff}/64），可能是畫面上有持續播放的動畫/廣告輪播導致每次重截圖都不一樣，不是真的頁面大改版。改成不再攔截，直接照原計畫執行這次動作，讓任務繼續往下走。`, 'system');
+                                            staleSkipStreak = 0;
+                                        } else {
+                                            addMessage(`⏸️ 偵測到畫面在 AI 判斷期間已經改變（跟決策當下的截圖差異度 ${staleDiff}/64，超過門檻），這一步的點擊座標是根據已經過期的畫面算出來的，繼續點下去大概率會點錯地方。已跳過這個動作，直接用最新畫面重新判斷下一步（不佔用額外的失敗計數，連續跳過 ${staleSkipStreak}/3 次後會強制放行避免卡死）。`, 'system');
+                                            clearTimeout(roundTimer);
+                                            continue;
+                                        }
+                                    } else {
+                                        staleSkipStreak = 0;
                                     }
                                 } catch (staleCheckErr) { /* 重截圖或比對失敗不影響主流程，照原計畫繼續執行 */ }
                             }
@@ -7934,6 +7982,7 @@ ${elementsText}`;
                             } else {
                                 consecutiveSoftFails = 0;
                                 stuckStreak = 0;
+                                malformedResponseStreak = 0;
                                 researchNote = ''; // 求助建議只給卡關那幾回合參考，一旦動作成功就不再需要，避免干擾後續判斷
                                 const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
                                     ? '(無回傳內容，但呼叫未回報錯誤)'
@@ -7972,6 +8021,22 @@ ${elementsText}`;
                                 running = false;
                                 return;
                             }
+                            if (String(roundErr.message || '').includes('無法解析 AI 回傳的動作 JSON')) {
+                                // AI 這回合沒有嚴格照著「只回傳一個 JSON 物件」的格式回覆（例如在 JSON 前面
+                                // 多加了一段說明文字），這是單次的格式瑕疵，不代表 API 或任務本身壞掉了。
+                                // 直接中止整個 30 回合的任務太浪費——當成這回合沒拿到有效動作，跳到下一回合
+                                // 重新請 AI 判斷即可。只有連續失敗太多次，才代表可能是更根本的問題。
+                                malformedResponseStreak++;
+                                if (malformedResponseStreak > 3) {
+                                    addMessage(`⚠️ 連續 ${malformedResponseStreak} 回合都無法解析 AI 回傳的格式，可能是更根本的問題（不只是單次格式瑕疵），已中止自主任務：${roundErr.message}`, 'system');
+                                    setStatus('❌ 因格式錯誤連續發生中止', false);
+                                    running = false;
+                                    return;
+                                }
+                                addMessage(`⚠️ 第 ${round} 回合 AI 沒有嚴格照格式回覆，本回合動作作廢（連續 ${malformedResponseStreak}/3 次後才會真的中止），直接跳到下一回合重新判斷：${roundErr.message}`, 'system');
+                                continue;
+                            }
+                            malformedResponseStreak = 0;
                             addMessage(`⚠️ 第 ${round} 回合發生錯誤，已中止自主任務：${roundErr.message}`, 'system');
                             setStatus('❌ 因錯誤中止', false);
                             running = false;
