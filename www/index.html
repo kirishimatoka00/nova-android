@@ -1897,8 +1897,11 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.16';
+        const NOVA_APP_VERSION = '2.6.17';
         const NOVA_CHANGELOG = [
+            { v: '2.6.17', date: '2026-07-27', notes: [
+                '新增「上一次點擊參考標記」：偵測到上一回合的 tap/long_press（純視覺猜座標，非 tap_element）疑似沒生效時，改成在這回合送給 AI 判斷的截圖上，用紅色圓圈＋十字直接標出上一次實際點擊的位置，並在提示詞裡說明這是失敗的參考點，請 AI 依標記點跟真正目標的相對距離/方向去修正座標，而不是每次都從零重新目測猜。標記只用於送給 AI 判斷的那張圖，聊天室顯示、雜湊比對等都仍使用原始未標記的截圖'
+            ]},
             { v: '2.6.16', date: '2026-07-27', notes: [
                 '修正上一版新增的「tap 前先在 say 欄位寫判斷依據」提示詞造成的迴歸：措辭裡的「先...再給出動作」被 AI 理解成「先輸出一段說明文字、再輸出 JSON」，導致回覆變成「文字＋JSON」而不是純 JSON，解析失敗直接把整個 30 回合的自主任務中止掉。已改成明確要求判斷依據必須寫在 JSON 內的 say 欄位，且整段回覆從頭到尾都必須是同一個 JSON 物件，不能有任何 JSON 外的文字',
                 'JSON 解析新增保險機制：就算 AI 這次還是不小心在 JSON 前面多加了文字，程式會先嘗試抓出文字裡第一個 { 到最後一個 } 的區間單獨解析，很多時候真正的 JSON 其實是完整正確的，只是被多餘文字包住',
@@ -7104,6 +7107,40 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     img.src = 'data:image/jpeg;base64,' + b64;
                 });
             }
+
+            // 在截圖上標出「上一次點擊嘗試」的位置：與其每回合都讓 AI 從零開始純視覺猜座標，
+            // 如果已經知道上一次點的地方大概沒有生效，直接把那個點用醒目的紅色圓圈＋十字標在
+            // 這回合的截圖上，AI 可以直接看著這個參考點判斷「太高了/太左了/差一點點」，比憑空
+            // 重新估算要快、也更準——這就是人在螢幕操作失手時，下一次會怎麼修正的直覺方式。
+            async function drawMarkerOnImage(b64, relX, relY) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width; canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            const px = relX * img.width, py = relY * img.height;
+                            const r = Math.max(14, Math.round(img.width * 0.035));
+                            ctx.strokeStyle = '#ff2d55';
+                            ctx.lineWidth = Math.max(2, Math.round(img.width * 0.006));
+                            ctx.beginPath();
+                            ctx.arc(px, py, r, 0, Math.PI * 2);
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.moveTo(px - r * 1.4, py);
+                            ctx.lineTo(px + r * 1.4, py);
+                            ctx.moveTo(px, py - r * 1.4);
+                            ctx.lineTo(px, py + r * 1.4);
+                            ctx.stroke();
+                            resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+                        } catch (e) { reject(e); }
+                    };
+                    img.onerror = () => reject(new Error('標記截圖失敗：圖片解碼錯誤'));
+                    img.src = 'data:image/jpeg;base64,' + b64;
+                });
+            }
             function hashDiff(h1, h2) {
                 if (!h1 || !h2 || h1.length !== h2.length) return 64; // 無法比對就當作完全不同，不誤判
                 let diff = 0;
@@ -7534,6 +7571,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 ⚠️ 每次要 tap/tap_element/long_press 之前，判斷依據要直接寫在這個動作 JSON 物件的 say 欄位裡（例如 say 寫「畫面右上角、文字寫著『確認』的藍色按鈕，跟旁邊灰色的『取消』按鈕位置不同」），幫你自己先確認一次，避免點到視覺上相似但功能不同的按鈕（例如把「取消」點成「確認」）。⚠️ 絕對不要把這個判斷依據寫成 JSON 物件「外面」的一般說明文字——你的整個回覆從第一個字到最後一個字都必須是那一個 JSON 物件本身，不能在 JSON 前面或後面加上任何其他文字，否則程式會直接解析失敗、整個動作作廢。
 ⚠️ 已知的架構限制（重要，請據此調整策略）：如果目前是在 Chrome 或其他瀏覽器裡，畫面上看起來像輸入框/按鈕的東西，卻完全沒有出現在「畫面元件列表」裡——代表那是網頁本身渲染出來的 HTML 內容（WebView/Blink 渲染），不是原生 Android UI，這種元件用視覺估計座標去 tap，經常完全沒有反應（不會報錯，但點了跟沒點一樣，畫面不會有任何變化）。這種情況下，如果目標是「搜尋某個關鍵字」或「前往某個網址」，不要一直重複嘗試用 tap 去點網頁裡的搜尋框——改用 type:"open_url"，自己組出目標網址（例如要在 Google 搜尋「台北101」就用 https://www.google.com/search?q=台北101），直接用 Android 原生的方式開啟，完全繞過網頁內搜尋框，這樣可以徹底避開這個問題，比一直嘗試點擊可靠得多。同一個網頁搜尋框如果已經連續 2 次點擊都沒有讓畫面產生任何變化（可以參考下方歷史紀錄跟畫面比對警告），請直接改用 open_url，不要再繼續嘗試點擊。
 ⚠️ 座標一律使用相對比例（0.000～1.000），不要用截圖的像素座標：type:"tap"/"long_press" 的 x/y、type:"swipe" 的 x1/y1/x2/y2，全部都是「這個點位在畫面寬度/高度的第幾分之幾」，例如畫面正中央是 x:0.5, y:0.5，畫面右上角接近 x:0.95, y:0.05。這樣寫的好處是完全不用管截圖實際被縮放成幾 px、也不用管截圖尺寸跟裝置真實解析度是否一致，你只要看著這張截圖本身的比例位置回答就好，程式會自動乘上裝置真實解析度換算成正確的觸控座標，不會再有「截圖跟裝置解析度長寬比對不上」這類換算誤差。範圍規則：0.0 ≤ x ≤ 1.0、0.0 ≤ y ≤ 1.0，超出這個範圍是明確錯誤。這條規則只適用於 tap/long_press/swipe，不適用於 tap_element（那個直接用元件列表的 index，元件列表本身就是裝置真實像素座標，數值範圍完全不同，不要混淆兩種座標系統）。
+📍 如果這張截圖上看到紅色圓圈＋十字標記，那是「上一回合實際點擊的位置」（系統自動標的，不是畫面本身的內容），代表那個點沒有成功點到目標。請直接參考這個標記點跟你真正想點的目標之間的相對距離跟方向，據此微調這次的座標（例如標記點在目標按鈕左上方，這次就要往右下修正），會比重新從頭估算更準更快。
 ⚠️ 如果畫面最上方（狀態列附近）出現像是「P: 0/1 dX:... dY:... Prs:... Size:...」這種技術性數字疊層，那是裝置開發人員選項的除錯顯示（例如「指標位置」），不是任何 App 的真實畫面內容，會把底下真正的介面往下擠一排。請忽略這排文字本身。
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
 重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新點擊該輸入框、再重新輸入一次文字，不要直接按 Enter。
@@ -7669,6 +7707,10 @@ ${elementsText}`;
                 let lastShotHash = null;
                 let lastActionExpectedChange = false;
                 let lastActionDesc = '';
+                // 記住「上一次點擊嘗試」的相對座標：如果下一回合偵測到畫面沒反應（screenUnchangedNote），
+                // 就把這個座標當成一個視覺參考點畫在這回合的截圖上，讓 AI 能直接看到「我上次點的地方
+                // 大概在這裡、但沒有效果」，比起每次都從零開始純視覺猜座標，能更快校正到正確位置。
+                let lastTapRelPos = null;
                 setStatus(`規劃中...`, null);
                 const taskPlan = await planTask(goal);
                 if (taskPlan) {
@@ -7726,6 +7768,7 @@ ${elementsText}`;
                             // WebView 內元素點不到等），必須明確告訴 AI，不能讓它以為上一步成功了就繼續往下走。
                             let screenUnchangedNote = '';
                             let currentShotHash = null;
+                            let decisionShotB64 = shot.b64; // 預設用原圖；偵測到上次點擊疑似落空時才換成有標記的版本
                             try {
                                 currentShotHash = await computeImageHash(shot.b64);
                                 if (lastShotHash && lastActionExpectedChange) {
@@ -7733,6 +7776,16 @@ ${elementsText}`;
                                     if (diff <= SCREEN_UNCHANGED_THRESHOLD) {
                                         screenUnchangedNote = `⚠️【系統畫面比對警告】上一回合執行的動作「${lastActionDesc}」之後，這一回合的截圖跟上一回合幾乎完全相同（圖像差異度 ${diff}/64），代表這個動作極可能沒有真正生效（常見原因：座標算錯/偏移、目標其實是 WebView 內的 HTML 元素不在元件清單中、畫面根本沒反應）。請不要重複使用同樣的座標或動作，這一回合務必先重新分析截圖與元件清單，換一個方式或修正座標再嘗試。\n\n`;
                                         addMessage(`🔁 偵測到畫面與上一回合幾乎沒有變化（上一動作：${lastActionDesc}），已提醒 AI 這回合需要修正，避免重複空點。`, 'system');
+                                        // 如果上一次是純視覺猜座標的 tap/long_press（不是 tap_element），
+                                        // 直接把那個失敗的點標在這回合的截圖上給 AI 參考，而不是讓它憑空
+                                        // 從零重新猜——就像人手滑點錯之後，會盯著螢幕上「剛剛點的地方」
+                                        // 去判斷該往哪個方向修正一樣。
+                                        if (lastTapRelPos) {
+                                            try {
+                                                decisionShotB64 = await drawMarkerOnImage(shot.b64, lastTapRelPos.x, lastTapRelPos.y);
+                                                screenUnchangedNote += `🎯 這張截圖上用紅色圓圈＋十字標出的位置，就是上一回合實際點擊的座標（相對比例約 x:${lastTapRelPos.x.toFixed(3)}, y:${lastTapRelPos.y.toFixed(3)}），但沒有成功。請直接參考這個標記點跟你真正想點的目標之間的相對位置（太高/太低/太左/太右多少），據此修正這次的座標，不要重新從零估算。\n\n`;
+                                            } catch (markErr) { /* 標記失敗不影響主流程，退回用原圖 */ }
+                                        }
                                         // 同步回頭修正 history 裡上一筆紀錄，讓後續回合的歷史紀錄本身也反映事實，
                                         // 不會一直顯示「執行成功」誤導 AI。
                                         if (history.length) {
@@ -7803,7 +7856,7 @@ ${elementsText}`;
                                 elementsText = `【原本規劃的大致步驟，僅供參考方向，實際請以這回合截圖為準】\n${taskPlan}\n\n` + elementsText;
                             }
 
-                            const rawAction = await decideNextAction(goal, history, shot.b64, elementsText, shot.width, shot.height);
+                            const rawAction = await decideNextAction(goal, history, decisionShotB64, elementsText, shot.width, shot.height);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
                             let action = rawAction;
@@ -7881,6 +7934,12 @@ ${elementsText}`;
                             // 記錄這回合實際要執行的動作類型，供下一回合開頭做「畫面有沒有真的變化」比對用。
                             lastActionExpectedChange = SCREEN_CHANGE_EXPECTED_TYPES.includes(rawAction.type);
                             lastActionDesc = rawAction.say || rawAction.type;
+                            // 只有純視覺猜座標的 tap/long_press 才記錄相對座標；tap_element 是直接用元件
+                            // bounds 算出來的真實像素座標，跟「AI 目測估算」的座標系統不是同一回事，標記在
+                            // 截圖上參考的意義不大（元件不在原位置的話，标記本身也沒有校正價值）。
+                            lastTapRelPos = (rawAction.type === 'tap' || rawAction.type === 'long_press')
+                                ? { x: rawAction.x, y: rawAction.y }
+                                : null;
 
                             // 決策時效性檢查：AI 判斷這一步要點哪裡，是根據「這回合開始時」那張截圖決定的，
                             // 但從截圖到現在，中間經過了 UI 階層 dump + AI 判斷（實測常常要好幾秒到幾十秒），
