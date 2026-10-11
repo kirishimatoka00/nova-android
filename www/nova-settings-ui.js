@@ -35,7 +35,7 @@
                 if (el.querySelector('#key-doc-url')) parts.google = el; else if (el.querySelector('#key-gemini')) parts.keys = el; else if (!parts.data) parts.data = el; else parts.data.appendChild(el);
             });
         }
-        var content = { ui: tabs.ui, models: tabs.models, autotask: tabs.autotask, memory: tabs.memory, tg: tabs.tg, cal: tabs.cal, tools: tabs.tools, voice: tabs.voice, rec: tabs.rec, google: parts.google, keys: parts.keys, data: parts.data };
+        var content = { ui: tabs.ui, models: tabs.models, autotask: tabs.autotask, skills: tabs.skills, memory: tabs.memory, tg: tabs.tg, cal: tabs.cal, tools: tabs.tools, voice: tabs.voice, rec: tabs.rec, google: parts.google, keys: parts.keys, data: parts.data };
         var wrap = document.createElement('div'); wrap.className = 'ns-nav-wrap';
         var sb = document.createElement('div'); sb.className = 'ns-search';
         sb.innerHTML = '<i class="ph-bold ph-magnifying-glass"></i><input id="ns-search-input" type="text" autocomplete="off" placeholder="搜尋設定…">';
