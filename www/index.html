@@ -2238,8 +2238,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.44';
+        const NOVA_APP_VERSION = '2.6.45';
         const NOVA_CHANGELOG = [
+            { v: '2.6.45', date: '2026-10-11', notes: [
+                '修正關螢幕錄音時第二個分切點之後沒錄到：原本分切時會先關掉前景服務與麥克風再重新開啟，螢幕關閉時 Android 不允許背景重新取得麥克風；現在分切時沿用同一個麥克風串流與前景服務，只換下一段錄音檔',
+                '分切計時改為多重保險（Worker 計時＋保活輪詢＋回前景補檢查），避免螢幕關閉時 setTimeout 被暫停而延遲或錯過分切點'
+            ] },
             { v: '2.6.44', date: '2026-10-11', notes: [
                 '修正向量搜尋失敗（Cannot read properties of undefined (reading \'0\')）：桌面同步來的區塊只有文字、沒有向量，測試搜尋現在會略過並自動補算向量（顯示待補數量）',
                 '修正切到 OpenAI/Grok 並關閉網際網路搜尋後仍跑「代理連網」：搜尋開關關閉時不再自動搜尋；並補上缺少的 searchViaGas（先前會顯示 searchViaGas is not defined）',
@@ -2708,6 +2712,7 @@
                 // 3. 防被殺強制恢復輪詢：每隔 5 秒檢查並強制恢復 Context，防止瀏覽器背景優化
                 if (!keepAliveInterval) {
                     keepAliveInterval = setInterval(() => {
+                        try { if (typeof checkSplitDue === 'function') checkSplitDue(); } catch (e) {}
                         if (bgAudioCtx && bgAudioCtx.state === 'suspended') {
                             bgAudioCtx.resume();
                         }
@@ -14099,12 +14104,33 @@ try {
             const mins = appState.recSettings.autoSplitMins || 0;
             if (!mins || mins <= 0) return; // 0 = 停用
             clearTimeout(appState.splitTimerId);
-            appState.splitTimerId = setTimeout(doAutoSplit, mins * 60 * 1000);
+            appState.splitDueAt = Date.now() + mins * 60 * 1000;
+            appState.splitTimerId = setTimeout(checkSplitDue, mins * 60 * 1000);
+            // v2.6.44：螢幕關閉時 WebView 的 setTimeout 可能被暫停，另用 Worker 計時＋保活輪詢＋回前景時補檢查
+            try {
+                if (!window._novaSplitWorker) {
+                    const wb = new Blob(['setInterval(function(){postMessage(1)},2000)'], { type: 'application/javascript' });
+                    window._novaSplitWorker = new Worker(URL.createObjectURL(wb));
+                    window._novaSplitWorker.onmessage = checkSplitDue;
+                }
+            } catch (e) {}
+            if (!window._novaSplitVis) {
+                window._novaSplitVis = true;
+                document.addEventListener('visibilitychange', checkSplitDue);
+            }
+        }
+
+        function checkSplitDue() {
+            if (!appState.splitDueAt || Date.now() < appState.splitDueAt) return;
+            appState.splitDueAt = 0;
+            clearTimeout(appState.splitTimerId);
+            doAutoSplit();
         }
 
         function cancelAutoSplit() {
             clearTimeout(appState.splitTimerId);
             appState.splitTimerId = null;
+            appState.splitDueAt = 0;
         }
 
         async function doAutoSplit() {
@@ -14254,11 +14280,18 @@ try {
             try {
                 if(customContext) appState.recordingContext = customContext;
 
-                releaseMicrophone();
-
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-                appState.activeMediaTracks.push(...stream.getTracks());
-                enableBackgroundMode();
+                // v2.6.44：自動分切續接時重用仍在運作的麥克風串流，不呼叫 releaseMicrophone()
+                // （它會停掉前景服務與音軌，螢幕關閉時 Android 不允許背景重新開啟麥克風，第二段就錄不到）
+                let stream = null;
+                if (appState.isAutoSplitting && appState._recMicStream && appState._recMicStream.getAudioTracks().some(t => t.readyState === 'live')) {
+                    stream = appState._recMicStream;
+                } else {
+                    releaseMicrophone();
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                    appState.activeMediaTracks.push(...stream.getTracks());
+                    appState._recMicStream = stream;
+                    enableBackgroundMode();
+                }
 
                 mediaRecorder = new MediaRecorder(stream); audioChunks = []; appState.currentAudioTranscript = ""; 
                 
