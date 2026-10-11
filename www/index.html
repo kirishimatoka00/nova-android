@@ -1494,21 +1494,23 @@
                              <!-- Grok 子模型選擇 -->
                              <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
+                                 <option value="grok-4.7">Grok 4.7</option>
+                                 <option value="grok-4.3">Grok 4.3</option>
                                  <option value="grok-latest">Grok Latest</option>
+                                 <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
                                  <option value="grok-build-latest">Grok Build Latest</option>
-                                 <option value="grok-4-1-fast-reasoning">Grok 4.1 Fast Reasoning</option>
-                                 <option value="grok-4-1-fast-non-reasoning">Grok 4.1 Fast Non-Reasoning</option>
-                                 <option value="grok-code-fast-1">Grok Code Fast 1</option>
-                                 <option value="grok-4-fast-reasoning">Grok 4 Fast Reasoning</option>
-                                 <option value="grok-4-fast-non-reasoning">Grok 4 Fast Non-Reasoning</option>
-                                 <option value="grok-imagine-image-pro">Grok Imagine Image Pro (繪圖)</option>
+                                 <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (繪圖)</option>
                                  <option value="grok-imagine-image">Grok Imagine Image (繪圖)</option>
                              </select>
                              <!-- Gemini 子模型選擇 -->
                              <select id="gemini-sub-model-select" onchange="setGeminiModel(this.value)" class="bg-blue-900 border border-blue-500/50 text-blue-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-blue-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="gemini-multi">⚡ 智慧切換 (Auto)</option>
                                  <optgroup label="Gemini LLM">
+                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+                                     <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+                                     <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
                                      <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                                     <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
                                      <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                                      <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                                      <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
@@ -1897,8 +1899,14 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.17';
+        const NOVA_APP_VERSION = '2.6.18';
         const NOVA_CHANGELOG = [
+            { v: '2.6.18', date: '2026-10-11', notes: [
+                '模型列表第一階段更新（依 Google／xAI 官方文件 2026-10 版核對）：Gemini LLM 選單新增 gemini-3.8-flash、gemini-3.7-flash、gemini-3.6-flash、gemini-3.5-flash-lite；Gemini「智慧切換 Auto」的一般對話預設由 gemini-3-flash-preview 改為 gemini-3.8-flash（深度分析仍用 gemini-3.1-pro-preview）；LLM 404 時的備援由 gemini-2.5-flash 改為 gemini-3.6-flash（2.5 系列官方註明僅限過去有用過的帳號，新帳號可能無權限）',
+                'Grok 選單改版：新增 grok-4.7、grok-4.3、grok-build-0.1、grok-imagine-image-2.0；移除 xAI 已於 2026-05-15 退役的 grok-4-1-fast-*、grok-4-fast-*、grok-code-fast-1（這些舊名稱會被伺服器自動轉向 grok-4.3 並以其費率計費，留在選單會造成誤導）；Grok「智慧切換 Auto」預設改為 grok-4.7，繪圖預設改為 grok-imagine-image-2.0（舊 grok-imagine-image-pro 已退役並將於 2026-11-02 連同過渡的 -quality 一起結束）',
+                '備份還原時新增舊 Grok 型號別名遷移表，避免還原後下拉選單因找不到對應選項而顯示空白',
+                '刻意沒有改動的項目（需實機驗證或等桌面版對照後再處理）：① gemini-nano-banana-2.1 等新圖片模型官方文件只示範 Interactions API（/v1beta/interactions、response_format），尚未驗證能否沿用現行 generateContent + imageConfig 路徑；② 翻譯模式使用的 gemini-3.1-flash-live-preview 將於 2026-11-17 關閉，官方建議改用 gemini-3.8-live；③ Groq/OpenAI/Cohere 目前仍是寫死的單一型號（llama-3.3-70b-versatile／gpt-4o-mini／command-r-plus-08-2024），之後會比照 Gemini/Grok 做成子模型選單'
+            ]},
             { v: '2.6.17', date: '2026-07-27', notes: [
                 '新增「上一次點擊參考標記」：偵測到上一回合的 tap/long_press（純視覺猜座標，非 tap_element）疑似沒生效時，改成在這回合送給 AI 判斷的截圖上，用紅色圓圈＋十字直接標出上一次實際點擊的位置，並在提示詞裡說明這是失敗的參考點，請 AI 依標記點跟真正目標的相對距離/方向去修正座標，而不是每次都從零重新目測猜。標記只用於送給 AI 判斷的那張圖，聊天室顯示、雜湊比對等都仍使用原始未標記的截圖'
             ]},
@@ -3307,7 +3315,15 @@ async function encodeMp3(audioBuffer) {
                 if (data.ttsVoice)    { appState.ttsVoice = data.ttsVoice; localStorage.setItem('nova_tts_voice', data.ttsVoice); }
                 if (data.currentModel) appState.currentModel = data.currentModel;
                 if (data.geminiModel)  appState.geminiModel  = data.geminiModel;
-                if (data.grokModel)    appState.grokModel    = data.grokModel;
+                if (data.grokModel) {
+                    // 備份還原時，把已被 xAI 退役的舊 Grok 型號別名換成現行型號，避免下拉選單找不到對應選項而顯示空白
+                    const _novaRetiredGrok = {
+                        'grok-4-1-fast-reasoning': 'grok-4.7', 'grok-4-1-fast-non-reasoning': 'grok-4.7',
+                        'grok-4-fast-reasoning': 'grok-4.7', 'grok-4-fast-non-reasoning': 'grok-4.7',
+                        'grok-code-fast-1': 'grok-build-0.1', 'grok-imagine-image-pro': 'grok-imagine-image-2.0'
+                    };
+                    appState.grokModel = _novaRetiredGrok[data.grokModel] || data.grokModel;
+                }
                 if (data.voiceTimeout)    { appState.voiceTimeout    = data.voiceTimeout;    localStorage.setItem('nova_voice_timeout',    data.voiceTimeout); }
                 if (data.translateBTimeout) { appState.translateBTimeout = data.translateBTimeout; localStorage.setItem('nova_trans_b_timeout', data.translateBTimeout); }
                 if (data.vadMultiplier)   { appState.vadMultiplier   = data.vadMultiplier;   localStorage.setItem('nova_vad_multiplier',   data.vadMultiplier); }
@@ -10102,9 +10118,9 @@ return; }
                     // 1️⃣ Grok Image Pro
                     const grokKey = appState.keys.grok;
                     if (grokKey) {
-                        for (const grokModel of ['grok-imagine-image-pro', 'grok-imagine-image']) {
+                        for (const grokModel of ['grok-imagine-image-2.0', 'grok-imagine-image']) {
                             try {
-                                showToast(`🎨 ${slideLabel}：呼叫 ${grokModel === 'grok-imagine-image-pro' ? 'Grok Image Pro' : 'Grok Image'} 生成中…`);
+                                showToast(`🎨 ${slideLabel}：呼叫 ${grokModel === 'grok-imagine-image-2.0' ? 'Grok Image 2.0' : 'Grok Image'} 生成中…`);
                                 const r = await Promise.race([
                                     fetch(`${GROK_PROXY}?url=${encodeURIComponent(GROK_IMG_API)}`, {
                                         method: 'POST',
@@ -10119,7 +10135,7 @@ return; }
                                     if (item) {
                                         const imgData = item.b64_json ? `data:image/png;base64,${item.b64_json}` : item.url;
                                         if (imgData) {
-                                            showToast(`✅ ${slideLabel}：${grokModel === 'grok-imagine-image-pro' ? 'Grok Image Pro' : 'Grok Image'} 生成成功！`);
+                                            showToast(`✅ ${slideLabel}：${grokModel === 'grok-imagine-image-2.0' ? 'Grok Image 2.0' : 'Grok Image'} 生成成功！`);
                                             return imgData;
                                         }
                                     }
@@ -16255,7 +16271,7 @@ if (appState.pendingAnalyzeContextId) {
 
                     if (!isImageIntent && selectedModelName === 'gemini-multi') {
                         isAutoRouted = true;
-                        selectedModelName = 'gemini-3-flash-preview'; 
+                        selectedModelName = 'gemini-3.8-flash';
                         // 💡 修正：音訊檔案是以 options.files（陣列）傳入而非 options.file（單一物件），原本判斷式永遠為 false
                         //         同時加入 isAnalysis 旗標，確保深度分析時一律升級為 Pro 模型
                         const hasMediaFile = (options.files && options.files.some(f => f.category === 'media')) || (options.file && options.file.category === 'media');
@@ -16437,7 +16453,7 @@ if (appState.pendingAnalyzeContextId) {
                         !isGeminiImageModel &&
                         (selectedModelName.includes('preview') || selectedModelName.includes('3.'))) {
                         console.warn(`[Auto-Fallback] Model ${selectedModelName} not found, retrying with 2.5 series.`);
-                        let fallbackModel = 'gemini-2.5-flash';
+                        let fallbackModel = 'gemini-3.6-flash';
                         if (selectedModelName.includes('pro')) fallbackModel = 'gemini-2.5-pro';
                         selectedModelName = fallbackModel;
                         apiVersion = 'v1beta';
@@ -16673,7 +16689,7 @@ if (appState.pendingAnalyzeContextId) {
                         console.warn(`[Grok Backup] Gemini image model returned no image, falling back to Grok...`);
                         const grokKey = appState.keys.grok;
                         const myProxy = 'https://grokcaller.kirishimatoka00.workers.dev/';
-                        const grokImageModel = 'grok-imagine-image-pro';
+                        const grokImageModel = 'grok-imagine-image-2.0';
                         const grokApiUrl = 'https://api.x.ai/v1/images/generations';
                         const _grokBkSz = window._getGrokImageSize(
                             typeof _imgResolution !== 'undefined' ? _imgResolution : 'default',
@@ -16752,10 +16768,10 @@ if (appState.pendingAnalyzeContextId) {
                     let isGrokAutoRouted = false;
 
                     if (isImageIntent && !mName.includes('imagine')) {
-                        mName = 'grok-imagine-image-pro';
+                        mName = 'grok-imagine-image-2.0';
                         isGrokAutoRouted = true;
                     } else if (mName === 'grok-multi') {
-                        mName = 'grok-4-1-fast-reasoning';
+                        mName = 'grok-4.7';
                         isGrokAutoRouted = true;
                     }
 
@@ -17676,7 +17692,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                                     // 1️⃣ Grok Image Pro → Grok Image（透過 proxy）
                                     const grokKey = appState.keys.grok;
                                     if (!imgDataUrl && grokKey) {
-                                        for (const grokModel of ['grok-imagine-image-pro', 'grok-imagine-image']) {
+                                        for (const grokModel of ['grok-imagine-image-2.0', 'grok-imagine-image']) {
                                             try {
                                                 const r = await Promise.race([
                                                     fetch(`${GROK_PROXY}?url=${encodeURIComponent(GROK_IMG_API)}`, {
