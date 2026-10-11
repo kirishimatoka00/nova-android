@@ -486,7 +486,8 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script>
+    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -2031,8 +2032,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.35';
+        const NOVA_APP_VERSION = '2.6.36';
         const NOVA_CHANGELOG = [
+            { v: '2.6.36', date: '2026-10-11', notes: [
+                '語音新增桌面版的 Gemini 語音（gemini-3.8-flash-lite-tts，備援 gemini-3.8-flash-tts）：設定→語音聲音清單多了 30 個 Gemini 聲音；選「自動」時優先 Gemini，失敗自動退回 Polly／系統語音並冷卻後再試。',
+                '朗讀分段合成、最多領先播放 2 段；同一則訊息播放中再按喇叭會真的停止；關閉 LIVE／即時口譯時 Polly／Gemini 佇列一併停止；「語音速度」套用在 Gemini 語音。',
+                '明確選擇系統語音時不再被 AWS 金鑰強制改成 Polly（與桌面版 v3.31.61 相同）。',
+            ] },
             { v: '2.6.35', date: '2026-10-11', notes: [
                 '輸入區改成桌面版手機遠端的單一圓角卡片：輸入框無邊框、第二排「＋／聯網／知識庫／多專家」與右側麥克風、第三排模型下拉（無框、淡色）；新增「多專家」快捷鈕。',
                 '設定頁在手機上左右邊距縮小、頂端多餘空白拿掉，內容更寬（對照網頁版）。',
@@ -10493,7 +10499,9 @@ ${dateRtf}\\par
             if(!select) return;
 
             // Polly 選項一定顯示（不依賴 speechSynthesis）
-            let html = `<option value="">(系統智慧自動選擇)</option>
+            const geminiOpts = (typeof NOVA_GEMINI_TTS_VOICES !== 'undefined' ? NOVA_GEMINI_TTS_VOICES : []).map(function (v) { return `<option value="gemini:${v[0]}">${v[0]}（${v[1]}）</option>`; }).join('');
+            let html = `<option value="">(自動：優先 Gemini 語音，失敗時用瀏覽器語音)</option>
+                <optgroup label="Gemini 語音 (gemini-3.8-flash-lite-tts，使用你的 Gemini 金鑰)">${geminiOpts}</optgroup>
                 <optgroup label="Amazon Polly 高音質人聲 (需填寫 AWS 金鑰)">
                     <option value="Zhiyu">Zhiyu (Neural - 最自然女聲)</option>
                     <option value="Mia">Mia (Standard - 台灣風格女聲)</option>
@@ -10604,6 +10612,7 @@ ${dateRtf}\\par
 
         function processPollyQueue() {
             if (pollyAudioQueue.length === 0) {
+                if (typeof _novaTtsProducing !== 'undefined' && _novaTtsProducing) { isPollyPlayingQueue = false; return; }   // v2.6.36：Gemini 合成端還在產生下一段
                 isPollyPlayingQueue = false;
                 appState.isTTSPlaying = false;
                 appState.playingMsgId = null;
@@ -10620,7 +10629,7 @@ ${dateRtf}\\par
             renderMessages();
             let nextAudioUrl = pollyAudioQueue.shift();
             currentPollyAudio.src = nextAudioUrl;
-            
+            try { const _r = _novaTtsQueueKind === 'gemini' ? (parseFloat(appState.ttsRate) || 1) : 1; currentPollyAudio.defaultPlaybackRate = _r; currentPollyAudio.playbackRate = _r; } catch (e) {}
             // 播放結束或出錯時，自動呼叫自己遞迴播下一段 (Sequential 播放)
             currentPollyAudio.onended = () => processPollyQueue();
             currentPollyAudio.onerror = (e) => { console.error("Polly 播放錯誤", e); processPollyQueue(); };
@@ -10634,7 +10643,7 @@ ${dateRtf}\\par
     }
 
     if (appState.isTTSPlaying && appState.playingMsgId === String(id)) {
-        // ... 現有停止邏輯 ...
+        _novaStopAllTTS();   // v2.6.36：真的停止
         // 新增：若在即時口譯模式，停止後重啟收音
         if (appState.translateMode === 'auto') {
             setTimeout(() => startTranslateBAutoRecord(), 1000);
@@ -10698,23 +10707,36 @@ return; }
             appState.playingMsgId = msgId;
             queueContinueLoopCb = continueLoop;
 
-            let cleanText = text;
+            const _ttsTok = ++_novaTtsSeq;   // ★ v3.31.61：這次朗讀的編號；合成請求回來時比對，已被停止或被新的朗讀取代就丟棄
+            _novaTtsProducing = false;
+            _novaTtsQueueKind = 'polly';
+
+            let cleanText = _novaTtsStripSystemNotes(text);   // ★ v3.31.62：先拿掉系統附加的說明，只唸主體（要在抽「翻譯：」之前，否則說明會被當成翻譯內容）
             const transMatch = cleanText.match(/(?:\*\*翻譯(?:結果)?[:：]\*\*|\*\*【翻譯】\*\*|翻譯(?:結果)?[:：])([\s\S]+)/);
             if (transMatch && transMatch[1]) {
                 cleanText = transMatch[1].trim();
             } else {
                 try {
-                    let jsonMatch = cleanText.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        let parsed = JSON.parse(jsonMatch[0]);
+                    let parsed = _novaExtractFirstJsonObject(cleanText, _novaIsTranslationJson);   // ★ v3.31.57
+                    if (parsed) {
                         if (parsed.translated) cleanText = parsed.translated.toLowerCase() !== "nospeech" ? parsed.translated : "";
                     }
                 } catch(e) {}
             }
             cleanText = cleanText.replace(/[*_#`\[\]]/g, '').replace(/(https?:\/\/[^\s]+)/g, "網址連結");
-            cleanText = cleanText.replace(/\(?系統提示：[^\)]+\)?/g, '').trim();
+            cleanText = cleanText.trim();   // ★ v3.31.62：原本這裡是 /\(?系統提示：[^\)]+\)?/——只認一種說明、括號只認半形、而且貪婪（會連後面的正文一起刪），已由 _novaTtsStripSystemNotes 取代
             cleanText = cleanText.replace(/✨ 圖片生成成功！已為您附在下方。/g, '為您生成圖片如下');
             cleanText = cleanText.replace(/【研究員.*?】\n/g, '').replace(/【審查員.*?】\n/g, '');
+
+            // ★ v3.31.62：清理完已經沒有主體可唸（整則只剩系統說明、或翻譯是 nospeech）：直接收尾，不要把空字串丟給 Polly／瀏覽器語音
+            if (!cleanText) {
+                appState.isTTSPlaying = false;
+                appState.playingMsgId = null;
+                queueContinueLoopCb = null;
+                renderMessages();
+                continueLoop();
+                return;
+            }
 
             let lang = 'en-US';
             let testChunk = cleanText.substring(0, 150);
@@ -10728,11 +10750,71 @@ return; }
             const sk = appState.keys.aws_sk;
             const reg = appState.keys.aws_region || 'ap-northeast-1';
             // ★ 修正：Android 上若 key 已設定但未選聲音，自動預設 Zhiyu，不要求一定要手動選
-            const effectiveVoice = pollyVoices.includes(selectedVoice)
-                ? selectedVoice
-                : (ak && sk ? 'Zhiyu' : selectedVoice);
+            const effectiveVoice = pollyVoices.includes(selectedVoice) ? selectedVoice : 'Zhiyu';
+            // ★ v3.31.61：先決定這次用哪一套（規則見 _novaTtsPickProvider）。原本「有 AWS 金鑰就一律改用 Polly，連明確選了瀏覽器語音也一樣」是舊 bug
+            if (force && String(selectedVoice || '').indexOf('gemini:') === 0 && !_novaTtsGeminiKey()) { try { showToast('💡 Gemini 語音需要先在設定填入 Gemini API Key，這次先用瀏覽器語音。'); } catch (e) {} }
+            const _provider = _novaTtsPickProvider(selectedVoice, { hasAws: !!(ak && sk), geminiReady: _novaTtsGeminiReady(), hasSpeech: hasSpeechSynthesis });
 
-            if (ak && sk && pollyVoices.includes(effectiveVoice)) {
+            if (_provider === 'gemini') {
+                // ── ★ v3.31.61：Gemini 語音路徑（gemini-3.8-flash-lite-tts）──
+                const _gVoice = _novaTtsVoiceName(selectedVoice);
+                const _gChunks = _novaTtsChunks(_novaTtsSanitize(cleanText));
+                _novaTtsQueueKind = 'gemini';
+                if (_gChunks.length === 0) {   // 清理後沒有可唸的內容（例如整段只剩標籤）
+                    appState.isTTSPlaying = false;
+                    appState.playingMsgId = null;
+                    queueContinueLoopCb = null;
+                    renderMessages();
+                    continueLoop();
+                    return;
+                }
+                _novaTtsProducing = true;
+                appState.isTTSPlaying = true;
+                renderMessages();
+                (async () => {
+                    const alive = () => _ttsTok === _novaTtsSeq;   // 被停止或被新的朗讀取代後，舊的合成流程要靜默退出，不能碰共用狀態
+                    let idx = 0, failedAt = -1;
+                    try {
+                        for (; idx < _gChunks.length; idx++) {
+                            // 節流：最多領先播放 2 段（長回覆不會一口氣打一堆請求，使用者中途停止也不會白白合成後面的）
+                            while (alive() && pollyAudioQueue.length >= 2) await new Promise(r => setTimeout(r, NOVA_TTS_THROTTLE_MS));
+                            if (!alive()) return;
+                            let url;
+                            try {
+                                url = await _novaGeminiTtsSynth(_gChunks[idx], _gVoice);
+                            } catch (e) {
+                                if (!alive()) return;
+                                failedAt = idx;
+                                _novaTtsNoteFailure(e);
+                                break;
+                            }
+                            if (!alive()) return;
+                            pollyAudioQueue.push(url);
+                            if (!isPollyPlayingQueue) processPollyQueue();
+                        }
+                    } catch (e) {
+                        console.error('[NOVA][TTS] Gemini 朗讀流程發生非預期錯誤：', e);
+                        if (!alive()) return;
+                        failedAt = Math.min(idx, _gChunks.length - 1);
+                    }
+                    if (!alive()) return;
+                    _novaTtsProducing = false;
+                    if (failedAt >= 0) {
+                        // 從失敗的那一段開始，改用瀏覽器語音把剩下的念完；已經排進佇列的 Gemini 語音要先播完，不能兩個聲音疊在一起
+                        const rest = _gChunks.slice(failedAt).join(' ');
+                        const speakRest = () => {
+                            appState.playingMsgId = msgId;
+                            appState.isTTSPlaying = true;
+                            fallbackNativeTTS(rest, lang, continueLoop);
+                        };
+                        if (!isPollyPlayingQueue && pollyAudioQueue.length === 0) { queueContinueLoopCb = null; speakRest(); }
+                        else queueContinueLoopCb = speakRest;   // 佇列播完時 processPollyQueue 會呼叫它
+                    } else if (!isPollyPlayingQueue && pollyAudioQueue.length === 0) {
+                        processPollyQueue();   // 最後一段剛好已經播完：收尾（並呼叫 continueLoop，例如口譯模式重新開麥克風）
+                    }
+                })();
+            } else if (_provider === 'polly') {
+
                 // ── ★ Polly 路徑：不依賴 speechSynthesis，Android / 瀏覽器都可用 ──
                 AWS.config.update({ accessKeyId: ak, secretAccessKey: sk, region: reg });
                 // ✅ 改用 pollyFetchDirect()，繞過 Capacitor XHR 攔截，確保 binary 正確接收
@@ -10741,10 +10823,11 @@ return; }
                 renderMessages();
                 const fetchAndQueue = async () => {
                     for (let chunk of chunks) {
-                        if (!appState.isTTSPlaying || appState.playingMsgId !== msgId) break;
+                        if (_ttsTok !== _novaTtsSeq || !appState.isTTSPlaying || appState.playingMsgId !== msgId) break;   // ★ v3.31.61：也檢查編號，避免舊訊息的合成迴圈把語音推進新訊息的佇列
                         const engineType = effectiveVoice === 'Mia' ? 'standard' : 'neural';
                         try {
                             const audioResult = await pollyFetchDirect(chunk, effectiveVoice, engineType, ak, sk, reg);
+                            if (_ttsTok !== _novaTtsSeq) return;   // ★ v3.31.61：等待期間已被停止或被新的朗讀取代，這段語音丟棄
                             const hasData = audioResult && (audioResult.isBase64 ? audioResult.data && audioResult.data.length > 100 : audioResult.data && audioResult.data.byteLength > 0);
                             if (hasData) {
                                 // ✅ 用 base64 data URL，Capacitor WebView 能正常播放
@@ -10763,15 +10846,15 @@ return; }
                     }
                 };
                 fetchAndQueue();
-            } else if (hasSpeechSynthesis) {
+            } else if (_provider === 'native') {
                 // ── 原生 TTS 路徑（有 speechSynthesis 但沒有 Polly 設定）──
                 fallbackNativeTTS(cleanText, lang, continueLoop);
             } else if (force) {
                 // ── 真的沒有任何 TTS 可用：Polly 未設定且 speechSynthesis 不存在 ──
                 const isAndroid = window.Capacitor && window.Capacitor.getPlatform() === 'android';
                 showToast(isAndroid
-                    ? '💡 請在設定 → 語音/翻譯中填入 AWS Polly API Key 並選擇聲音（Zhiyu / Mia）'
-                    : '❌ 請設定 AWS Polly API Key 或使用支援語音合成的瀏覽器');
+                    ? '💡 請在設定填入 Gemini API Key（推薦），或 AWS Polly API Key 並選擇聲音（Zhiyu / Mia）'
+                    : '❌ 請在設定填入 Gemini API Key（推薦）或 AWS Polly API Key，或使用支援語音合成的瀏覽器');
                 appState.isTTSPlaying = false;
                 appState.playingMsgId = null;
                 if (typeof continueLoop === 'function') continueLoop();
@@ -12919,9 +13002,7 @@ function closePlusMenuOnOutsideClick(e) {
                 
                 appState.voiceTimeout = parseInt(localStorage.getItem('nova_voice_timeout')) || 5;
                 addMessage("📸 LIVE 影像模式已關閉。", 'system');
-                if (window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') {
-                    window.speechSynthesis.cancel();
-                }
+                try { _novaStopAllTTS(); } catch(e) { if (window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') window.speechSynthesis.cancel(); }
             }
         }
 
@@ -12944,7 +13025,7 @@ document.getElementById('translate-settings').classList.add('hidden');
                 appState.voiceTimeout = parseInt(localStorage.getItem('nova_voice_timeout')) || 5;
                 stopTranslateBAndSend(true); // Force stop & discard chunk
                 // ★ 修正：安全呼叫，且用 try-finally 確保輸入框一定被解鎖
-                try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e) {}
+                try { _novaStopAllTTS(); } catch(e) { try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e2) {} }
                 addMessage("🌐 全自動即時口譯已關閉，麥克風已完全釋放。", 'system');
                 
                 // 💡 修正 1-1：關閉口譯時，確保輸入框恢復正常可用狀態（放在 try-finally 外確保必定執行）
