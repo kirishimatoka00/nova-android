@@ -1,9 +1,24 @@
 <!DOCTYPE html>
+<!--
+  ═══ presentation_generator v38（Android；2026-10-11）═══
+  對齊桌面版 presentation_generator v47（模型清單與 OpenAI 接入）。本輪只做模型相關，其餘功能（v38–v46 桌面版新增項目）尚未移植：
+  1. 模型清單：首選文字模型／配圖／背景圖 LLM／排版 LLM／審查模型全部改為與主程式 index.html v2.6.19 一致。Gemini 移除 gemini-3.5-flash
+     （官方自動轉址至 3.6），新增 3.8 Flash／3.6 Flash／3.5 Flash-Lite；圖像模型移除 gemini-3.1-flash-image、新增 Gemini Nano Banana 2.1；
+     Grok 新增 4.7／4.6／4.5／4.20 系列。xAI 已於 2026-05-15 退役的 grok-4-1-fast-*／grok-4-fast-*／grok-imagine-image-pro 不再出現在選單，
+     寫死的預設值與降級佇列改用 grok-4.3／grok-imagine-image-2.0（舊設定存的值在送出前自動轉換）。
+  2. 新增 OpenAI 文字模型（GPT-6 Luna、GPT-6.1 Sol、GPT-4o mini）：isGptModel()／callOpenAIText()（只送 model＋messages）；
+     金鑰沿用主程式共用的 localStorage nova_key_openai（或 window.appState.keys.openai）。已接入：大綱引擎、HTML 生成、排版 LLM、
+     callTextLLM、審查（gpt-6-luna／6.1-sol 支援看圖，以 image_url 送出）、startGeneration 金鑰檢查。
+  3. Gemini 3.8 系列：官方要求移除 temperature／topP／topK，本頁在 fetch 層統一處理（僅對 generativelanguage 且 gemini-3.8* 的 JSON 請求）。
+  4. getGeminiApiVersion／生圖版本判斷認得 nano-banana（v1alpha）。
+  未驗證：所有新型號與 OpenAI 請求皆未用真實 API 實測；若 HTTP 404／模型不存在，請改選單 option 的 value。
+  尚未移植：桌面版「啟用的模型」過濾（nova_disabled_models）。
+-->
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI HTML 簡報生成器 v37 · NOVA 120 Pro</title>
+    <title>AI HTML 簡報生成器 v38 · NOVA 120 Pro</title>
 
     <!-- Tailwind：CDN 為主（有網路），vendor/tailwind.css 為離線備援 -->
     <link rel="stylesheet" href="./vendor/tailwind.css">
@@ -236,20 +251,31 @@
                         <label class="block text-slate-400 mb-1.5 font-semibold">首選文字模型 (LLM)</label>
                         <select id="sel-text-model" onchange="updateHeaderBadge()" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
                             <optgroup label="── Gemini 系列 ──">
-                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (最新)</option>
-                                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview (最新旗艦)</option>
-                                <option value="gemini-3-flash-preview">Gemini 3 Flash Preview (最新快速)</option>
+                                <option value="gemini-3.8-flash">Gemini 3.8 Flash (最新旗艦)</option>
+                                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
+                                <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                                 <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                                 <option value="gemini-2.5-pro" selected>Gemini 2.5 Pro (深度邏輯推薦)</option>
                                 <option value="gemini-2.5-flash">Gemini 2.5 Flash (快速均衡)</option>
                                 <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
                             </optgroup>
-                            <optgroup label="── Grok 系列 ──">
+                            <optgroup label="── Grok 文字模型 ──">
+                                <option value="grok-4.7">Grok 4.7 ⚡</option>
+                                <option value="grok-4.6">Grok 4.6</option>
+                                <option value="grok-4.5">Grok 4.5</option>
+                                <option value="grok-4.3">Grok 4.3</option>
                                 <option value="grok-latest">Grok Latest</option>
                                 <option value="grok-build-latest">Grok Build Latest</option>
-                                <option value="grok-4-1-fast-reasoning">Grok 4.1 Fast Reasoning ⚡</option>
-                                <option value="grok-4-1-fast-non-reasoning">Grok 4.1 Fast Non-Reasoning</option>
-                                <option value="grok-4-fast-reasoning">Grok 4 Fast Reasoning</option>
+                                <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
+                                <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
+                                <option value="grok-4.20-0309-non-reasoning">Grok 4.20 (0309) Non-Reasoning</option>
+                            </optgroup>
+                            <optgroup label="── OpenAI 文字模型 ──">
+                                <option value="gpt-6-luna">GPT-6 Luna</option>
+                                <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+                                <option value="gpt-4o-mini">GPT-4o mini</option>
                             </optgroup>
                         </select>
                     </div>
@@ -258,12 +284,12 @@
                     <div>
                         <label class="block text-slate-400 mb-1.5 font-semibold">首選配圖模型 (Image)</label>
                         <select id="sel-img-model" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
-                            <option value="grok-imagine-image-pro">Grok Imagine Image Pro (推薦)</option>
+                            <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (推薦)</option>
                             <option value="grok-imagine-image">Grok Imagine Image</option>
+                            <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1</option>
+                            <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite Image</option>
                             <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
-                            <option value="gemini-3.1-flash-image">Gemini 3.1 Flash-Image</option>
-                            <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite-Image</option>
-                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image</option>
+                            <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
                         </select>
                         <p class="text-slate-600 mt-1">若失敗會自動依序降級調用其他模型</p>
                     </div>
@@ -272,11 +298,11 @@
                     <div>
                         <label class="block text-slate-400 mb-1.5 font-semibold">背景圖 LLM</label>
                         <select id="sel-bg-gen-model" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
-                            <option value="grok-imagine-image-pro">Grok Imagine Image Pro</option>
+                            <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (推薦)</option>
                             <option value="grok-imagine-image">Grok Imagine Image</option>
+                            <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1</option>
+                            <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite Image</option>
                             <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
-                            <option value="gemini-3.1-flash-image">Gemini 3.1 Flash-Image</option>
-                            <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite-Image</option>
                             <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
                         </select>
                     </div>
@@ -288,8 +314,11 @@
                             <option value="gemini-2.5-pro">Gemini 2.5 Pro（最佳排版）</option>
                             <option value="gemini-2.5-flash">Gemini 2.5 Flash（快速）</option>
                             <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（極速）</option>
+                            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                             <option value="grok-latest">Grok Latest</option>
-                            <option value="grok-4-1-fast-reasoning">Grok 4.1 Fast</option>
+                            <option value="grok-4.7">Grok 4.7</option>
+                            <option value="gpt-6-luna">GPT-6 Luna</option>
+                            <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
                         </select>
                         <p class="text-[9px] text-slate-600 mt-1 leading-relaxed">文字模型→大綱內容；背景圖 LLM→視覺背景；排版 LLM→文字合成輸出</p>
                     </div>
@@ -493,10 +522,12 @@
                             <div>
                                 <label class="block text-slate-500 mb-1 text-[11px]">審查模型（Reviewer）</label>
                                 <select id="sel-review-model" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 text-[11px] focus:border-violet-500 outline-none">
+                                    <option value="grok-4.7">Grok 4.7（推薦）</option>
                                     <option value="grok-latest">Grok Latest</option>
-                                    <option value="grok-4-1-fast-reasoning">Grok 4.1 Fast Reasoning（推薦）</option>
-                                    <option value="grok-4-1-fast-non-reasoning">Grok 4.1 Fast Non-Reasoning</option>
                                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                    <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+                                    <option value="gpt-6-luna">GPT-6 Luna（支援看圖）</option>
+                                    <option value="gpt-6.1-sol">GPT-6.1 Sol（支援看圖）</option>
                                 </select>
                             </div>
                             <div>
@@ -769,7 +800,7 @@
 // APP STATE
 // ═══════════════════════════════════════════════════════════════════
 const AppState = {
-    googleApiKey: '', xaiApiKey: '', serpApiKey: '', gasUrl: '',
+    googleApiKey: '', xaiApiKey: '', openaiApiKey: '', serpApiKey: '', gasUrl: '',
     attachedSources: [],      
     logoBase64: null,
     bgTemplateBase64: null,   // uploaded 16:9 slide background image
@@ -838,6 +869,7 @@ function _loadKeysFromStorage() {
     const ws = window.appState && window.appState.keys;
     AppState.googleApiKey = (ws && ws.gemini)   || localStorage.getItem('nova_key_gemini')  || '';
     AppState.xaiApiKey    = (ws && ws.grok)     || localStorage.getItem('nova_key_grok')    || '';
+    AppState.openaiApiKey = (ws && ws.openai)   || localStorage.getItem('nova_key_openai')  || '';   // v38
     AppState.serpApiKey   = (ws && ws.serpapi)  || localStorage.getItem('nova_key_serpapi') || '';
     AppState.gasUrl       = localStorage.getItem('nova_key_gas') || '';
 
@@ -1161,7 +1193,7 @@ async function generateSlideBackgroundImage(slideData, theme, bgModel, signal) {
     if (bgModel.startsWith('gemini')) {
         const apiKey = AppState.googleApiKey;
         if (!apiKey) throw new Error('缺少 Gemini API Key');
-        const ver = bgModel.includes('preview') ? 'v1alpha' : 'v1beta';
+        const ver = (bgModel.includes('preview') || bgModel.includes('nano-banana')) ? 'v1alpha' : 'v1beta';   // v38
         const r = await fetch(
             `https://generativelanguage.googleapis.com/${ver}/models/${bgModel}:generateContent?key=${apiKey}`,
             { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1212,7 +1244,9 @@ Output complete HTML starting with <!DOCTYPE html>:`;
 
     // Route to Grok or Gemini based on model name
     let html = '';
-    if (isGrokModel(layoutModel)) {
+    if (isGptModel(layoutModel)) {
+        html = await callOpenAIText(layoutModel, sysPrompt, userPrompt, signal);   // v38
+    } else if (isGrokModel(layoutModel)) {
         const xaiKey = AppState.xaiApiKey;
         if (!xaiKey) throw new Error('缺少 Grok API Key');
         const r = await fetch(`${GROK_PROXY}?url=${encodeURIComponent('https://api.x.ai/v1/chat/completions')}`, {
@@ -1291,7 +1325,7 @@ async function startPureImageGeneration() {
     document.getElementById('btn-generate')?.classList.add('hidden');
     document.getElementById('btn-stop')?.classList.remove('hidden');
 
-    const bgGenModel   = document.getElementById('sel-bg-gen-model')?.value   || 'grok-imagine-image-pro';
+    const bgGenModel   = pgMigrateModelId(document.getElementById('sel-bg-gen-model')?.value   || 'grok-imagine-image-2.0');   // v38
     const layoutModel  = document.getElementById('sel-layout-model')?.value   || 'gemini-2.5-pro';
     const theme        = resolveActiveTheme();
     const signal       = AppState.abortController.signal;
@@ -1907,8 +1941,69 @@ function isGrokModel(modelName) {
     return modelName && modelName.toLowerCase().startsWith('grok');
 }
 
+// v38：OpenAI 模型（gpt- 開頭）
+function isGptModel(modelName) {
+    return !!modelName && String(modelName).toLowerCase().startsWith('gpt-');
+}
+// v38：OpenAI chat completions。只送 model＋messages，不送 temperature／max_tokens（新世代模型可能拒收舊參數）。
+async function callOpenAIText(modelId, systemPrompt, userContent, signal) {
+    const key = AppState.openaiApiKey;
+    if (!key) throw new Error('OpenAI API Key 未設定，請在主程式設定頁填入');
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: userContent });
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelId, messages }),
+        signal
+    });
+    if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        let detail = errText.slice(0, 200);
+        try { detail = JSON.parse(errText).error.message || detail; } catch (e) {}
+        throw new Error(`OpenAI API HTTP ${resp.status}（模型：${modelId}）: ${detail}`);
+    }
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 回傳內容為空');
+    return text;
+}
+
+// v38：已被移除／退役的舊型號 → 現行替代型號（舊設定、舊流程存的值送出前自動轉換）
+function pgMigrateModelId(m) {
+    const MAP = {
+        'gemini-3.5-flash': 'gemini-3.6-flash', 'gemini-3.7-flash': 'gemini-3.8-flash', 'gemini-3.1-flash-image': 'gemini-nano-banana-2.1',
+        'grok-4-1-fast-reasoning': 'grok-4.3', 'grok-4-1-fast-non-reasoning': 'grok-4.3',
+        'grok-4-fast-reasoning': 'grok-4.3', 'grok-4-fast-non-reasoning': 'grok-4.3',
+        'grok-code-fast-1': 'grok-build-latest', 'grok-imagine-image-pro': 'grok-imagine-image-2.0'
+    };
+    return MAP[m] || m;
+}
+
+// v38：Gemini 3.8 系列官方要求移除 temperature／topP／topK。於 fetch 層統一處理，其他請求原樣放行。
+(function () {
+    if (window.__pgGemini38FetchPatched || typeof window.fetch !== 'function') return;
+    window.__pgGemini38FetchPatched = true;
+    const _origFetch = window.fetch;
+    window.fetch = function (input, init) {
+        try {
+            const url = typeof input === 'string' ? input : ((input && input.url) || '');
+            if (init && typeof init.body === 'string' && /generativelanguage\.googleapis\.com\/[^?]*\/models\/gemini-3\.8[^\/:?]*:/i.test(url)) {
+                const j = JSON.parse(init.body);
+                const gc = j && j.generationConfig;
+                if (gc && (gc.temperature !== undefined || gc.topP !== undefined || gc.topK !== undefined)) {
+                    delete gc.temperature; delete gc.topP; delete gc.topK;
+                    init = Object.assign({}, init, { body: JSON.stringify(j) });
+                }
+            }
+        } catch (e) { /* 不影響原請求 */ }
+        return _origFetch.call(this, input, init);
+    };
+})();
+
 function getGeminiApiVersion(modelName) {
-    if (modelName.includes('preview') || modelName.includes('exp') || modelName.includes('gemini-3')) {
+    if (modelName.includes('preview') || modelName.includes('exp') || modelName.includes('gemini-3') || modelName.includes('nano-banana')) {
         return 'v1alpha';
     }
     return 'v1beta';
@@ -2166,9 +2261,9 @@ async function callGeminiForOutline(topic, context) {
     const imageMode = document.getElementById('sel-image-mode').value;
 
     const GEMINI_FALLBACKS = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'];
-    const MODEL_QUEUE = isGrokModel(userModel)
+    const MODEL_QUEUE = (isGrokModel(userModel) || isGptModel(userModel))
         ? [userModel, ...GEMINI_FALLBACKS]
-        : [userModel, 'gemini-2.5-pro', 'gemini-2.5-flash', 'grok-4-1-fast-reasoning'];
+        : [userModel, 'gemini-2.5-pro', 'gemini-2.5-flash', 'grok-4.3'];   // v38：原 grok-4-1-fast-reasoning 已退役
     const uniqueModels = [...new Set(MODEL_QUEUE)];
 
     const imageModeHint = {
@@ -2251,6 +2346,9 @@ ${topic}
             if (isGrokModel(modelId)) {
                 if (!AppState.xaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 Grok Key`, 'warning'); continue; }
                 raw = await callGrokText(modelId, systemPrompt, userContent, AppState.abortController.signal);
+            } else if (isGptModel(modelId)) {
+                if (!AppState.openaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 OpenAI Key`, 'warning'); continue; }
+                raw = await callOpenAIText(modelId, systemPrompt, userContent, AppState.abortController.signal);   // v38
             } else {
                 if (!AppState.googleApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 Gemini Key`, 'warning'); continue; }
                 const ver = getGeminiApiVersion(modelId);
@@ -3010,6 +3108,11 @@ I. 只輸出純 HTML，不含任何 markdown 標記。
                 addLog(`🎨 HTML 生成：呼叫 ${modelId} (Grok)...`, 'ai');
                 const sysPrompt = '你是世界最頂級的 HTML/SVG 互動式投影片設計師。請嚴格按照使用者指令生成完整 HTML。';
                 html = await callGrokText(modelId, sysPrompt, prompt, AppState.abortController.signal);
+            } else if (isGptModel(modelId)) {
+                if (!AppState.openaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 OpenAI Key`, 'warning'); continue; }
+                addLog(`🎨 HTML 生成：呼叫 ${modelId} (OpenAI)...`, 'ai');
+                const sysPromptG = '你是世界最頂級的 HTML/SVG 互動式投影片設計師。請嚴格按照使用者指令生成完整 HTML。';
+                html = await callOpenAIText(modelId, sysPromptG, prompt, AppState.abortController.signal);   // v38
             } else {
                 if (!AppState.googleApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 Gemini Key`, 'warning'); continue; }
                 addLog(`🎨 HTML 生成：呼叫 ${modelId} (Gemini)...`, 'ai');
@@ -3269,10 +3372,10 @@ async function generateImage(contextText, slideNum) {
     addLog(`為第 ${slideNum} 頁提取精準繪圖提示詞...`, 'info');
     const finalPrompt = await buildImagePrompt(contextText);
 
-    const preferredModel = document.getElementById('sel-img-model').value;
+    const preferredModel = pgMigrateModelId(document.getElementById('sel-img-model').value);   // v38：舊設定自動轉換
     const fallbackQueue  = [
-        preferredModel, 'grok-imagine-image-pro', 'grok-imagine-image',
-        'gemini-3.1-flash-image', 'gemini-2.5-flash-image'
+        preferredModel, 'grok-imagine-image-2.0', 'grok-imagine-image',
+        'gemini-nano-banana-2.1', 'gemini-2.5-flash-image'   // v38：原 grok-imagine-image-pro／gemini-3.1-flash-image 已移除
     ];
     const uniqueModels = [...new Set(fallbackQueue)];
 
@@ -3297,7 +3400,7 @@ async function generateImage(contextText, slideNum) {
                 }
             } else if (model.startsWith('gemini')) {
                 if (!AppState.googleApiKey) continue;
-                const ver = model.includes('preview') ? 'v1alpha' : 'v1beta';
+                const ver = (model.includes('preview') || model.includes('nano-banana')) ? 'v1alpha' : 'v1beta';   // v38
                 const r = await fetch(
                     `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${AppState.googleApiKey}`,
                     {
@@ -5649,7 +5752,26 @@ async function reviewSlideWithLLM(screenshotB64, slideData, reviewModel, slideHt
 pass=true 條件：score ≥ 85 且沒有 contrast/overlap/image_error 問題。`;
 
     try {
-        if (isGrok && xaiKey) {
+        if (isGptModel(reviewModel) && AppState.openaiApiKey) {
+            // v38：OpenAI vision（官方：gpt-6-luna 支援圖片輸入）。只送 model＋messages。
+            const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${AppState.openaiApiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: reviewModel,
+                    messages: [{ role: 'user', content: [
+                        { type: 'image_url', image_url: { url: screenshotB64 } },
+                        { type: 'text', text: reviewPrompt }
+                    ] }]
+                }),
+                signal: AbortSignal.timeout(90000)
+            });
+            if (!resp.ok) throw new Error(`OpenAI review HTTP ${resp.status}`);
+            const data = await resp.json();
+            const raw = data.choices?.[0]?.message?.content || '{}';
+            const m = raw.match(/\{[\s\S]*\}/);
+            return JSON.parse(m ? m[0] : '{}');
+        } else if (isGrok && xaiKey) {
             // Grok vision: send image as base64 in chat completions
             const targetUrl = 'https://api.x.ai/v1/chat/completions';
             const proxyUrl  = `${GROK_PROXY}?url=${encodeURIComponent(targetUrl)}`;
@@ -5676,7 +5798,7 @@ pass=true 條件：score ≥ 85 且沒有 contrast/overlap/image_error 問題。
             return JSON.parse(m ? m[0] : '{}');
         } else if (geminiKey) {
             // Gemini vision review
-            const model = reviewModel.startsWith('grok') ? 'gemini-2.5-flash' : reviewModel;
+            const model = (reviewModel.startsWith('grok') || isGptModel(reviewModel)) ? 'gemini-2.5-flash' : reviewModel;   // v38
             const ver   = getGeminiApiVersion(model);
             const resp = await fetch(
                 `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${geminiKey}`,
@@ -6194,7 +6316,7 @@ async function reviewAndFixSlide(html, sData, theme) {
     const enabled    = document.getElementById('chk-review-enabled')?.checked;
     if (!enabled) return { html, screenshotB64: null };
 
-    const reviewModel  = document.getElementById('sel-review-model')?.value || 'grok-4-1-fast-reasoning';
+    const reviewModel  = pgMigrateModelId(document.getElementById('sel-review-model')?.value || 'grok-4.7');   // v38
     const maxIter      = parseInt(document.getElementById('sel-review-iterations')?.value || '2');
 
     let currentHTML = html;
@@ -6276,11 +6398,13 @@ async function startGeneration() {
     if (AppState.outputMode === 'image') { await startPureImageGeneration(); return; }
 
     const selectedModel = document.getElementById('sel-text-model').value;
-    const needsGemini = !isGrokModel(selectedModel);
+    const needsGpt    = isGptModel(selectedModel);
+    const needsGemini = !isGrokModel(selectedModel) && !needsGpt;
     const needsGrok   = isGrokModel(selectedModel);
 
     if (needsGemini && !AppState.googleApiKey) { showToast('❌ 請設定 Gemini API Key'); return; }
     if (needsGrok   && !AppState.xaiApiKey)    { showToast('❌ 請設定 Grok API Key'); return; }
+    if (needsGpt    && !AppState.openaiApiKey) { showToast('❌ 請設定 OpenAI API Key'); return; }   // v38
     const topic = document.getElementById('inp-topic').value.trim();
     if (!topic) { showToast('❌ 請輸入主題'); return; }
 
@@ -6539,6 +6663,7 @@ function switchEditTab(tab) {
 async function callTextLLM(prompt, maxTokens) {
     maxTokens = maxTokens || 8192;
     const model  = (document.getElementById('sel-text-model') || {}).value || 'gemini-2.5-flash';
+    if (isGptModel(model)) return await callOpenAIText(model, '', prompt, undefined);   // v38
     const isGrok = model.startsWith('grok');
     const apiKey = isGrok ? AppState.xaiApiKey : AppState.googleApiKey;
     if (!apiKey) throw new Error('缺少 API Key，請在右上角 ⚙ 設定填入');

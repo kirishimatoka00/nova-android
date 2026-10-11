@@ -1494,34 +1494,49 @@
                              <!-- Grok 子模型選擇 -->
                              <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
-                                 <option value="grok-4.7">Grok 4.7</option>
-                                 <option value="grok-4.3">Grok 4.3</option>
-                                 <option value="grok-latest">Grok Latest</option>
-                                 <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
-                                 <option value="grok-build-latest">Grok Build Latest</option>
-                                 <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (繪圖)</option>
-                                 <option value="grok-imagine-image">Grok Imagine Image (繪圖)</option>
+                                 <optgroup label="Grok 文字模型">
+                                     <option value="grok-4.7">Grok 4.7</option>
+                                     <option value="grok-4.6">Grok 4.6</option>
+                                     <option value="grok-4.5">Grok 4.5</option>
+                                     <option value="grok-4.3">Grok 4.3</option>
+                                     <option value="grok-latest">Grok Latest</option>
+                                     <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
+                                     <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
+                                     <option value="grok-4.20-0309-non-reasoning">Grok 4.20 (0309) Non-Reasoning</option>
+                                     <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
+                                     <option value="grok-build-latest">Grok Build Latest</option>
+                                 </optgroup>
+                                 <optgroup label="Grok 圖像生成模型">
+                                     <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (繪圖)</option>
+                                     <option value="grok-imagine-image">Grok Imagine Image (繪圖)</option>
+                                 </optgroup>
+                             </select>
+                             <!-- OpenAI 子模型選擇（v2.6.19，對齊桌面版） -->
+                             <select id="gpt-sub-model-select" onchange="setGptModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
+                                 <optgroup label="OpenAI 文字模型">
+                                     <option value="gpt-6-luna">GPT-6 Luna</option>
+                                     <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+                                     <option value="gpt-4o-mini">GPT-4o mini</option>
+                                 </optgroup>
                              </select>
                              <!-- Gemini 子模型選擇 -->
                              <select id="gemini-sub-model-select" onchange="setGeminiModel(this.value)" class="bg-blue-900 border border-blue-500/50 text-blue-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-blue-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="gemini-multi">⚡ 智慧切換 (Auto)</option>
-                                 <optgroup label="Gemini LLM">
+                                 <optgroup label="Gemini 文字模型">
                                      <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
-                                     <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
                                      <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-                                     <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
                                      <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
-                                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                                      <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                                      <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                                      <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                                      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
                                      <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
                                  </optgroup>
-                                 <optgroup label="Gemini 圖片生成">
+                                 <optgroup label="Gemini 圖像生成模型">
+                                     <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1</option>
+                                     <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite Image</option>
                                      <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
-                                     <option value="gemini-3.1-flash-image">Gemini 3.1 Flash-Image</option>
-                                     <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite-Image</option>
                                      <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
                                  </optgroup>
                              </select>
@@ -1758,7 +1773,7 @@
                                     <select id="collab-model-a" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 outline-none">
                                         <option value="gemini">Gemini (推薦)</option>
                                         <option value="grok">Grok</option>
-                                        <option value="gpt">OpenAI (GPT-4o-mini)</option>
+                                        <option value="gpt">OpenAI (跟隨子模型選單)</option>
                                         <option value="groq">Groq (Llama)</option>
                                         <option value="cohere">Cohere</option>
                                         <option value="local">Local API</option>
@@ -1768,7 +1783,7 @@
                                 <div class="flex-1">
                                     <label class="text-xs font-bold text-slate-300 mb-1 block">AI 專家 B (評論與補充)</label>
                                     <select id="collab-model-b" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:border-rose-500 outline-none">
-                                        <option value="gpt">OpenAI (GPT-4o-mini) (推薦)</option>
+                                        <option value="gpt">OpenAI (跟隨子模型選單) (推薦)</option>
                                         <option value="grok">Grok</option>
                                         <option value="gemini">Gemini</option>
                                         <option value="groq">Groq (Llama)</option>
@@ -1899,8 +1914,18 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.18';
+        const NOVA_APP_VERSION = '2.6.19';
         const NOVA_CHANGELOG = [
+            { v: '2.6.19', date: '2026-10-11', notes: [
+                '模型列表第二階段（與桌面版 desktop-patch v3.60.0 對齊）：Gemini 子模型選單改為「文字／圖像生成」兩組並移除 gemini-3.5-flash、gemini-3.7-flash（官方已自動轉址至 3.6／3.8）與 gemini-3.1-flash-image（官方轉址至 gemini-nano-banana-2.1）；圖像組新增 Gemini Nano Banana 2.1（選單最上面）。所有寫死處（智慧切換圖像意圖首選、pro-image 失敗降級目標、排程圖片／簡報配圖備援清單）一併改用 gemini-nano-banana-2.1，圖片判斷、v1alpha 判斷、解析度＋比例選擇器與 imageConfig 皆認得 nano-banana（沿用桌面版已驗證的 generateContent 路徑）',
+                '舊設定自動轉換：下拉選單、傳送前、備份還原三處會把舊的 gemini-3.5-flash／3.7-flash／3.1-flash-image 換成現行型號，避免下拉選單找不到對應選項而顯示空白',
+                'Grok 選單與桌面版對齊：新增 grok-4.6、grok-4.5、grok-4.20 三款（桌面版清單）；保留 grok-4.7／grok-4.3／grok-latest／grok-build-*；仍不放入 xAI 已退役的 grok-code-fast-1、grok-imagine-image-pro（桌面版目前仍列出，xAI 官方遷移頁寫明已轉向 grok-build-0.1／-quality）；並分成文字／圖像生成兩組',
+                'OpenAI 新增子模型選單（主模型選 OpenAI 時出現）：GPT-6 Luna（預設）、GPT-6.1 Sol、GPT-4o mini；選擇存 localStorage nova_gpt_model 並納入設定匯出／匯入（gptModel）。fetchAIResponse 的 OpenAI 分支改用所選模型（原本寫死 gpt-4o-mini，官方模型頁已不列出），錯誤訊息附實際模型名稱；請求內容維持最小（只送 model＋messages）；多 AI 協同研究的角色下拉加入 OpenAI 子模型並正確還原',
+                '【修正既有缺陷】選 OpenAI 時 fetchAIResponse 以 appState.keys["gpt"] 讀金鑰，但金鑰實際存在 keys.openai，導致一律顯示「未填寫 OpenAI API Key」；現加不可列舉的別名 gpt ⇄ openai（不影響金鑰匯出／儲存迴圈）',
+                '【修正】打字翻譯原本把全域 Gemini 模型暫時換成 Live 專用的 gemini-3.1-flash-live-preview（將於 2026-11-17 關閉，且 generateContent 並非其官方用法），且呼叫失敗時不會還原原模型；改為移植桌面版 v3.31.58 的做法：依序嘗試 gemini-3.6-flash → gemini-2.5-flash，遇到「模型已下架／找不到」自動換下一個，並以 try/finally 保證還原',
+                '【防護】Gemini 3.8 Flash 官方遷移指南要求移除 generationConfig 的 temperature／topP／topK（上一版把 3.8 Flash 設為智慧切換預設，但本檔約 15 處呼叫仍會帶 temperature）；於 fetch 層統一處理，僅針對 generativelanguage 網址且模型名稱為 gemini-3.8* 的 JSON 請求移除，其餘請求原樣放行',
+                '尚未處理（留待後續輪次）：「啟用的模型」過濾設定、presentation_generator.html／knowledgebank.html 的模型清單同步（見各檔自己的版本紀錄）、約 12 處寫死 gemini-2.5-flash 的工具型呼叫；以上所有新型號與 OpenAI 請求皆未在實機以真實 API 驗證'
+            ]},
             { v: '2.6.18', date: '2026-10-11', notes: [
                 '模型列表第一階段更新（依 Google／xAI 官方文件 2026-10 版核對）：Gemini LLM 選單新增 gemini-3.8-flash、gemini-3.7-flash、gemini-3.6-flash、gemini-3.5-flash-lite；Gemini「智慧切換 Auto」的一般對話預設由 gemini-3-flash-preview 改為 gemini-3.8-flash（深度分析仍用 gemini-3.1-pro-preview）；LLM 404 時的備援由 gemini-2.5-flash 改為 gemini-3.6-flash（2.5 系列官方註明僅限過去有用過的帳號，新帳號可能無權限）',
                 'Grok 選單改版：新增 grok-4.7、grok-4.3、grok-build-0.1、grok-imagine-image-2.0；移除 xAI 已於 2026-05-15 退役的 grok-4-1-fast-*、grok-4-fast-*、grok-code-fast-1（這些舊名稱會被伺服器自動轉向 grok-4.3 並以其費率計費，留在選單會造成誤導）；Grok「智慧切換 Auto」預設改為 grok-4.7，繪圖預設改為 grok-imagine-image-2.0（舊 grok-imagine-image-pro 已退役並將於 2026-11-02 連同過渡的 -quality 一起結束）',
@@ -3165,6 +3190,7 @@ async function encodeMp3(audioBuffer) {
                     currentModel: appState.currentModel,
                     geminiModel: appState.geminiModel,
                     grokModel: appState.grokModel,
+                    gptModel: appState.gptModel,
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
                     calSyncTodos: localStorage.getItem('cal_sync_todos') === 'true',
                     chatFolders: appState.chatFolders || [],
@@ -3314,7 +3340,8 @@ async function encodeMp3(audioBuffer) {
                 if (data.ttsRate)     { appState.ttsRate = data.ttsRate; localStorage.setItem('nova_tts_rate', data.ttsRate); }
                 if (data.ttsVoice)    { appState.ttsVoice = data.ttsVoice; localStorage.setItem('nova_tts_voice', data.ttsVoice); }
                 if (data.currentModel) appState.currentModel = data.currentModel;
-                if (data.geminiModel)  appState.geminiModel  = data.geminiModel;
+                if (data.geminiModel)  appState.geminiModel  = window._novaMigrateGeminiId(data.geminiModel);   // v2.6.19：舊型號自動轉換
+                if (data.gptModel)     { appState.gptModel = data.gptModel; try { localStorage.setItem('nova_gpt_model', data.gptModel); } catch (e) {} }
                 if (data.grokModel) {
                     // 備份還原時，把已被 xAI 退役的舊 Grok 型號別名換成現行型號，避免下拉選單找不到對應選項而顯示空白
                     const _novaRetiredGrok = {
@@ -3405,6 +3432,7 @@ async function encodeMp3(audioBuffer) {
         // ✅ 掛到 window 讓 telegram.js 等外部 script 可以存取
         const appState = window.appState = {
             currentModel: 'gemini', grokModel: 'grok-multi', geminiModel: 'gemini-multi',
+            gptModel: (function () { try { return localStorage.getItem('nova_gpt_model') || 'gpt-6-luna'; } catch (e) { return 'gpt-6-luna'; } })(),   // v2.6.19
             isMaster: localStorage.getItem('nova_is_master') === 'true',
             liveSyncEnabled: localStorage.getItem('nova_live_sync_enabled') !== 'false',
             deletedIds: JSON.parse(localStorage.getItem('nova_deleted_ids') || '{}'),
@@ -4146,6 +4174,7 @@ return html;
                             color: #1d4ed8 !important;
                         }
                         html.theme-light #grok-sub-model-select,
+                        html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
                             background-color: #f9fafb !important;
                             border-color: #d1d5db !important;
@@ -4561,6 +4590,7 @@ return html;
                             color: #1d4ed8 !important;
                         }
                         html.theme-light #grok-sub-model-select,
+                        html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
                             background-color: #f9fafb !important;
                             border-color: #d1d5db !important;
@@ -4859,6 +4889,7 @@ return html;
                             color: #1d4ed8 !important;
                         }
                         html.theme-light #grok-sub-model-select,
+                        html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
                             background-color: #f9fafb !important;
                             border-color: #d1d5db !important;
@@ -5219,6 +5250,7 @@ return html;
                             color: #1d4ed8 !important;
                         }
                         html.theme-light #grok-sub-model-select,
+                        html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
                             background-color: #f9fafb !important;
                             border-color: #d1d5db !important;
@@ -8745,8 +8777,70 @@ msg.files : (msg.file ? [msg.file] : []);
             showToast(appState.deepDiveMode ? "🧠 已開啟【AI 深度探究模式】(自主提問與連網深挖)" : "🧠 已關閉深度探究模式 (恢復一問一答)"); 
         };
         window.setModel = function(val) { appState.currentModel = val; updateModelUI(); };
-        window.setGeminiModel = function(val) { appState.geminiModel = val; };
+        // ★ v2.6.19：已被官方自動轉址／桌面版移除的舊型號 → 現行替代型號（與桌面版 v3.54.3／v3.56.0 一致）
+        window._novaMigrateGeminiId = function (m) {
+            const MAP = { 'gemini-3.5-flash': 'gemini-3.6-flash', 'gemini-3.7-flash': 'gemini-3.8-flash', 'gemini-3.1-flash-image': 'gemini-nano-banana-2.1' };
+            return MAP[m] || m;
+        };
+        window.setGeminiModel = function(val) { appState.geminiModel = window._novaMigrateGeminiId(val); };
         window.setGrokModel = function(val) { appState.grokModel = val; };
+        window.setGptModel = function(val) { appState.gptModel = val; try { localStorage.setItem('nova_gpt_model', val); } catch (e) {} };
+        // ★ v2.6.19：修正既有缺陷——選 OpenAI 時 fetchAIResponse 以 appState.keys['gpt'] 讀金鑰，但金鑰實際存在 keys.openai，
+        //   導致一律回報「未填寫 OpenAI API Key」。加不可列舉的別名 gpt ⇄ openai（不影響金鑰匯出／儲存迴圈）。
+        try { if (!Object.prototype.hasOwnProperty.call(appState.keys, 'gpt')) Object.defineProperty(appState.keys, 'gpt', { get: function () { return this.openai; }, set: function (v) { this.openai = v; }, enumerable: false, configurable: true }); } catch (e) {}
+
+        // ★ v2.6.19：Gemini 3.8 系列官方遷移指南要求從 generationConfig 移除 temperature／topP／topK（改用 thinkingLevel 控制品質／成本），
+        //   而本檔約 15 處呼叫仍會送 temperature。與其逐處修改單檔 1.4MB，不如在 fetch 這一層統一處理（桌面版 v3.31.46 的
+        //   _novaGeminiSanitizeGenCfg 是逐處呼叫）：只針對 generativelanguage.googleapis.com 且模型名稱以 gemini-3.8 開頭的 JSON 請求，
+        //   其他模型、其他網址、解析失敗的請求一律原樣放行，不改變既有行為。
+        (function () {
+            if (window.__novaGemini38FetchPatched || typeof window.fetch !== 'function') return;
+            window.__novaGemini38FetchPatched = true;
+            const _origFetch = window.fetch;
+            window.fetch = function (input, init) {
+                try {
+                    const url = typeof input === 'string' ? input : ((input && input.url) || '');
+                    if (init && typeof init.body === 'string' && /generativelanguage\.googleapis\.com\/[^?]*\/models\/gemini-3\.8[^\/:?]*:/i.test(url)) {
+                        const j = JSON.parse(init.body);
+                        const gc = j && j.generationConfig;
+                        if (gc && (gc.temperature !== undefined || gc.topP !== undefined || gc.topK !== undefined)) {
+                            delete gc.temperature; delete gc.topP; delete gc.topK;
+                            init = Object.assign({}, init, { body: JSON.stringify(j) });
+                        }
+                    }
+                } catch (e) { /* 不影響原請求 */ }
+                return _origFetch.call(this, input, init);
+            };
+        })();
+
+        // ★ v2.6.19：翻譯（打字翻譯）改用一般文字模型並支援「模型已下架就換下一個」。
+        //   舊版把全域 Gemini 模型暫時換成 gemini-3.1-flash-live-preview（Live API 專用，且 2026-11-17 關閉），
+        //   移植自桌面版 NOVA_TRANSLATE_MODELS／_novaRunWithTranslateModel（v3.31.58）。順序＝優先順序。
+        const NOVA_TRANSLATE_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+        const _novaTranslateDeadModels = new Set();
+        function _novaIsModelUnavailableError(e) {
+            const m = String((e && e.message) || e || '');
+            return /no longer available|is not found|not found for api version|not supported for generatecontent|no longer supported|has been (?:shut ?down|retired|deprecated|discontinued)|is (?:deprecated|retired|discontinued|decommissioned)|^\s*404\s*$/i.test(m);
+        }
+        async function _novaRunWithTranslateModel(callFn) {
+            const orig = appState.geminiModel;
+            const alive = NOVA_TRANSLATE_MODELS.filter(function (m) { return !_novaTranslateDeadModels.has(m); });
+            const list = alive.length ? alive : NOVA_TRANSLATE_MODELS.slice();
+            try {
+                for (let i = 0; i < list.length; i++) {
+                    appState.geminiModel = list[i];
+                    try {
+                        return await callFn(list[i]);
+                    } catch (e) {
+                        if (i === list.length - 1 || !_novaIsModelUnavailableError(e)) throw e;
+                        _novaTranslateDeadModels.add(list[i]);
+                        console.warn('[NOVA][翻譯] 模型 ' + list[i] + ' 不可用（' + String((e && e.message) || e).slice(0, 120) + '），改用 ' + list[i + 1]);
+                    }
+                }
+            } finally {
+                appState.geminiModel = orig;   // 不管成功失敗一律還原使用者原本選的模型
+            }
+        }
         
         window.updateSendButtonState = function(isThinking) {
             // ★ 舊版 send-btn（可能不存在，加 null 保護）
@@ -10152,7 +10246,7 @@ return; }
                     if (gKey2) {
                         const gemModels = [
                             { name: 'gemini-2.5-flash-image',          ver: 'v1beta',  label: 'Gemini 2.5 Flash-Image' },
-                            { name: 'gemini-3.1-flash-image',            ver: 'v1alpha', label: 'Gemini 3.1 Flash-Image' },
+                            { name: 'gemini-nano-banana-2.1',            ver: 'v1alpha', label: 'Gemini Nano Banana 2.1' },   // v2.6.19
                         ];
                         for (const { name: mName, ver, label } of gemModels) {
                             try {
@@ -11805,6 +11899,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
         }
 
         function updateModelUI(){ 
+            appState.geminiModel = window._novaMigrateGeminiId(appState.geminiModel);   // v2.6.19：舊設定自動轉換
             const conf=MODEL_CONFIG[appState.currentModel]; 
             const statusName = document.getElementById('status-name'); if(statusName) statusName.innerText=conf?.name || 'Unknown'; 
             const statusIcon = document.getElementById('status-icon'); if(statusIcon) statusIcon.className=`ph-fill ${conf?.icon || 'ph-cpu'} text-lg ${conf?.color || 'text-slate-400'}`; 
@@ -11814,6 +11909,8 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             
             const geminiSelect = document.getElementById('gemini-sub-model-select');
             if(geminiSelect) { if (appState.currentModel === 'gemini') { geminiSelect.classList.remove('hidden'); geminiSelect.value = appState.geminiModel; } else { geminiSelect.classList.add('hidden'); } }
+            const gptSelect = document.getElementById('gpt-sub-model-select');
+            if(gptSelect) { if (appState.currentModel === 'gpt') { gptSelect.classList.remove('hidden'); gptSelect.value = appState.gptModel; } else { gptSelect.classList.add('hidden'); } }
 
             const wrap = document.getElementById('input-wrapper'); if(wrap) wrap.className = `flex-1 flex items-end bg-slate-950 rounded-2xl px-3 py-1.5 border transition-colors border-slate-700 focus-within:border-${appState.currentModel==='gemini'?'blue':appState.currentModel==='groq'?'rose':appState.currentModel==='cohere'?'violet':appState.currentModel==='gpt'?'emerald':'slate'}-500`; 
             const badge=document.getElementById('web-search-badge'); const searchBtn=document.getElementById('search-toggle-btn'); const hint=document.getElementById('search-hint'); 
@@ -14095,17 +14192,19 @@ try {
             document.getElementById('plus-icon').classList.remove('rotate-45');
             
             // 修復：動態組合所有主模型與細部子模型的清單，讓你精細到能選特定版本
-            let geminiHTML = ''; let grokHTML = '';
+            let geminiHTML = ''; let grokHTML = ''; let gptHTML = '';
             const geminiSelect = document.getElementById('gemini-sub-model-select');
             const grokSelect = document.getElementById('grok-sub-model-select');
             if (geminiSelect) geminiHTML = `<optgroup label="Gemini 系列">${geminiSelect.innerHTML}</optgroup>`;
             if (grokSelect) grokHTML = `<optgroup label="Grok 系列">${grokSelect.innerHTML}</optgroup>`;
+            const gptSelectEl = document.getElementById('gpt-sub-model-select');
+            if (gptSelectEl) gptHTML = gptSelectEl.innerHTML;   // v2.6.19：已含自己的 optgroup，不再外包一層（避免巢狀 optgroup 被展平成空群組）
             
             const systemModelsHTML = `
                 ${geminiHTML}
                 ${grokHTML}
+                ${gptHTML}
                 <optgroup label="其他模型">
-                    <option value="gpt">OpenAI (GPT-4o-mini)</option>
                     <option value="groq">Groq (Llama)</option>
                     <option value="cohere">Cohere (Command-R-Plus)</option>
                 </optgroup>
@@ -14117,7 +14216,7 @@ try {
             document.getElementById('agent-image-model').innerHTML = '<option value="none">❌ 不產生圖片</option>' + systemModelsHTML;
             
             // 預設選取當前主系統正在使用的細部 Model
-            const current = appState.currentModel === 'gemini' ? appState.geminiModel : (appState.currentModel === 'grok' ? appState.grokModel : appState.currentModel);
+            const current = appState.currentModel === 'gemini' ? appState.geminiModel : (appState.currentModel === 'grok' ? appState.grokModel : (appState.currentModel === 'gpt' ? (appState.gptModel || 'gpt-6-luna') : appState.currentModel));
             try {
                 document.getElementById('agent-orchestrator').value = current;
                 document.getElementById('agent-researcher').value = current;
@@ -14161,16 +14260,19 @@ window.startMultiAgentResearch = async function() {
                 const origModel = appState.currentModel;
                 const origGemini = appState.geminiModel;
                 const origGrok = appState.grokModel;
+                const origGpt = appState.gptModel;   // v2.6.19
                 
                 appState.currentModel = provider; // 【修復】強制切換主系統模型，防止底層 API 迷路
                 if(provider === 'gemini') appState.geminiModel = subModel;
                 if(provider === 'grok') appState.grokModel = subModel;
+                if(provider === 'gpt' && subModel.toLowerCase().indexOf('gpt-') === 0) appState.gptModel = subModel;   // v2.6.19
                 
                 let res = await fetchAIResponse(prompt, provider, opts);
                 
                 appState.currentModel = origModel;
                 appState.geminiModel = origGemini;
                 appState.grokModel = origGrok;
+                appState.gptModel = origGpt;   // v2.6.19
                 return res;
             };
 
@@ -15738,12 +15840,14 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                 // 🌟 唯一且正確的 API 呼叫區塊
                 let finalRes;
                 try {
-                    let origGeminiModel = appState.geminiModel;
-                    if (appState.translateMode !== 'off') appState.geminiModel = 'gemini-3.1-flash-live-preview';
-                    
-                    finalRes = await fetchAIResponse(promptToSent, modelToUse, { enableSearch: enableSearchTool, disableSearch: !enableSearchTool && injectedContext !== "", files: filesDataToPass, isAnalysis: !!appState.pendingAnalyzeContextId, intentHints: _intentHints });
-                    
-                    if (appState.translateMode !== 'off') appState.geminiModel = origGeminiModel;
+                    // v2.6.19：翻譯不再把全域模型換成 Live 專用的 gemini-3.1-flash-live-preview（2026-11-17 關閉）；
+                    //         改走一般文字模型並支援「模型不可用就換下一個」，不論成功失敗都會還原原本的模型。
+                    const _novaCallOpts = { enableSearch: enableSearchTool, disableSearch: !enableSearchTool && injectedContext !== "", files: filesDataToPass, isAnalysis: !!appState.pendingAnalyzeContextId, intentHints: _intentHints };
+                    if (appState.translateMode !== 'off' && modelToUse === 'gemini') {
+                        finalRes = await _novaRunWithTranslateModel(() => fetchAIResponse(promptToSent, modelToUse, _novaCallOpts));
+                    } else {
+                        finalRes = await fetchAIResponse(promptToSent, modelToUse, _novaCallOpts);
+                    }
                 } catch (apiError) {
                     if (modelToUse === 'gemini' && appState.keys.grok) {
                         addMessage(`⚠️ Gemini 處理發生錯誤 (${apiError.message})，系統自動為您跳轉至 Grok 進行備援分析...`, 'system');
@@ -16196,6 +16300,7 @@ if (appState.pendingAnalyzeContextId) {
                 const _preGeminiModel = appState.geminiModel || '';
                 const _preIsImageIntent = (_preGenVerb && _preImgNoun && !_preExcluded)
                     || _preGeminiModel.includes('-image')
+                    || _preGeminiModel.includes('nano-banana')
                     || _preGeminiModel.includes('imagen')
                     || !!_intentHints.isImageGen;
 
@@ -16220,13 +16325,13 @@ if (appState.pendingAnalyzeContextId) {
             // ★ 當用戶已手動選擇圖片模型時，一律視為圖片生成意圖
             const _isImageModelSelected = (() => {
                 const _m = appState.geminiModel || '';
-                return _m.includes('-image') || _m.includes('imagen');
+                return _m.includes('-image') || _m.includes('nano-banana') || _m.includes('imagen');
             })();
             // ★ Resolution picker 僅限 gemini-3 系列（3.1-flash-image / 3.1-pro-image）
             //   gemini-2.5-flash-image 的 imageConfig 不支援解析度/比例參數，跳過選擇器
             const _isGemini3ImageModel = (() => {
                 const _m = appState.geminiModel || '';
-                return (_m === 'gemini-3.1-flash-image' || _m === 'gemini-3.1-pro-image');
+                return (_m === 'gemini-nano-banana-2.1' || _m === 'gemini-3-pro-image' || _m === 'gemini-3.1-pro-image');   // v2.6.19
             })();
 
             // ★ 階段2：通用意圖分類器（_intentHints，已於函式最前面統一呼叫過一次）
@@ -16242,6 +16347,7 @@ if (appState.pendingAnalyzeContextId) {
             }
 
             if(model === 'gemini') {
+                appState.geminiModel = window._novaMigrateGeminiId(appState.geminiModel);   // v2.6.19
                 let selectedModelName = appState.geminiModel;
                 let isAutoRouted = false;
 
@@ -16253,7 +16359,7 @@ if (appState.pendingAnalyzeContextId) {
                     // Imagen Standard/Fast：會生成無關圖片，禁止自動路由（手動選擇才使用）
                     // ============================================================
                     if (isImageIntent) {
-                        const isAlreadyImageModel = selectedModelName.includes('image');
+                        const isAlreadyImageModel = selectedModelName.includes('image') || selectedModelName.includes('nano-banana');
                         const isImagenModel = selectedModelName.includes('imagen');
 
                         if (isImagenModel && (selectedModelName.includes('fast') || (selectedModelName.includes('generate-001') && !selectedModelName.includes('ultra')))) {
@@ -16261,9 +16367,9 @@ if (appState.pendingAnalyzeContextId) {
                             selectedModelName = 'imagen-4.0-ultra-generate-001';
                             isAutoRouted = true;
                         } else if (!isAlreadyImageModel && !isImagenModel) {
-                            // ★ 智慧切換 Auto：文字模型 → 首選 gemini-3.1-flash-image
+                            // ★ 智慧切換 Auto：文字模型 → 首選 gemini-nano-banana-2.1（v2.6.19：原為已移除的 gemini-3.1-flash-image）
                             //   失敗時 fallback 邏輯在下方 API 呼叫後處理（→ Grok）
-                            selectedModelName = 'gemini-3.1-flash-image';
+                            selectedModelName = 'gemini-nano-banana-2.1';
                             isAutoRouted = true;
                         }
                         // 已是圖片模型（含 2.5-flash-image、3.1-pro-image）→ 照常使用
@@ -16287,7 +16393,8 @@ if (appState.pendingAnalyzeContextId) {
                         const _hasResInPrompt = /\b(1K|2K|4K|1k|2k|4k|1024|2048|4096|高解析|高畫質|ultra.*hd|4k.*res|resolution)\b/i.test(finalPrompt);
                         // ★ Resolution picker 僅限 gemini-3 系列
                         //   gemini-2.5-flash-image / Imagen / Grok 不支援解析度/比例參數
-                        const _needPicker = selectedModelName === 'gemini-3.1-flash-image' ||
+                        const _needPicker = selectedModelName === 'gemini-nano-banana-2.1' ||
+                                            selectedModelName === 'gemini-3-pro-image' ||
                                             selectedModelName === 'gemini-3.1-pro-image';
                         if (!_hasResInPrompt && _needPicker && typeof showResolutionPicker === 'function') {
                             const _picked = await showResolutionPicker();
@@ -16344,7 +16451,7 @@ if (appState.pendingAnalyzeContextId) {
                     const _getApiVer = (modelName) => {
                         if (modelName.includes('preview') || modelName.includes('gemini-3') ||
                             modelName.includes('thinking') || modelName.includes('research') ||
-                            modelName.includes('computer') || modelName.includes('-image')) {
+                            modelName.includes('computer') || modelName.includes('-image') || modelName.includes('nano-banana')) {
                             return 'v1alpha';
                         }
                         return 'v1beta';
@@ -16376,7 +16483,7 @@ if (appState.pendingAnalyzeContextId) {
                     }
                     if (currentRole) contents.push({ role: currentRole, parts: currentParts });
 
-                    const isGeminiImageModel = selectedModelName.includes('image') && !selectedModelName.includes('imagen');
+                    const isGeminiImageModel = (selectedModelName.includes('image') || selectedModelName.includes('nano-banana')) && !selectedModelName.includes('imagen');
                     // 💡 修正：深度分析模式（長錄音逐字稿＋摘要）可能超過 8192 tokens 而被截斷
                     //         isAnalysis 為 true 時（錄音/語音筆記深度分析），改用 65536 tokens 上限以確保完整輸出
                     const analysisMaxTokens = 65536;
@@ -16401,7 +16508,7 @@ if (appState.pendingAnalyzeContextId) {
                         // ★ gemini-2.5-flash-image 不支援 imageConfig（imageSize/aspectRatio）
                         //   僅 gemini-3.1-flash-image / gemini-3.1-pro-image 支援
                         //   以「預設方式」呼叫 2.5-flash-image：不附加 imageConfig
-                        const _supportsImageConfig = (selectedModelName === 'gemini-3.1-flash-image' || selectedModelName === 'gemini-3.1-pro-image');
+                        const _supportsImageConfig = (selectedModelName === 'gemini-nano-banana-2.1' || selectedModelName === 'gemini-3-pro-image' || selectedModelName === 'gemini-3.1-pro-image');   // v2.6.19
                         if (_supportsImageConfig) {
                             // 帶入解析度與比例，必須放在 imageConfig 子物件內（非 generationConfig 頂層）
                             const _gsz = window._getGeminiImageSize(_imgResolution);
@@ -16428,7 +16535,7 @@ if (appState.pendingAnalyzeContextId) {
                         let fallbackImageModel;
                         if (selectedModelName.includes('pro-image')) {
                             // pro-image 失敗 → 先降級到同代 flash-image
-                            fallbackImageModel = 'gemini-3.1-flash-image';
+                            fallbackImageModel = 'gemini-nano-banana-2.1';   // v2.6.19：原為已移除的 gemini-3.1-flash-image
                         } else {
                             // flash-image 或其他 image model 失敗 → 降到 2.5-flash-image
                             fallbackImageModel = 'gemini-2.5-flash-image';
@@ -16750,11 +16857,11 @@ if (appState.pendingAnalyzeContextId) {
 
                     let ep = '', mName = '';
                     if(model === 'groq') { ep = 'https://api.groq.com/openai/v1/chat/completions'; mName = 'llama-3.3-70b-versatile'; }
-                    else { ep = 'https://api.openai.com/v1/chat/completions'; mName = 'gpt-4o-mini'; }
+                    else { ep = 'https://api.openai.com/v1/chat/completions'; mName = appState.gptModel || 'gpt-6-luna'; }   // v2.6.19：改用子模型選單的值
 
                     const res = await fetchWithTimeout(ep, { method:'POST', headers:{'Content-Type':'application/json', 'Authorization':`Bearer ${key}`}, body: JSON.stringify({model:mName, messages: messagesPayload}) });
                     const resText = await res.text(); let data; try { data = JSON.parse(resText); } catch(e) { throw new Error(`API 異常: ${resText.substring(0, 50)}`); }
-                    if (!res.ok) throw new Error(`${data.error?.message || res.status}`); return data.choices?.[0]?.message?.content || "無回應";
+                    if (!res.ok) throw new Error(`${data.error?.message || res.status}（模型：${mName}）`); return data.choices?.[0]?.message?.content || "無回應";
                 } 
                 else if (model === 'cohere') {
                     const chatHistoryPayload = chatHistory.map(m => ({ role: m.sender === 'user' ? 'USER' : 'CHATBOT', message: m.text || "[附檔]" }));
@@ -17719,7 +17826,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                                     if (!imgDataUrl && gemKey) {
                                         const gemModels = [
                                             { name: 'gemini-2.5-flash-image',        ver: 'v1beta' },
-                                            { name: 'gemini-3.1-flash-image',         ver: 'v1alpha' },
+                                            { name: 'gemini-nano-banana-2.1',         ver: 'v1alpha' },   // v2.6.19
                                         ];
                                         for (const { name: mName, ver } of gemModels) {
                                             try {
