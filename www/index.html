@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -2023,8 +2023,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.28';
+        const NOVA_APP_VERSION = '2.6.29';
         const NOVA_CHANGELOG = [
+            { v: '2.6.29', date: '2026-10-11', notes: [
+                '修正自主任務「無障礙服務」連線測試誤報：選了無障礙執行器卻顯示「無法連線 atx-agent／請在 Termux 執行…」。原因是外掛當下取不到時會悄悄退回 atx-agent 路徑，且錯誤訊息寫死成 Termux 指引。現在選了無障礙就一律走無障礙；失敗時狀態列會顯示真正原因（外掛有無、系統是否已啟用、服務是否已連上、Android 版本）。',
+                '若顯示「系統已啟用但服務尚未連上」：到系統「無障礙」把 NOVA 關掉再打開一次即可（App 更新後常見）。',
+            ]},
             { v: '2.6.28', date: '2026-10-11', notes: [
                 '模型選單簡化：輸入區原本的「主模型＋子模型」兩個下拉，合併成一個全展開選單（nova-model-picker.js）。點開後 Gemini／Grok／OpenAI／Groq／Cohere／Local 全部列出，只分「文字模型」與「生圖模型」兩組；設定頁停用的型號會自動從選單消失。舊的下拉仍保留在背景當資料來源，功能邏輯沒動。',
                 '設定頁對標桌面版手機版型（nova-settings-ui.js＋nova-ui.css 第 10 節）：頂端搜尋框、橫向膠囊分類列（一般與外觀／模型與金鑰／Agent 與自主任務／記憶／整合／語音與錄音），每類是帶標題與說明的卡片區塊，配色統一成桌面版的中性深色卡片。原本的欄位 id 與儲存／備份邏輯沒動；「技能」分類因手機版沒有對應功能未放。',
@@ -7252,7 +7256,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 const dot = document.getElementById('autotask-status-dot');
                 const label = document.getElementById('autotask-status-text');
                 const stopBtn = document.getElementById('autotask-stop-btn');
-                if (label) label.textContent = text;
+                if (label) { label.textContent = text; label.style.whiteSpace = 'pre-line'; }
                 if (dot) dot.className = 'w-2 h-2 rounded-full inline-block mr-1 ' + (ok === true ? 'bg-emerald-400' : ok === false ? 'bg-red-500' : 'bg-amber-400');
                 if (stopBtn) stopBtn.classList.toggle('hidden', !running);
             }
@@ -7309,13 +7313,19 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 setStatus('連線測試中...', null);
                 try {
                     const res = await atxFetch('/info');
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    if (!res.ok) throw new Error((accActive() ? '' : 'HTTP ' + res.status + ' ') + (await res.text()).slice(0, 200));
                     const info = await res.json();
                     setStatus('✅ 已連線：' + (info.model || info.serial || 'uiautomator2 裝置'), true);
-                    showToast('✅ uiautomator2 連線成功');
+                    showToast('✅ ' + (accActive() ? '無障礙服務' : 'uiautomator2') + ' 連線成功');
                 } catch (e) {
-                    setStatus('❌ 無法連線：' + e.message, false);
-                    showToast('❌ 無法連線 atx-agent，請確認已在 Termux 執行 python -m uiautomator2 init');
+                    if (accActive()) {   // v2.6.29：無障礙模式顯示真正原因，不再誤報 Termux 錯誤
+                        let d = ''; try { d = await NovaAccBridge.diag(); } catch (e2) { d = String(e2 && e2.message || e2); }
+                        setStatus('❌ ' + e.message + '\n' + d, false);
+                        showToast('❌ 無障礙服務連線失敗，原因見下方狀態列', 5000);
+                    } else {
+                        setStatus('❌ 無法連線：' + e.message, false);
+                        showToast('❌ 無法連線 atx-agent，請確認已在 Termux 執行 python -m uiautomator2 init');
+                    }
                 }
             }
 

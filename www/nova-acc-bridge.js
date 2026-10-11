@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-acc-bridge.js — NOVA Android 自主任務的「無障礙服務執行器」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.0.1
    版本紀錄：
+   v1.0.1 - 修正：執行器選「無障礙」但外掛當下取不到時，active() 原本回傳 false 會悄悄改走 atx-agent，結果誤報「無法連線 atx-agent」。現在選了無障礙就一律走 bridge；
+            新增 diag()（回傳外掛／服務啟用／連線狀態文字，供設定頁「連線測試」顯示真正原因）；/info 在「系統已啟用但服務尚未連上」時給出「關掉再開一次」的指引。
    v1.0.0 - 初版（批次 5b）。把原生 Capacitor 外掛 NovaAccessibility（NovaAccessibilityService.java）包成「長得像 atx-agent」的介面，
             讓 novaAutoTask 引擎（執行層／截圖／UI 階層解析）完全不用改，只要把 fetch(baseUrl()+path) 換成 atxFetch(path)：
             ① /info、/screenshot/0、/uiautomator(DELETE)、/shell?command=…、/jsonrpc/0（deviceInfo、dumpWindowHierarchy、setClipboard、setText）。
@@ -16,14 +18,15 @@
     'use strict';
     function plug() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NovaAccessibility; }
     function mode() { try { return localStorage.getItem('nova_autotask_executor') || 'atx'; } catch (e) { return 'atx'; } }
-    function active() { return mode() === 'acc' && !!plug(); }
+    function active() { return mode() === 'acc'; }   // v1.0.1：選了無障礙就一律走 bridge（外掛不存在時由 bridgeFetch 回報明確原因，不再悄悄退回 atx 而誤報 Termux 錯誤）
     var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
     function jsonRes(obj, status) { return new Response(JSON.stringify(obj), { status: status || 200, headers: { 'Content-Type': 'application/json' } }); }
     function textRes(t, status) { return new Response(String(t == null ? '' : t), { status: status || 200 }); }
     function errRes(e) {
         var m = (e && e.message) || String(e);
-        if (/ACC_NOT_ENABLED/.test(m)) m = '無障礙服務尚未啟用：請到 設定 →「AI 自主任務」按「開啟無障礙服務」，在系統清單裡打開 NOVA';
+        if (/ACC_STUCK/.test(m)) m = '系統顯示 NOVA 無障礙已開，但服務還沒連上：請到系統「無障礙」把 NOVA 關掉再重新打開一次（App 更新後常見），再回來測試';
+        else if (/ACC_NOT_ENABLED/.test(m)) m = '無障礙服務尚未啟用：請到 設定 →「AI 自主任務」按「開啟無障礙服務」，在系統清單裡打開 NOVA';
         return textRes(m, 503);
     }
     function b64ToBlob(b64, type) { var bin = atob(b64), n = bin.length, u = new Uint8Array(n); for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: type || 'image/jpeg' }); }
@@ -98,7 +101,7 @@
             if (!plug()) return textRes('這個版本沒有 NovaAccessibility 外掛（請安裝新版 APK）', 503);
             if (path.indexOf('/info') === 0) {
                 var s = await status();
-                if (!s.connected) return textRes('ACC_NOT_ENABLED', 503);
+                if (!s.connected) return errRes(new Error(s.enabled ? 'ACC_STUCK' : 'ACC_NOT_ENABLED'));
                 if (!s.canScreenshot) return textRes('無障礙截圖需要 Android 11 以上（本機 API ' + s.sdk + '），請改用 atx-agent', 503);
                 return jsonRes({ model: s.model + '（無障礙服務）', serial: 'accessibility' });
             }
@@ -120,6 +123,11 @@
     window.NovaAccBridge = {
         active: active, mode: mode, fetch: bridgeFetch, status: function () { return plug() ? status() : Promise.reject(new Error('沒有 NovaAccessibility 外掛')); },
         openSettings: function () { return plug() ? plug().openSettings() : Promise.reject(new Error('沒有 NovaAccessibility 外掛')); },
-        hasPlugin: function () { return !!plug(); }, _shell: shell
+        hasPlugin: function () { return !!plug(); }, _shell: shell,
+        diag: async function () {
+            if (!plug()) return '外掛：沒有（這份 APK 不含 NovaAccessibility，請安裝最新版）';
+            try { var s = await plug().status(); return '外掛：有｜系統已啟用：' + (s.enabled ? '是' : '否') + '｜服務已連上：' + (s.connected ? '是' : '否') + '｜Android API ' + s.sdk + (s.canScreenshot ? '' : '（截圖需 11 以上）') + (s.width ? '｜螢幕 ' + s.width + '×' + s.height : ''); }
+            catch (e) { return '外掛：有，但 status 呼叫失敗：' + (e && e.message || e); }
+        }
     };
 })();
