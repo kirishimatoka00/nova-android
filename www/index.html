@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-skill-ui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1225,6 +1225,7 @@
 
                         <!-- 分頁：技能（v2.6.30） -->
                         <div id="tab-skills" class="space-y-3 hidden"></div>
+                        <div id="tab-jev" class="space-y-3 hidden"></div>
 
                         <!-- 分頁：AI 自主任務 -->
                         <div id="tab-autotask" class="space-y-3 hidden">
@@ -2030,8 +2031,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.30';
+        const NOVA_APP_VERSION = '2.6.31';
         const NOVA_CHANGELOG = [
+            { v: '2.6.31', date: '2026-10-11', notes: [
+                '導入 Jev（TypeSafe AI System One 小決策模型，移植自桌面版 nova-jev.js v1.4.0）：設定 → Agent 與自主任務 → ⚡ Jev 快速判斷。預設關閉，填 API Key 並開總開關後才會動，任何失敗都退回原本流程。',
+                '已接上 4 個用途：自主任務宣告完成前複查（最多退回 2 次）、/ap 前技能比對、技能參數「⚡ Jev 建議」、存半成品時建議取消冗餘步驟。其餘用途（模型分級、記憶、檔案、注入篩查、Workflow、路由）手機版還沒有對應的呼叫點。',
+            ] },
             { v: '2.6.30', date: '2026-10-11', notes: [
                 '新增「技能」功能（對標桌面版）：自主任務成功後，底部會出現「存成技能」，把這次的手機操作紀錄存成可重播的技能（存在 Documents/NovaSkills/）。',
                 '技能支援參數（{{名稱}}）、複製／編輯／重新命名、匯入匯出、組裝流程、提示範本；失敗的任務可存成「半成品」，下次規劃時給 AI 當經驗參考。',
@@ -7943,6 +7948,7 @@ ${elementsText}`;
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
                 const history = [];
+                let doneRejects = 0;
                 const recorded = [];            // v2.6.30：成功執行的步驟（轉成技能用）
                 let finishedDone = false;
                 let consecutiveSoftFails = 0;
@@ -8248,6 +8254,17 @@ ${elementsText}`;
                             // 要求 5：執行前先在聊天室報出正在進行的動作，並附上實際執行的指令內容
                             addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}${scaleNote}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
 
+                            if (action.type === 'done' && window.NovaJevUI && doneRejects < 2) {   // v2.6.31：Jev 完成前複查（沒開／失敗一律放行）
+                                const jv = await NovaJevUI.verifyDone(goal, history, action.say);
+                                if (jv && jv.reject) {
+                                    doneRejects++;
+                                    addMessage(`⚡ Jev 複查認為任務可能還沒真正完成（${jv.reason}），請 AI 再確認畫面（第 ${doneRejects}/2 次退回）`, 'system');
+                                    history.push({ round, action: rawAction, result: 'FAILED: 你宣告任務完成，但複查認為尚未達成（' + jv.reason + '）。請對照目前畫面確認；真的完成再回報 done。' });
+                                    clearTimeout(roundTimer);
+                                    await new Promise(r => setTimeout(r, 500));
+                                    continue;
+                                }
+                            }
                             if (action.type === 'done') {
                                 finishedDone = true;
                                 addMessage(`✅ 自主任務完成：${action.say || goal}`, 'ai');
@@ -19804,7 +19821,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
-<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.1.0"></script><!-- v2.6.28：單一展開式模型選單 -->
+<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.2.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

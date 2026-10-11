@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - 批次 7b。存半成品視窗加「⚡ Jev 建議取消冗餘步驟」（Jev 開啟且 partial 開關開才顯示）。
    v1.0.0 - 批次 7a。對標桌面版「技能」功能（nova-skill-params.js／nova-skill-clone.js 的手機版重寫；桌面版以 Python／Windows 步驟為主，手機版改以手機操作步驟為主）：
             ① 技能管理頁（全螢幕）：搜尋、分類（可重播／提示範本／組裝流程／腳本／半成品）、每個技能有 執行／參數／編輯／複製／改名／刪除；
                ＋選單：新增提示範本、新增組裝流程、匯入／匯出、修復索引。
@@ -481,10 +482,22 @@
             }); o.body.appendChild(ai);
         }
         o.body.appendChild(lab('要保留的步驟', '取消勾選冗餘或試探性的步驟'));
+        var jevBox = null;
         lr.steps.forEach(function (st, i) {
             var l = mk('label', 'display:flex;gap:8px;align-items:center;min-height:38px;font-size:13px;'); var cb = mk('input'); cb.type = 'checkbox'; cb.checked = true; cb.style.cssText = 'width:20px;height:20px;flex:none;'; cb.onchange = function () { keep[i] = cb.checked; };
             l.append(cb, mk('span', 'min-width:0;word-break:break-all;', (i + 1) + '. ' + S().stepOutline(st) + (st.say ? '　— ' + st.say : ''))); o.body.appendChild(l);
         });
+        if (partial && W.NovaJev && W.NovaJev.isOn && W.NovaJev.isOn('partial') && W.NovaJev.suggestDrop) {
+            var jd = btn('⚡ Jev 建議取消冗餘步驟', CSS.btn + 'margin-top:6px;', async function () {
+                jd.disabled = true; jd.textContent = 'Jev 判斷中…';
+                try {
+                    var drop = await W.NovaJev.suggestDrop(lr.goal, lr.steps.map(function (s) { return { label: S().stepOutline(s), outcome: s.say || '' }; }));
+                    if (drop && drop.length) { var cbs = o.body.querySelectorAll('input[type=checkbox]'); var base = cbs.length - lr.steps.length; drop.forEach(function (i) { if (cbs[base + i]) { cbs[base + i].checked = false; cbs[base + i].onchange && cbs[base + i].onchange(); } }); toast('⚡ Jev 建議取消 ' + drop.length + ' 步'); }
+                    else toast(drop ? '⚡ Jev 認為這些步驟都值得保留' : 'Jev 沒有回應（照原樣）');
+                } catch (er) { toast('Jev 失敗：' + er.message); }
+                jd.disabled = false; jd.textContent = '⚡ Jev 建議取消冗餘步驟';
+            }); o.body.appendChild(jd);
+        }
         o.foot.append(btn('取消', CSS.btn, o.close), btn('儲存', CSS.btnP + 'flex:1;', async function () {
             var steps = lr.steps.filter(function (s, i) { return keep[i]; }); if (!steps.length && !partial) { toast('至少保留一個步驟'); return; }
             var name = nIn.value.trim(); if (S().get(name)) { toast('已有同名技能，請換名稱'); return; }
