@@ -2228,8 +2228,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.40';
+        const NOVA_APP_VERSION = '2.6.41';
         const NOVA_CHANGELOG = [
+            { v: '2.6.41', date: '2026-10-11', notes: [
+                '修正 Google 整合視窗與設定頁按鈕顯示異常（背景透明、按鈕無樣式）',
+                '背景自動存檔不再跳出「備份訊息」氣泡；僅手動備份／還原才顯示提示',
+            ] },
             { v: '2.6.40', date: '2026-10-11', notes: [
                 'Google 整合（階段 1~3）：App 內 Google 授權（OAuth PKCE）；Drive 雙向同步（任務與筆記，與桌面版共用 NOVA_Sync_Bundle.json，桌面的知識庫資料原封保留）；Gmail 唯讀（列信、讀內文、AI 摘要、存成筆記）；Docs（筆記匯出成 Google 文件、Google 文件轉成筆記）。入口：＋選單「Google」、設定頁。',
                 '即時口譯設定列新增紅色「結束口譯」按鈕（同桌面版）。',
@@ -3478,7 +3482,7 @@ async function encodeMp3(audioBuffer) {
                     // 自主任務執行中時，這個背景 WAL 自動存檔不需要跳出「⏳ 備份訊息 X/Y...」的 toast，
                     // 每回合都會觸發好幾次 addMessage、進而觸發這個自動存檔，訊息疊在一起會很干擾。
                     const _isAutoTaskRunning = typeof window.novaAutoTask?.isRunning === 'function' && window.novaAutoTask.isRunning();
-                    await window._novaStreamBackup(CapFS, _NOVA_WAL_SNAPSHOT, fullBackupData, _isAutoTaskRunning);
+                    await window._novaStreamBackup(CapFS, _NOVA_WAL_SNAPSHOT, fullBackupData, true);   // v2.6.41：背景自動存檔一律不顯示進度氣泡
                     const dirsToTry = _novaWalDir ? [_novaWalDir, _NOVA_WAL_DIR_PRIMARY, _NOVA_WAL_DIR_FALLBACK] : [_NOVA_WAL_DIR_PRIMARY, _NOVA_WAL_DIR_FALLBACK];
                     let _snapMoved = false;
                     for (const dir of [...new Set(dirsToTry)]) {

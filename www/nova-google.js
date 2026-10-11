@@ -1,4 +1,4 @@
-/* nova-google.js — v1.0.0 (2026-10-11)
+/* nova-google.js — v1.0.1 (2026-10-11)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.0.1 2026-10-11  修正介面顯示：專案 Tailwind 為預編譯，新類別不生效，導致視窗背景透明、按鈕無樣式；改為自帶 <style>（#nova-google-modal 範圍）＋實心背景，並修正設定頁按鈕樣式
  *   v1.0.0 2026-10-11  首版。誠實聲明：OAuth 與 Google API 全程只在沙盒用模擬回應驗證流程，沒有連過真實 Google，需真機實測。
  */
 (function () {
@@ -186,17 +187,48 @@
   var tab = 'main';
   function ensureModal() {
     if (D.getElementById('nova-google-modal')) return;
-    var m = D.createElement('div'); m.id = 'nova-google-modal'; m.className = 'hidden fixed inset-0 bg-slate-950/95 flex-col'; m.style.zIndex = '100000';
-    m.innerHTML = '<div class="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0" style="padding-top:calc(env(safe-area-inset-top,0px) + 12px)"><h3 class="text-base font-bold text-white flex items-center gap-2"><i class="ph-bold ph-google-logo text-sky-400"></i> Google 整合</h3><button onclick="NovaGoogle.close()" class="text-slate-400 bg-slate-800 p-1.5 rounded-lg"><i class="ph-bold ph-x text-xl"></i></button></div>' +
-      '<div id="ng-tabs" class="flex gap-1 p-2 bg-slate-900 border-b border-slate-800 shrink-0 text-xs"></div><div id="ng-body" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm text-slate-200"></div>';
+    if (!D.getElementById('ng-style')) { var st = D.createElement('style'); st.id = 'ng-style'; st.textContent = CSS; D.head.appendChild(st); }
+    var m = D.createElement('div'); m.id = 'nova-google-modal'; m.style.cssText = 'display:none;position:fixed;top:0;right:0;bottom:0;left:0;background:#020617;z-index:100000;flex-direction:column;color:#e2e8f0';
+    m.innerHTML = '<div class="ng-head"><h3><i class="ph-bold ph-google-logo" style="color:#38bdf8"></i> Google 整合</h3><button onclick="NovaGoogle.close()" class="ng-x"><i class="ph-bold ph-x" style="font-size:20px"></i></button></div>' +
+      '<div id="ng-tabs" class="ng-tabs"></div><div id="ng-body" class="ng-body"></div>';
     D.body.appendChild(m);
   }
-  var IN = 'w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white outline-none focus:border-sky-500';
-  var BTN = 'px-3 py-2 rounded-lg text-xs font-bold ';
+
+  var CSS = '#nova-google-modal *{box-sizing:border-box}' +
+    '#nova-google-modal .ng-head{display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;background:#0f172a;border-bottom:1px solid #1e293b;flex-shrink:0}' +
+    '#nova-google-modal .ng-head h3{margin:0;font-size:16px;font-weight:700;color:#fff;display:flex;align-items:center;gap:8px}' +
+    '#nova-google-modal .ng-x{background:#1e293b;color:#94a3b8;border:0;border-radius:8px;padding:6px;display:flex}' +
+    '#nova-google-modal .ng-tabs{display:flex;gap:4px;padding:8px;background:#0f172a;border-bottom:1px solid #1e293b;flex-shrink:0;font-size:12px}' +
+    '#nova-google-modal .ng-tab{flex:1;padding:8px 2px;border:0;border-radius:8px;font-weight:700;background:#1e293b;color:#94a3b8;font-size:12px}' +
+    '#nova-google-modal .ng-tab.on{background:#0284c7;color:#fff}' +
+    '#nova-google-modal .ng-body{flex:1;overflow-y:auto;padding:16px;font-size:14px;color:#e2e8f0;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}' +
+    '#nova-google-modal .ng-body>*{flex-shrink:0}' +
+    '#nova-google-modal .ng-in{display:block;width:100%;background:#020617;border:1px solid #334155;border-radius:8px;padding:8px;font-size:13px;color:#fff;outline:none}' +
+    '#nova-google-modal .ng-in:focus{border-color:#0ea5e9}' +
+    '#nova-google-modal .ng-btn{padding:8px 12px;border:0;border-radius:8px;font-size:12px;font-weight:700;color:#fff;background:#334155}' +
+    '#nova-google-modal .ng-sky{background:#0284c7;color:#fff}#nova-google-modal .ng-gray{background:#334155;color:#e2e8f0}#nova-google-modal .ng-green{background:#059669;color:#fff}#nova-google-modal .ng-purple{background:#9333ea;color:#fff}' +
+    '#nova-google-modal label{display:block}#nova-google-modal label:has(input[type=checkbox]){display:flex;align-items:center;gap:6px}' +
+    '#nova-google-modal input[type=checkbox]{width:16px;height:16px;flex-shrink:0}' +
+    '#nova-google-modal .flex{display:flex}#nova-google-modal .flex-wrap{flex-wrap:wrap}#nova-google-modal .gap-1{gap:4px}#nova-google-modal .gap-2{gap:8px}#nova-google-modal .gap-3{gap:12px}' +
+    '#nova-google-modal .items-center{align-items:center}#nova-google-modal .justify-between{justify-content:space-between}#nova-google-modal .shrink-0{flex-shrink:0}' +
+    '#nova-google-modal .space-y-2>*+*{margin-top:8px}#nova-google-modal .mt-2{margin-top:8px}#nova-google-modal .mt-3{margin-top:12px}#nova-google-modal .mb-2{margin-bottom:8px}#nova-google-modal .my-1{margin:4px 0}#nova-google-modal .my-2{margin:8px 0}#nova-google-modal .mr-2{margin-right:8px}' +
+    '#nova-google-modal .text-xs{font-size:12px}#nova-google-modal .text-sm{font-size:14px}#nova-google-modal .font-bold,#nova-google-modal b{font-weight:700}' +
+    '#nova-google-modal .text-slate-400{color:#94a3b8}#nova-google-modal .text-slate-300{color:#cbd5e1}#nova-google-modal .text-slate-500{color:#64748b}#nova-google-modal .text-amber-400{color:#fbbf24}#nova-google-modal .text-red-400{color:#f87171}#nova-google-modal .text-sky-400{color:#38bdf8}' +
+    '#nova-google-modal .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}#nova-google-modal .text-left{text-align:left}#nova-google-modal .w-full{width:100%}' +
+    '#nova-google-modal .p-2{padding:8px}#nova-google-modal .p-3{padding:12px}#nova-google-modal .rounded-lg{border-radius:8px}#nova-google-modal .rounded-xl{border-radius:12px}' +
+    '#nova-google-modal .border{border:1px solid #334155}#nova-google-modal .bg-slate-900{background:#0f172a}' +
+    '#nova-google-modal .border-slate-800{border-color:#1e293b}#nova-google-modal .border-slate-700{border-color:#334155}#nova-google-modal .border-sky-600\\/60{border-color:rgba(2,132,199,.6)}#nova-google-modal .border-emerald-600\\/50{border-color:rgba(5,150,105,.5)}#nova-google-modal .bg-emerald-900\\/20{background:rgba(6,78,59,.2)}' +
+    '#nova-google-modal button.w-full{display:block;background:#0f172a;color:#e2e8f0;border-width:1px;border-style:solid}' +
+    '#nova-google-modal pre{white-space:pre-wrap;word-break:break-word;margin:0;max-height:40vh;overflow-y:auto;background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px;font-size:12px}' +
+    '#nova-google-modal details{font-size:12px;color:#94a3b8}#nova-google-modal summary{cursor:pointer}' +
+    '#nova-google-modal p{margin:0}#nova-google-modal .text-\\[11px\\]{font-size:11px}#nova-google-modal .text-\\[10px\\]{font-size:10px}' +
+    '#ng-settings-btn button{padding:10px 14px;border:0;border-radius:10px;font-size:13px;font-weight:700;background:#0369a1;color:#fff;display:inline-flex;align-items:center;gap:6px}';
+  var IN = 'ng-in';
+  var BTN = 'ng-btn ';
   function render() {
-    var m = D.getElementById('nova-google-modal'); if (!m || m.classList.contains('hidden')) return;
+    var m = D.getElementById('nova-google-modal'); if (!m || m.style.display === 'none') return;
     var tabs = [['main', '連接'], ['drive', '☁️ Drive 同步'], ['gmail', '✉️ Gmail'], ['docs', '📄 Docs']];
-    D.getElementById('ng-tabs').innerHTML = tabs.map(function (t) { return '<button onclick="NovaGoogle.tab(\'' + t[0] + '\')" class="flex-1 py-2 rounded-lg font-bold ' + (tab === t[0] ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + t[1] + '</button>'; }).join('');
+    D.getElementById('ng-tabs').innerHTML = tabs.map(function (t) { return '<button onclick="NovaGoogle.tab(\'' + t[0] + '\')" class="ng-tab ' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('');
     var b = D.getElementById('ng-body'), c = cfg();
     if (tab === 'main') {
       var sel = scopesSel();
@@ -205,26 +237,26 @@
         '<label class="block text-xs text-slate-400">Client Secret</label><input id="ng-sec" type="password" class="' + IN + '" value="' + esc(c.secret) + '">' +
         '<label class="block text-xs text-slate-400">轉址 URI（需先登錄到該用戶端的「已授權的重新導向 URI」）</label><input id="ng-red" class="' + IN + '" value="' + esc(c.redir) + '">' +
         '<div class="flex flex-wrap gap-3 text-xs">' + ['drive', 'gmail', 'docs'].map(function (k) { return '<label class="flex items-center gap-1"><input type="checkbox" class="ng-sc" value="' + k + '"' + (sel.indexOf(k) !== -1 ? ' checked' : '') + '> ' + { drive: 'Drive（完整，才能讀到桌面版建立的同步檔）', gmail: 'Gmail 唯讀', docs: 'Docs' }[k] + '</label>'; }).join('') + '</div>' +
-        '<div class="flex gap-2"><button class="' + BTN + 'bg-sky-600 text-white" onclick="NovaGoogle._saveCfg();NovaGoogle.connect()">連接 Google</button>' + (connected() ? '<button class="' + BTN + 'bg-slate-700 text-slate-200" onclick="NovaGoogle.disconnect()">中斷連接</button>' : '') + '</div>' +
-        '<details class="text-xs text-slate-400"><summary>授權後沒有自動跳回 App？</summary><p class="my-2">轉址頁會顯示一串網址；複製整串貼到下面按「完成連接」。</p><input id="ng-paste" class="' + IN + '" placeholder="貼上轉址後的完整網址或 code"><button class="' + BTN + 'bg-slate-700 text-slate-200 mt-2" onclick="NovaGoogle._paste()">完成連接</button></details>' +
+        '<div class="flex gap-2"><button class="' + BTN + 'ng-sky" onclick="NovaGoogle._saveCfg();NovaGoogle.connect()">連接 Google</button>' + (connected() ? '<button class="' + BTN + 'ng-gray" onclick="NovaGoogle.disconnect()">中斷連接</button>' : '') + '</div>' +
+        '<details class="text-xs text-slate-400"><summary>授權後沒有自動跳回 App？</summary><p class="my-2">轉址頁會顯示一串網址；複製整串貼到下面按「完成連接」。</p><input id="ng-paste" class="' + IN + '" placeholder="貼上轉址後的完整網址或 code"><button class="' + BTN + 'ng-gray mt-2" onclick="NovaGoogle._paste()">完成連接</button></details>' +
         '<p class="text-[11px] text-slate-500">個人自用提示：OAuth 同意畫面若維持「測試中」，授權每 7 天會過期；切到「正式版」（不必送審）會出現未驗證警告但可繼續，授權不會過期。Gmail／Drive 完整權限屬 Google 的「受限範圍」。</p>';
     } else if (!connected()) { b.innerHTML = '<p class="text-slate-400">請先到「連接」分頁完成 Google 授權。</p>'; }
     else if (tab === 'drive') {
       b.innerHTML = (has('drive') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Drive，請到「連接」勾選 Drive 後重新連接。</p>') +
         '<p class="text-xs text-slate-400">與桌面版共用 Drive 內的 <b>' + SYNC_NAME + '</b>：任務與筆記雙向合併（較新者為準，含刪除）。桌面版的知識庫文件、資料夾、向量片段會原封保留，不會被手機覆蓋。</p>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" id="ng-auto" ' + (syncOn() ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_enabled\',this.checked?\'1\':\'0\')"> 變更後自動同步（約 4 秒後）</label>' +
-        '<button class="' + BTN + 'bg-emerald-600 text-white" onclick="NovaGoogle.sync(true)">立即同步</button>' +
+        '<button class="' + BTN + 'ng-green" onclick="NovaGoogle.sync(true)">立即同步</button>' +
         '<div id="ng-sync-status" class="text-xs text-slate-400">' + esc(g('nova_gsync_status', g('nova_gsync_last', '尚未同步'))) + '</div>';
     } else if (tab === 'gmail') {
       b.innerHTML = (has('gmail') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Gmail。</p>') +
-        '<div class="flex gap-2"><input id="ng-gq" class="' + IN + '" placeholder="搜尋（Gmail 語法，例如 is:unread newer_than:2d）"><button class="' + BTN + 'bg-sky-600 text-white shrink-0" onclick="NovaGoogle._gmailLoad()">列出</button></div><div id="ng-gl" class="space-y-2"></div><div id="ng-gr" class="hidden"></div>';
+        '<div class="flex gap-2"><input id="ng-gq" class="' + IN + '" placeholder="搜尋（Gmail 語法，例如 is:unread newer_than:2d）"><button class="' + BTN + 'ng-sky shrink-0" onclick="NovaGoogle._gmailLoad()">列出</button></div><div id="ng-gl" class="space-y-2"></div><div id="ng-gr" style="display:none"></div>';
       if (has('gmail')) _gmailLoad();
     } else if (tab === 'docs') {
       b.innerHTML = (has('docs') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Docs。</p>') +
         '<p class="text-xs text-slate-400">筆記 → Google 文件：到筆記中心，於下方選擇筆記。Google 文件 → 筆記：點下方文件。</p>' +
-        '<div class="text-xs font-bold text-slate-300">匯出筆記為 Google 文件</div><div class="flex gap-2"><select id="ng-nsel" class="' + IN + '">' + appState.notes.slice(0, 80).map(function (n) { return '<option value="' + n.id + '">' + esc(n.title || '(無標題)') + '</option>'; }).join('') + '</select><button class="' + BTN + 'bg-emerald-600 text-white shrink-0" onclick="NovaGoogle._n2d()">匯出</button></div>' +
+        '<div class="text-xs font-bold text-slate-300">匯出筆記為 Google 文件</div><div class="flex gap-2"><select id="ng-nsel" class="' + IN + '">' + appState.notes.slice(0, 80).map(function (n) { return '<option value="' + n.id + '">' + esc(n.title || '(無標題)') + '</option>'; }).join('') + '</select><button class="' + BTN + 'ng-green shrink-0" onclick="NovaGoogle._n2d()">匯出</button></div>' +
         '<div class="text-xs font-bold text-slate-300 mt-3">我的 Google 文件（最近 20 份）</div><div id="ng-dl" class="space-y-2 text-xs">載入中…</div>';
-      if (has('docs') || has('drive')) docsList().then(function (fs) { var e = D.getElementById('ng-dl'); if (e) e.innerHTML = fs.map(function (f) { return '<div class="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-2"><span class="truncate mr-2">' + esc(f.name) + '</span><button class="' + BTN + 'bg-slate-700 text-slate-200 shrink-0" onclick="NovaGoogle._d2n(\'' + f.id + '\',this)">轉成筆記</button></div>'; }).join('') || '沒有文件'; }).catch(function (e) { var x = D.getElementById('ng-dl'); if (x) x.textContent = '讀取失敗：' + e.message; });
+      if (has('docs') || has('drive')) docsList().then(function (fs) { var e = D.getElementById('ng-dl'); if (e) e.innerHTML = fs.map(function (f) { return '<div class="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-2"><span class="truncate mr-2">' + esc(f.name) + '</span><button class="' + BTN + 'ng-gray shrink-0" onclick="NovaGoogle._d2n(\'' + f.id + '\',this)">轉成筆記</button></div>'; }).join('') || '沒有文件'; }).catch(function (e) { var x = D.getElementById('ng-dl'); if (x) x.textContent = '讀取失敗：' + e.message; });
     }
   }
   async function _gmailLoad() {
@@ -234,11 +266,11 @@
   }
   var curMail = null;
   async function _gmailOpen(id) {
-    var r = D.getElementById('ng-gr'), l = D.getElementById('ng-gl'); if (!r) return; l.classList.add('hidden'); r.classList.remove('hidden'); r.innerHTML = '<p class="text-xs text-slate-400">讀取中…</p>';
-    try { curMail = await gmailRead(id); r.innerHTML = '<button class="text-xs text-sky-400 mb-2" onclick="NovaGoogle._gmailBack()">← 返回列表</button><div class="text-xs text-slate-400">' + esc(curMail.from) + '<br>' + esc(curMail.date) + '</div><div class="font-bold my-1">' + esc(curMail.subject) + '</div><pre class="whitespace-pre-wrap text-xs bg-slate-900 border border-slate-800 rounded-lg p-2 max-h-[40vh] overflow-y-auto">' + esc(curMail.body.slice(0, 20000)) + '</pre><div class="flex gap-2 mt-2"><button class="' + BTN + 'bg-purple-600 text-white" onclick="NovaGoogle._gmailAI()">請 AI 摘要</button><button class="' + BTN + 'bg-slate-700 text-slate-200" onclick="NovaGoogle._gmailNote()">存成筆記</button></div><div id="ng-ai" class="text-xs mt-2 whitespace-pre-wrap"></div>'; }
+    var r = D.getElementById('ng-gr'), l = D.getElementById('ng-gl'); if (!r) return; l.style.display = 'none'; r.style.display = 'block'; r.innerHTML = '<p class="text-xs text-slate-400">讀取中…</p>';
+    try { curMail = await gmailRead(id); r.innerHTML = '<button class="text-xs text-sky-400 mb-2" onclick="NovaGoogle._gmailBack()">← 返回列表</button><div class="text-xs text-slate-400">' + esc(curMail.from) + '<br>' + esc(curMail.date) + '</div><div class="font-bold my-1">' + esc(curMail.subject) + '</div><pre class="whitespace-pre-wrap text-xs bg-slate-900 border border-slate-800 rounded-lg p-2 max-h-[40vh] overflow-y-auto">' + esc(curMail.body.slice(0, 20000)) + '</pre><div class="flex gap-2 mt-2"><button class="' + BTN + 'ng-purple" onclick="NovaGoogle._gmailAI()">請 AI 摘要</button><button class="' + BTN + 'ng-gray" onclick="NovaGoogle._gmailNote()">存成筆記</button></div><div id="ng-ai" class="text-xs mt-2 whitespace-pre-wrap"></div>'; }
     catch (e) { r.innerHTML = '<p class="text-red-400 text-xs">讀取失敗：' + esc(e.message) + '</p>'; }
   }
-  function _gmailBack() { D.getElementById('ng-gr').classList.add('hidden'); D.getElementById('ng-gl').classList.remove('hidden'); }
+  function _gmailBack() { D.getElementById('ng-gr').style.display = 'none'; D.getElementById('ng-gl').style.display = 'block'; }
   async function _gmailAI() {
     var o = D.getElementById('ng-ai'); if (!curMail || !o) return; o.textContent = 'AI 摘要中…';
     try { var res = await W.fetchAIResponse('請用繁體中文摘要下面這封信（重點、需要我做的事、期限）：\n\n寄件者：' + curMail.from + '\n主旨：' + curMail.subject + '\n\n' + curMail.body.slice(0, 12000), appState.currentModel, { enableSearch: false }); o.textContent = typeof res === 'string' ? res : (res.text || '(無回應)'); }
@@ -254,8 +286,8 @@
     var sel = []; D.querySelectorAll('.ng-sc').forEach(function (x) { if (x.checked) sel.push(x.value); }); s('nova_google_scopes', JSON.stringify(sel));
   }
   function _paste() { var e = D.getElementById('ng-paste'); if (!e || !e.value.trim()) return; var v = e.value.trim(); handleRedirect(/^https?:|^nova120:|\?/.test(v) ? v : ('?code=' + encodeURIComponent(v))); }
-  function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.classList.remove('hidden'); m.classList.add('flex'); render(); }
-  function close() { var m = D.getElementById('nova-google-modal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+  function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.style.display = 'flex'; render(); }
+  function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
   W.NovaGoogle = { open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
     gmailList: gmailList, gmailRead: gmailRead, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
     _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
@@ -271,7 +303,7 @@
     }
     var drv = D.getElementById('key-drive-url'); if (drv && !D.getElementById('ng-settings-btn')) {
       var holder = drv.parentNode; var sb = D.createElement('div'); sb.id = 'ng-settings-btn'; sb.className = 'mt-2';
-      sb.innerHTML = '<button type="button" class="px-3 py-2 rounded-lg text-xs font-bold bg-sky-700 text-white" onclick="NovaGoogle.open(\'main\')"><i class="ph-bold ph-google-logo"></i> Google 整合（Drive 同步／Gmail／Docs）</button>'; holder.parentNode.insertBefore(sb, holder.nextSibling);
+      sb.innerHTML = '<button type="button" onclick="NovaGoogle.open(\'main\')"><i class="ph-bold ph-google-logo"></i> Google 整合（Drive 同步／Gmail／Docs）</button>'; holder.parentNode.insertBefore(sb, holder.nextSibling);
     }
   }
   function boot() {
