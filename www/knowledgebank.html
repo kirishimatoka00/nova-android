@@ -1,9 +1,25 @@
 <!DOCTYPE html>
+<!--
+  ═══ knowledgebank.html（NOVA Android 向量資料庫）v2（2026-10-11）═══
+  版本紀錄：
+  v2 - 批次 2（對標桌面版 knowledgebank v1.1.0／v1.1.1）：表格感知與文件類型，共用邏輯放新檔 nova-kb-tables.js（與 index.html v2.6.21 同一份）。
+       ① PDF 表格處理四模式（localStorage nova_kb_pdf_table_mode，預設 local）：off＝舊行為；local＝pdf.js 文字座標分群成 Markdown 表格（免費）；
+          auto＝本機偵測，有表格／疑似有表格／沒有文字層的頁面才送 Gemini 視覺；vision＝每頁送 Gemini 視覺（單份最多 80 頁，會先提醒耗 Token）。
+          視覺模型預設 gemini-3.6-flash（可用 localStorage nova_note_ocr_model 覆寫，選到不適合的模型自動改回預設；3.8 不送 temperature）。失敗頁退回本機結果。
+       ② 表格原子化切分：chunkText() 委派 NovaKbTables.chunkText()——整張 Markdown 表格當一個 chunk（前綴「【表格】」＋章節說明），過大依列拆分並重複表頭；
+          無表格文件與舊演算法逐字元相同；共用檔沒載入時退回原函式。已匯入的舊文件不會自動重切，要受益請刪除後重新匯入。
+       ③ 文件類型 docType（論文／規格書／報告／筆記／網頁／其他）：匯入時可指定或「自動判斷」；文件列表可隨時改；問答模式卡片新增「限定文件類型」
+          （localStorage nova_kb_filter_doctypes，空＝不限制，index.html 的檢索讀同一把 key）；測試搜尋可選類型。舊文件沒有 docType：筆記匯入視為 note、其餘 other（只在讀取時推斷）。
+       ④ 介面沿用手機寬度設計：兩欄下拉（文件類型／PDF 表格處理）、膠囊式類型篩選鈕（觸控目標 ≥ 32px）。
+       ★ 誠實說明：本機座標分群與視覺轉錄只以合成資料／假 pdf 物件測試過，沒有用真實 PDF 與真實 Gemini 實測。
+  v1 - Android 初版（資料夾分類、Gemini 嵌入、測試搜尋、知識庫問答模式）。
+═══════════════════════════════════════════════════════════════════
+-->
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>NOVA 向量資料庫</title>
+<title>NOVA 向量資料庫 v2</title>
 <link rel="stylesheet" href="./vendor/tailwind.css">
 <script src="./vendor/phosphor-loader.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -11,6 +27,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.7.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- ★ v2：表格感知／文件類型共用模組（與 index.html 同一份） -->
+<script src="./nova-kb-tables.js"></script>
 <style>
   body{font-family:'Inter','Noto Sans TC',sans-serif;background:#0f172a;}
   ::-webkit-scrollbar{width:6px;height:6px;}
@@ -82,6 +100,11 @@
         </button>
       </div>
       <div id="kb-mode-status-text" class="mt-3 text-xs font-bold text-slate-500">目前狀態：關閉</div>
+      <!-- ★ v2：限定文件類型（空＝不限制）。index.html 的檢索讀同一把 localStorage key -->
+      <div class="mt-3">
+        <div class="text-[11px] text-slate-500 mb-1">限定文件類型（不選＝全部類型都查）</div>
+        <div id="kb-filter-doctypes" class="flex flex-wrap gap-2"></div>
+      </div>
     </div>
 
     <!-- ★ 資料夾管理 -->
@@ -101,6 +124,18 @@
         <label class="text-[11px] text-slate-500 block mb-1">上傳至資料夾</label>
         <select id="kb-upload-target-folder" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"></select>
       </div>
+      <!-- ★ v2：文件類型與 PDF 表格處理模式 -->
+      <div class="mb-2 grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-[11px] text-slate-500 block mb-1">文件類型</label>
+          <select id="kb-upload-doctype" onchange="localStorage.setItem('nova_kb_upload_doctype', this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"></select>
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-500 block mb-1">PDF 表格處理</label>
+          <select id="kb-pdf-table-mode" onchange="localStorage.setItem('nova_kb_pdf_table_mode', this.value); refreshPdfModeHint()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500"></select>
+        </div>
+      </div>
+      <div id="kb-pdf-mode-hint" class="text-[11px] text-slate-500 mb-2 leading-relaxed"></div>
       <label for="kb-file-input" id="kb-drop-zone" class="block border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-900/60">
         <i class="ph-bold ph-file-plus text-3xl text-slate-500 mb-2 block"></i>
         <div class="text-sm text-slate-300 font-medium">點擊或拖放檔案到此處</div>
@@ -125,6 +160,9 @@
     <!-- 測試搜尋 -->
     <div>
       <label class="font-bold text-sm text-slate-300 mb-2 flex items-center gap-2"><i class="ph-bold ph-magnifying-glass text-amber-400"></i> 測試向量搜尋</label>
+      <div class="mb-2">
+        <select id="kb-test-doctype" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-amber-500"></select>
+      </div>
       <div class="flex gap-2">
         <input id="kb-test-query" type="text" placeholder="輸入問題測試檢索結果..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm outline-none focus:border-amber-500">
         <button onclick="testKbSearch()" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-sm font-bold active:scale-95 transition-transform">搜尋</button>
@@ -404,6 +442,11 @@ function refreshKeyStatus() {
 
 // ---------- 文字切割 ----------
 function chunkText(text) {
+    // ★ v2：表格感知切分委派給共用模組（無表格時與下面舊演算法逐字元相同；共用檔沒載入就走舊演算法）
+    if (window.NovaKbTables) {
+        try { return window.NovaKbTables.chunkText(text, { size: CHUNK_SIZE, overlap: CHUNK_OVERLAP }); }
+        catch (e) { console.warn('[NOVA][KB] 表格感知切分失敗，改用舊切分：', e); }
+    }
     const clean = (text || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
     if (!clean) return [];
     const chunks = [];
@@ -426,6 +469,125 @@ function chunkText(text) {
     return chunks;
 }
 
+// ---------- ★ v2：PDF 表格模式／Gemini 視覺轉錄／文件類型（移植自桌面版 knowledgebank v1.1.x） ----------
+let lastPdfStats = null;
+
+const PDF_MODE_HINTS = {
+    off: '舊行為：PDF 文字直接攤平，表格的欄列結構會遺失。',
+    local: '本機座標分群：不花 Token，數字型表格效果較好；文字型表格可能偵測不到。',
+    auto: '自動：先本機偵測，只有「有表格／疑似有表格／沒有文字層（掃描檔）」的頁面才送 Gemini 視覺，兼顧準度與成本。',
+    vision: '視覺：每一頁都轉成圖片送 Gemini 轉 Markdown，最準但最耗 Token，頁數多時請留意額度（單份最多 80 頁）。'
+};
+function getPdfTableMode() {
+    const m = localStorage.getItem('nova_kb_pdf_table_mode') || 'local';
+    return ['off', 'local', 'auto', 'vision'].indexOf(m) !== -1 ? m : 'local';
+}
+function refreshPdfModeHint() {
+    const el = document.getElementById('kb-pdf-mode-hint');
+    if (el) el.textContent = PDF_MODE_HINTS[getPdfTableMode()] + '（已匯入的舊文件不會重切，需刪除後重新匯入才生效）';
+}
+
+// 把 PDF 一頁畫成 JPEG（寬度約 1500px，足以讓視覺模型讀小字表格，又不會太大）
+async function kbRenderPdfPage(page) {
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(2, Math.max(1, 1500 / base.width));
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+// 視覺模型：預設 gemini-3.6-flash；可用 nova_note_ocr_model 覆寫，選到不適合的模型（非 gemini／多模型／圖像／語音等）改回預設
+function kbVisionModel() {
+    const m = localStorage.getItem('nova_note_ocr_model') || '';
+    const bad = !m || m.indexOf('gemini-') !== 0 || /multi|image|imagen|tts|live|audio|embedding|veo|robotics|computer/i.test(m);
+    return (bad || m === 'gemini-3.5-flash') ? 'gemini-3.6-flash' : m;
+}
+
+async function kbVisionTranscribe(dataUrl, prompt) {
+    const key = GEMINI_KEY();
+    if (!key) throw new Error('缺少 Gemini API Key');
+    const model = kbVisionModel();
+    const mime = (dataUrl.match(/^data:([^;]+);/) || [])[1] || 'image/jpeg';
+    const b64 = dataUrl.split(',')[1] || '';
+    const gc = { maxOutputTokens: 8192 };
+    if (!/^gemini-3\.8/i.test(model)) gc.temperature = 0;   // 3.8 不接受 temperature
+    const payload = {
+        contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: mime, data: b64 } }] }],
+        generationConfig: gc
+    };
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if ((res.status === 429 || res.status === 503) && attempt === 0) { await new Promise(r => setTimeout(r, 2500)); continue; }
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error((data && data.error && data.error.message) || ('HTTP ' + res.status));
+        const parts = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+        return parts.filter(p => p.text && !p.thought).map(p => p.text).join('').trim();
+    }
+    throw new Error('Gemini 暫時無法使用（429/503）');
+}
+
+function kbDocTypeList() {
+    return (window.NovaKbTables && window.NovaKbTables.DOC_TYPES) || [{ id: 'other', label: '其他' }];
+}
+function kbDocTypeLabel(id) {
+    return window.NovaKbTables ? window.NovaKbTables.docTypeLabel(id) : '其他';
+}
+function kbEffectiveDocType(doc) {
+    return window.NovaKbTables ? window.NovaKbTables.effectiveDocType(doc) : (doc && doc.docType) || 'other';
+}
+function getFilterDocTypes() {
+    try { const v = JSON.parse(localStorage.getItem('nova_kb_filter_doctypes') || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+}
+function toggleFilterDocType(id) {
+    const cur = getFilterDocTypes();
+    const i = cur.indexOf(id);
+    if (i === -1) cur.push(id); else cur.splice(i, 1);
+    localStorage.setItem('nova_kb_filter_doctypes', JSON.stringify(cur));
+    renderFilterDocTypes();
+}
+function renderFilterDocTypes() {
+    const box = document.getElementById('kb-filter-doctypes');
+    if (!box) return;
+    const cur = getFilterDocTypes();
+    box.innerHTML = kbDocTypeList().map(t => {
+        const on = cur.indexOf(t.id) !== -1;
+        const style = on
+            ? 'background:rgba(16,185,129,0.2);border:1px solid #10b981;color:#6ee7b7;'
+            : 'background:#1e293b;border:1px solid #334155;color:#94a3b8;';
+        return `<button type="button" onclick="toggleFilterDocType('${t.id}')" class="rounded-full px-3 py-1.5 text-xs font-medium active:scale-95" style="min-height:32px;${style}">${escapeHtml(t.label)}</button>`;
+    }).join('');
+}
+function initKbTableControls() {
+    const dt = document.getElementById('kb-upload-doctype');
+    if (dt) {
+        dt.innerHTML = '<option value="auto">🔎 自動判斷</option>' + kbDocTypeList().map(t => `<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+        const saved = localStorage.getItem('nova_kb_upload_doctype') || 'auto';
+        dt.value = Array.from(dt.options).some(o => o.value === saved) ? saved : 'auto';
+    }
+    const pm = document.getElementById('kb-pdf-table-mode');
+    if (pm) {
+        const modes = (window.NovaKbTables && window.NovaKbTables.PDF_MODES) || [{ id: 'off', label: '關閉' }];
+        pm.innerHTML = modes.map(m => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
+        pm.value = getPdfTableMode();
+    }
+    const ts = document.getElementById('kb-test-doctype');
+    if (ts) ts.innerHTML = '<option value="">測試範圍：全部類型</option>' + kbDocTypeList().map(t => `<option value="${t.id}">只查「${escapeHtml(t.label)}」</option>`).join('');
+    refreshPdfModeHint();
+    renderFilterDocTypes();
+}
+async function setKbDocType(docId, type) {
+    const docs = await dbGetAll('documents');
+    const doc = docs.find(d => d.id === docId);
+    if (!doc) return;
+    doc.docType = window.NovaKbTables ? window.NovaKbTables.normalizeDocType(type) : type;
+    await dbPut('documents', doc);
+}
+
 // ---------- 各檔案類型文字擷取 ----------
 async function extractFileText(file) {
     const name = file.name.toLowerCase();
@@ -438,6 +600,24 @@ async function extractFileText(file) {
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        // ★ v2：表格感知擷取（共用模組）。mode=off 或共用檔沒載入／失敗時走下面的舊行為。
+        const tblMode = getPdfTableMode();
+        if (window.NovaKbTables && tblMode !== 'off') {
+            try {
+                const r = await window.NovaKbTables.extractPdfText({
+                    pdf: pdf, mode: tblMode,
+                    renderPage: kbRenderPdfPage,
+                    callVision: kbVisionTranscribe,
+                    onProgress: (label) => setProgress(`「${file.name}」${label}`, 10),
+                    onWarn: (w) => console.warn('[NOVA][KB][PDF]', w),
+                    maxVisionPages: 80
+                });
+                lastPdfStats = r.stats;
+                return r.text;
+            } catch (e) {
+                console.warn('[NOVA][KB] 表格感知 PDF 擷取失敗，改用舊行為：', e);
+            }
+        }
         let full = '';
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
@@ -540,10 +720,18 @@ async function handleKbFiles(fileList) {
     const files = Array.from(fileList);
     const targetFolderSel = document.getElementById('kb-upload-target-folder');
     const targetFolderId = (targetFolderSel && targetFolderSel.value) || UNCAT_FOLDER_ID;
+    // ★ v2：視覺模式會把每一頁轉成圖片送 Gemini，先提醒一次
+    if (getPdfTableMode() === 'vision' && files.some(f => f.name.toLowerCase().endsWith('.pdf'))) {
+        const goOn = await kbConfirm('目前的「PDF 表格處理」是【Gemini 視覺】模式：每一頁都會轉成圖片送給 Gemini 轉錄，頁數多會消耗較多 Token（單份最多 80 頁）。要繼續嗎？');
+        if (!goOn) { document.getElementById('kb-file-input').value = ''; return; }
+    }
+    const docTypeSel = document.getElementById('kb-upload-doctype');
+    const docTypeChoice = (docTypeSel && docTypeSel.value) || 'auto';
     for (let fi = 0; fi < files.length; fi++) {
         const file = files[fi];
         try {
             setProgress(`正在解析「${file.name}」...`, 5);
+            lastPdfStats = null;
             const rawText = await extractFileText(file);
             if (!rawText || !rawText.trim()) {
                 setProgress(`「${file.name}」沒有可讀取的文字內容，已略過`, 100);
@@ -560,8 +748,14 @@ async function handleKbFiles(fileList) {
                 size: file.size,
                 chunkCount: pieces.length,
                 addedAt: Date.now(),
-                folderId: targetFolderId
+                folderId: targetFolderId,
+                // ★ v2：文件類型（使用者指定，或依檔名／內容自動判斷）與表格 chunk 數
+                docType: docTypeChoice !== 'auto'
+                    ? docTypeChoice
+                    : (window.NovaKbTables ? window.NovaKbTables.guessDocType(file.name, rawText) : 'other'),
+                tableChunks: pieces.filter(p => p.indexOf('【表格】') === 0).length
             };
+            if (lastPdfStats) docMeta.pdfTableStats = lastPdfStats;
 
             // 批次送出嵌入向量
             let completedChunks = 0;
@@ -586,7 +780,9 @@ async function handleKbFiles(fileList) {
             }
 
             await dbPut('documents', docMeta);
-            setProgress(`✅ 「${file.name}」已完成索引 (${pieces.length} 段)`, 100);
+            const tblNote = docMeta.tableChunks ? `，含 ${docMeta.tableChunks} 個表格段` : '';
+            const visNote = (lastPdfStats && lastPdfStats.visionPages) ? `，視覺轉錄 ${lastPdfStats.visionPages} 頁${lastPdfStats.visionFailed ? `（${lastPdfStats.visionFailed} 頁失敗已退回本機結果）` : ''}` : '';
+            setProgress(`✅ 「${file.name}」已完成索引 (${pieces.length} 段${tblNote}${visNote})，類型：${kbDocTypeLabel(docMeta.docType)}`, 100);
             await new Promise(r => setTimeout(r, 500));
         } catch (err) {
             console.error(err);
@@ -644,6 +840,12 @@ async function renderDocList() {
                     <select onchange="moveDocToFolder('${d.id}', this.value).then(renderDocList)" class="bg-slate-800 border border-slate-700 rounded-md text-[11px] px-1.5 py-0.5 outline-none">
                         ${folderOptionsHtml.replace(`value="${fid}"`, `value="${fid}" selected`)}
                     </select>
+                    <!-- ★ v2：文件類型（可隨時改，知識庫問答的類型過濾依此判斷） -->
+                    <i class="ph-bold ph-tag text-violet-400 text-xs ml-1"></i>
+                    <select onchange="setKbDocType('${d.id}', this.value)" class="bg-slate-800 border border-slate-700 rounded-md text-[11px] px-1.5 py-0.5 outline-none">
+                        ${kbDocTypeList().map(t => `<option value="${t.id}"${t.id === kbEffectiveDocType(d) ? ' selected' : ''}>${escapeHtml(t.label)}</option>`).join('')}
+                    </select>
+                    ${d.tableChunks ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 ml-1">含 ${d.tableChunks} 個表格段</span>` : ''}
                 </div>
             </div>
             <button onclick="deleteKbDoc('${d.id}')" class="p-2 rounded-lg hover:bg-red-900/30 text-red-400 active:scale-90 transition-transform shrink-0">
@@ -761,7 +963,14 @@ async function testKbSearch() {
     try {
         const [chunks, folders] = await Promise.all([dbGetAll('chunks'), dbGetAll('folders')]);
         const activeFolderIds = new Set(folders.filter(f => f.active).map(f => f.id));
-        const activeChunks = chunks.filter(c => activeFolderIds.has(c.folderId || UNCAT_FOLDER_ID));
+        // ★ v2：文件類型過濾（測試搜尋下拉；選「全部」＝不限制）
+        const testType = (document.getElementById('kb-test-doctype') || {}).value || '';
+        let typeOkDocs = null;
+        if (testType) {
+            const allDocs = await dbGetAll('documents');
+            typeOkDocs = new Set(allDocs.filter(d => kbEffectiveDocType(d) === testType).map(d => d.id));
+        }
+        const activeChunks = chunks.filter(c => activeFolderIds.has(c.folderId || UNCAT_FOLDER_ID) && (!typeOkDocs || typeOkDocs.has(c.docId)));
 
         if (chunks.length === 0) {
             resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料（尚未匯入任何文件）</div>';
@@ -806,6 +1015,7 @@ function applyKbTheme(theme) {
 window.addEventListener('DOMContentLoaded', async () => {
     applyKbTheme(localStorage.getItem('nova_theme') || 'dark');
     refreshKbModeUI();
+    initKbTableControls();   // ★ v2
     refreshKeyStatus();
     await renderFolderList(); // 需先確保「未分類」資料夾存在，再渲染文件清單
     renderDocList();

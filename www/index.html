@@ -485,6 +485,7 @@
     <link rel="stylesheet" href="./nova-ui.css?v=1.0.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
+    <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
     window.NOVA_GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash';
@@ -1937,8 +1938,14 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.20';
+        const NOVA_APP_VERSION = '2.6.21';
         const NOVA_CHANGELOG = [
+            { v: '2.6.21', date: '2026-10-11', notes: [
+                '批次 2（對標桌面版）：知識庫表格感知與文件類型。新增共用模組 nova-kb-tables.js（自桌面版 v1.0.0 原樣移植，與 knowledgebank.html v2 同一份）。',
+                'novaKbChunkText 改委派 NovaKbTables.chunkText：Markdown 表格整張當一個 chunk（前綴「【表格】」＋章節說明），過大表格依列拆分並重複表頭；沒有表格的文字與舊切分逐字元相同；共用檔沒載入時退回舊函式。筆記匯入向量資料庫的文件寫入 docType:\'note\'。',
+                'novaKbRetrieveContext(queryText, opts) 擴充（為批次 4 專家 RAG 鋪路，沒傳 opts＝舊行為）：支援 docTypes／folderIds／docIds／topK／threshold／queryVec／wantMeta，回傳新增 items（docId、docName、docType、text、score）；預設讀 knowledgebank.html「限定文件類型」存的 nova_kb_filter_doctypes，並排除還沒有向量的 chunk。',
+                '已匯入的舊文件不會自動重新切分（原文沒有留存），要使用表格切分請刪除後重新匯入。知識庫頁（knowledgebank.html v2）新增：PDF 表格處理四模式、文件類型、問答模式限定類型、測試搜尋類型範圍。',
+            ]},
             { v: '2.6.20', date: '2026-10-11', notes: [
                 '批次 1（對標桌面版 v3.60.0）：新增設定頁「🧩 模型」分頁（啟用的模型）——可取消勾選不想用的 Gemini／Grok／OpenAI 模型，主畫面三個子模型下拉會跟著過濾；目前使用的模型被停用時自動改用同供應商同類型第一個已啟用的；每組至少保留一個。停用清單存 localStorage nova_disabled_models。',
                 '新增 nova-ui.css v1.0.0：仿桌面版 nova-ui.css 的「手機寬度」設計語言（--nv-* 黑夜／白晝色票、設定頁橫向膠囊分頁、觸控目標 ≥ 40px 的勾選清單、通用卡片／按鈕／輸入框元件，斷點 640／760px），後續批次的專家、會議、並行作業介面共用。',
@@ -14883,6 +14890,11 @@ window.startMultiAgentResearch = async function() {
         const NOVA_KB_EMBED_BATCH = 16;
 
         function novaKbChunkText(text) {
+            // ★ v2.6.21：表格感知切分委派給共用模組（無表格時與下面舊演算法逐字元相同；沒載入就走舊演算法）
+            if (window.NovaKbTables) {
+                try { return window.NovaKbTables.chunkText(text, { size: NOVA_KB_CHUNK_SIZE, overlap: NOVA_KB_CHUNK_OVERLAP }); }
+                catch (e) { console.warn('[NOVA][KB] 表格感知切分失敗，改用舊切分：', e); }
+            }
             const clean = (text || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
             if (!clean) return [];
             const chunks = [];
@@ -15002,6 +15014,7 @@ window.startMultiAgentResearch = async function() {
                     addedAt: Date.now(),
                     folderId: NOVA_KB_NOTES_FOLDER_ID,
                     sourceType: 'note',
+                    docType: 'note',   // v2.6.21：文件類型（與桌面版一致）
                     sourceNoteId: n.id
                 });
 
@@ -15014,36 +15027,68 @@ window.startMultiAgentResearch = async function() {
             }
         };
 
-        // 回傳 { found: boolean, context: string }
-        async function novaKbRetrieveContext(queryText) {
+        // ★ v2.6.21：文件類型過濾。docTypes 讀 knowledgebank.html「限定文件類型」存的 localStorage nova_kb_filter_doctypes
+        //   （空陣列＝不限制）。沒有 docType 的舊文件：筆記匯入的視為 note，其餘視為 other（只在讀取時推斷，不改寫資料庫）。
+        function _novaKbGlobalDocTypeFilter() {
+            try { const v = JSON.parse(localStorage.getItem('nova_kb_filter_doctypes') || '[]'); return Array.isArray(v) ? v : []; }
+            catch (e) { return []; }
+        }
+        function _novaKbEffectiveDocType(d) {
+            if (window.NovaKbTables) return window.NovaKbTables.effectiveDocType(d);
+            return (d && d.docType) || (d && d.sourceType === 'note' ? 'note' : 'other');
+        }
+
+        // opts（全部選填，沒傳＝舊行為）：
+        //   docTypes  - 陣列；傳了（即使空陣列＝不限制）就以它為準，沒傳則用全域「限定類型」設定
+        //   folderIds / docIds - 陣列，額外限制範圍（folderIds 仍要求資料夾是啟用中）
+        //   topK / threshold   - 覆寫 NOVA_KB_TOP_K／NOVA_KB_THRESHOLD
+        //   wantMeta  - true＝回傳的 items 帶 docType
+        // 回傳 { found, context, items:[{docId,docName,docType,text,score}] }
+        async function novaKbRetrieveContext(queryText, opts) {
             try {
+                opts = opts || {};
                 const [chunks, folders] = await Promise.all([novaKbGetAllChunks(), novaKbGetAllFolders()]);
-                if (!chunks || chunks.length === 0) return { found: false, context: '' };
+                if (!chunks || chunks.length === 0) return { found: false, context: '', items: [] };
 
                 // ★ 只比對「啟用中」資料夾內的文件，未啟用的資料夾對 AI 完全隱形
                 const activeFolderIds = new Set(folders.filter(f => f.active).map(f => f.id));
-                const visibleChunks = chunks.filter(c => activeFolderIds.has(c.folderId || NOVA_KB_UNCAT_FOLDER_ID));
-                if (visibleChunks.length === 0) return { found: false, context: '' };
+                let visibleChunks = chunks.filter(c => activeFolderIds.has(c.folderId || NOVA_KB_UNCAT_FOLDER_ID) && Array.isArray(c.vector) && c.vector.length);
 
-                const qVec = await novaKbEmbedQuery(queryText);
-                if (!qVec) return { found: false, context: '' };
+                const docTypes = Array.isArray(opts.docTypes) ? opts.docTypes : _novaKbGlobalDocTypeFilter();
+                const folderSet = (Array.isArray(opts.folderIds) && opts.folderIds.length) ? new Set(opts.folderIds.map(String)) : null;
+                const docSet = (Array.isArray(opts.docIds) && opts.docIds.length) ? new Set(opts.docIds.map(String)) : null;
+                let docTypeById = null;
+                if ((docTypes && docTypes.length) || opts.wantMeta) {
+                    const allDocs = await novaKbGetAllDocs();
+                    docTypeById = {};
+                    allDocs.forEach(function (d) { docTypeById[d.id] = _novaKbEffectiveDocType(d); });
+                }
+                if (docTypes && docTypes.length) visibleChunks = visibleChunks.filter(function (c) { return docTypes.indexOf(docTypeById[c.docId] || 'other') !== -1; });
+                if (folderSet) visibleChunks = visibleChunks.filter(function (c) { return folderSet.has(String(c.folderId || NOVA_KB_UNCAT_FOLDER_ID)); });
+                if (docSet) visibleChunks = visibleChunks.filter(function (c) { return docSet.has(String(c.docId)); });
+                if (visibleChunks.length === 0) return { found: false, context: '', items: [] };
 
+                const qVec = opts.queryVec || await novaKbEmbedQuery(queryText);
+                if (!qVec) return { found: false, context: '', items: [] };
+
+                const topK = opts.topK || NOVA_KB_TOP_K;
+                const threshold = (typeof opts.threshold === 'number') ? opts.threshold : NOVA_KB_THRESHOLD;
                 const scored = visibleChunks
-                    .map(c => ({ docName: c.docName, text: c.text, score: novaKbCosineSim(qVec, c.vector) }))
+                    .map(c => ({ docId: c.docId, docName: c.docName, docType: docTypeById ? (docTypeById[c.docId] || 'other') : undefined, text: c.text, score: novaKbCosineSim(qVec, c.vector) }))
                     .sort((a, b) => b.score - a.score)
-                    .slice(0, NOVA_KB_TOP_K)
-                    .filter(c => c.score >= NOVA_KB_THRESHOLD);
+                    .slice(0, topK)
+                    .filter(c => c.score >= threshold);
 
-                if (scored.length === 0) return { found: false, context: '' };
+                if (scored.length === 0) return { found: false, context: '', items: [] };
 
                 const context = scored.map((c, i) =>
                     `(${i + 1}) 來源：${c.docName} | 相似度：${(c.score * 100).toFixed(1)}%\n${c.text}`
                 ).join('\n\n---\n\n');
 
-                return { found: true, context };
+                return { found: true, context, items: scored };
             } catch (e) {
                 console.warn('向量資料庫檢索失敗', e);
-                return { found: false, context: '' };
+                return { found: false, context: '', items: [] };
             }
         }
 
