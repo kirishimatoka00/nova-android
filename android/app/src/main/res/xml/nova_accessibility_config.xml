@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  nova_accessibility_config.xml — NOVA 無障礙服務設定
+  版本：v1.0.0
+  版本紀錄：
+  v1.0.0 - 批次 5b 新增。讓 NOVA 在「不用 Termux／atx-agent」的情況下也能操作手機：
+           讀取畫面元件階層（canRetrieveWindowContent）、模擬點擊／滑動（canPerformGestures）、截圖（canTakeScreenshot，Android 11+）。
+           只有使用者在系統「無障礙」設定裡手動開啟 NOVA 服務後才會生效。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/nova_accessibility_description"
+    android:notificationTimeout="100" />

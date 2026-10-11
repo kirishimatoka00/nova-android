@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1235,6 +1235,30 @@
                                         <input type="number" min="10" max="600" id="autotask-round-timeout" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-purple-500 outline-none" placeholder="120">
                                     </div>
                                 </div>
+                                <!-- v2.6.24（批次 5）：執行器與判斷器 -->
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] text-sky-300 mb-1 font-bold">🦾 執行器（誰來點擊／截圖）</label>
+                                        <select id="autotask-executor" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 outline-none"><option value="atx">atx-agent（Termux）</option><option value="acc">無障礙服務（免 Termux）</option></select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-emerald-300 mb-1 font-bold">🧠 判斷器（誰決定下一步）</label>
+                                        <select id="autotask-judge" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 outline-none"><option value="prompt">提示詞＋元件清單（原本）</option><option value="cu">Gemini Computer Use</option></select>
+                                    </div>
+                                </div>
+                                <div id="autotask-acc-box" class="hidden bg-slate-900/60 border border-sky-500/30 rounded-lg p-2 space-y-1">
+                                    <p class="text-[10px] text-slate-400 leading-relaxed">無障礙服務模式：不需要 Termux／atx-agent。需在系統「無障礙」手動開啟 NOVA 服務（Android 11 以上才有截圖功能）。只有你輸入 /ap 時才會操作手機。</p>
+                                    <div class="flex gap-2">
+                                        <button onclick="novaAccOpenSettings()" class="flex-1 text-[11px] px-2 py-1.5 rounded-lg bg-sky-700/60 border border-sky-500/50 text-white">開啟無障礙服務</button>
+                                        <button onclick="novaAccCheck()" class="flex-1 text-[11px] px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600 text-slate-200">檢查狀態</button>
+                                    </div>
+                                    <p id="autotask-acc-status" class="text-[10px] text-slate-500"></p>
+                                </div>
+                                <div id="autotask-cu-box" class="hidden bg-slate-900/60 border border-emerald-500/30 rounded-lg p-2 space-y-1">
+                                    <label class="block text-[10px] text-slate-300 font-bold">Computer Use 模型</label>
+                                    <input type="text" id="autotask-cu-model" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 outline-none" placeholder="gemini-3.8-flash">
+                                    <label class="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" id="autotask-cu-fallback"> Computer Use 失敗時自動退回原本的判斷器</label>
+                                </div>
                                 <div>
                                     <label class="block text-[10px] text-slate-300 mb-1 font-bold">🔌 uiautomator2 / atx-agent 位址</label>
                                     <input type="text" id="autotask-atx-url" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:border-fuchsia-500 outline-none" placeholder="http://127.0.0.1:7912">
@@ -1975,8 +1999,25 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.23';
+        window.novaAccOpenSettings = async function () {
+            try { if (!window.NovaAccBridge || !NovaAccBridge.hasPlugin()) { showToast('這個版本沒有無障礙外掛，請安裝新版 APK'); return; } await NovaAccBridge.openSettings(); showToast('請在清單中找到「NOVA 120 SSP」並開啟'); } catch (e) { showToast('❌ ' + e.message); }
+        };
+        window.novaAccCheck = async function () {
+            const el = document.getElementById('autotask-acc-status');
+            try {
+                const s = await NovaAccBridge.status();
+                const t = (s.connected ? '✅ 服務運作中' : (s.enabled ? '⏳ 已開啟但尚未連線（請稍候或重開 App）' : '❌ 尚未開啟')) + '｜Android API ' + s.sdk + (s.canScreenshot ? '｜可截圖' : '｜⚠️ 無法截圖（需 Android 11+）') + (s.width ? '｜螢幕 ' + s.width + '×' + s.height : '');
+                if (el) el.textContent = t; showToast(t, 4000);
+            } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
+        };
+        const NOVA_APP_VERSION = '2.6.24';
         const NOVA_CHANGELOG = [
+            { v: '2.6.24', date: '2026-10-11', notes: [
+                '批次 5a：自主任務新增「Gemini Computer Use」判斷器（nova-autotask-cu.js；Interactions API、mobile 環境、previous_interaction_id 維持對話、0–999 座標轉相對比例、type 拆成「點→貼上→Enter」、open_app 名稱解析、safety_decision 確認）。設定頁可切換，預設仍是原本的提示詞判斷器；Computer Use 失敗可自動退回（預設開）。',
+                '批次 5b：新增原生無障礙服務（NovaAccessibilityService／NovaAccessibilityPlugin，Java）＋ nova-acc-bridge.js：不用 Termux／atx-agent 也能讀取畫面元件、點擊、滑動、截圖（Android 11+）、貼上文字、開 App／網址。引擎的 fetch(baseUrl()+path) 一律改走 atxFetch，兩種執行器共用同一套邏輯。',
+                '設定頁「AI自主任務」新增：執行器（atx-agent／無障礙服務）、判斷器（提示詞／Computer Use）、開啟無障礙服務與檢查狀態按鈕。AndroidManifest 新增無障礙服務與 QUERY_ALL_PACKAGES；MainActivity 註冊外掛。',
+                '誠實說明：Java 無法在開發環境編譯，只靠 GitHub CI 驗證；JS 只用模擬外掛／模擬 API 測過，未在實機驗證。Computer Use 的 REST 欄位細節官方文件沒有完整範例，解析採寬鬆寫法。',
+            ]},
             { v: '2.6.23', date: '2026-10-11', notes: [
                 '批次 4（對標桌面版多專家）：新增 nova-experts.js／nova-meeting.js／nova-tasks.js（引擎，自桌面版原樣移植）、nova-llm.js（模型呼叫輔助層，批次 6 深度研究也會共用）、nova-experts-glue.js（手機版接線層）。',
                 '三種模式：🧑‍🔬 協作報告（多位專家分工＋交叉審閱＋獨立審查→一份完整報告）、🗣️ 多專家會議（專家在對話裡輪流發言，說「請總結」收尾）、⚡ 並行作業（@專家 交辦，多位專家同時開工，成品貼回對話）。',
@@ -3572,6 +3613,10 @@ async function encodeMp3(audioBuffer) {
                 maxRounds: parseInt(localStorage.getItem('nova_autotask_max_rounds')) || 10,
                 roundTimeoutSec: parseInt(localStorage.getItem('nova_autotask_round_timeout')) || 120,
                 atxAgentUrl: localStorage.getItem('nova_autotask_atx_url') || 'http://127.0.0.1:7912',
+                executor: localStorage.getItem('nova_autotask_executor') || 'atx',          // v2.6.24：atx（Termux）／acc（無障礙服務）
+                judge: localStorage.getItem('nova_autotask_judge') || 'prompt',               // v2.6.24：prompt（提示詞）／cu（Gemini Computer Use）
+                cuModel: localStorage.getItem('nova_autotask_cu_model') || 'gemini-3.8-flash',
+                cuFallback: localStorage.getItem('nova_autotask_cu_fallback') !== '0',
             },
             recordingContext: 'default', currentAudioTranscript: '', editNoteImagesBase64: [], 
             pendingAnalyzePrompt: "", pendingAnalyzeContextId: null, pendingAnalyzeType: "", pendingAnalyzeDuration: 0,
@@ -6049,6 +6094,14 @@ return html;
                 if (mr) mr.onchange = () => { appState.autoTaskSettings.maxRounds = parseInt(mr.value) || 10; localStorage.setItem('nova_autotask_max_rounds', appState.autoTaskSettings.maxRounds); };
                 if (rt) rt.onchange = () => { appState.autoTaskSettings.roundTimeoutSec = parseInt(rt.value) || 120; localStorage.setItem('nova_autotask_round_timeout', appState.autoTaskSettings.roundTimeoutSec); };
                 if (au) au.onchange = () => { appState.autoTaskSettings.atxAgentUrl = au.value.trim() || 'http://127.0.0.1:7912'; localStorage.setItem('nova_autotask_atx_url', appState.autoTaskSettings.atxAgentUrl); };
+                // v2.6.24：執行器／判斷器設定
+                { const ex = document.getElementById('autotask-executor'), jd = document.getElementById('autotask-judge'), cm = document.getElementById('autotask-cu-model'), cf = document.getElementById('autotask-cu-fallback');
+                  const sync = () => { const a = document.getElementById('autotask-acc-box'), c = document.getElementById('autotask-cu-box'); if (a) a.classList.toggle('hidden', appState.autoTaskSettings.executor !== 'acc'); if (c) c.classList.toggle('hidden', appState.autoTaskSettings.judge !== 'cu'); };
+                  if (ex) { ex.value = appState.autoTaskSettings.executor; ex.onchange = () => { appState.autoTaskSettings.executor = ex.value; localStorage.setItem('nova_autotask_executor', ex.value); sync(); }; }
+                  if (jd) { jd.value = appState.autoTaskSettings.judge; jd.onchange = () => { appState.autoTaskSettings.judge = jd.value; localStorage.setItem('nova_autotask_judge', jd.value); sync(); }; }
+                  if (cm) { cm.value = appState.autoTaskSettings.cuModel; cm.onchange = () => { appState.autoTaskSettings.cuModel = cm.value.trim() || 'gemini-3.8-flash'; localStorage.setItem('nova_autotask_cu_model', appState.autoTaskSettings.cuModel); }; }
+                  if (cf) { cf.checked = !!appState.autoTaskSettings.cuFallback; cf.onchange = () => { appState.autoTaskSettings.cuFallback = cf.checked; localStorage.setItem('nova_autotask_cu_fallback', cf.checked ? '1' : '0'); }; }
+                  sync(); }
             }
             // 切換到錄音設定時同步目前數值
             if (tabId === 'tab-rec') {
@@ -7097,6 +7150,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 本身就是 Unicode 字串，中文/日文/emoji 都不會有編碼問題——一次解掉「輸入法不穩」跟
             // 「中文打不出來」這兩個一直反覆修不好的問題。
             let clipboardPasteKnownBroken = false;
+            let cuDisabledThisRun = false;   // v2.6.24：本次任務 CU 失敗已退回舊判斷器
             async function pasteViaClipboard(text) {
                 // 寫入剪貼簿有兩條路可走：
                 // 1. NOVA 自己就是 Capacitor App，可以直接呼叫 Capacitor 官方的 Clipboard plugin
@@ -7165,6 +7219,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 if (stopBtn) stopBtn.classList.toggle('hidden', !running);
             }
 
+            // v2.6.24（批次 5b）：執行器切換——「無障礙服務」(NovaAccBridge) 或「atx-agent」(Termux)。無障礙模式下，所有 /info、/shell、/screenshot、/jsonrpc 請求改由原生外掛處理。
+            function accActive() { return !!(window.NovaAccBridge && NovaAccBridge.active()); }
+            function atxFetch(path, opts) { return accActive() ? NovaAccBridge.fetch(path, opts) : fetch(baseUrl() + path, opts); }
             function baseUrl() {
                 return (appState.autoTaskSettings && appState.autoTaskSettings.atxAgentUrl) || 'http://127.0.0.1:7912';
             }
@@ -7178,7 +7235,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             }
 
             async function shellExec(cmd) {
-                const res = await fetch(baseUrl() + '/shell?command=' + encodeURIComponent(cmd) + '&timeout=60');
+                const res = await atxFetch('/shell?command=' + encodeURIComponent(cmd) + '&timeout=60');
                 if (!res.ok) throw new Error('atx-agent /shell 回應錯誤 HTTP ' + res.status);
                 const raw = await res.text();
                 let data;
@@ -7199,7 +7256,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 
             // 呼叫 atx-agent 的 JSON-RPC 介面（對應 uiautomator2 python 端的 device.jsonrpc 呼叫）
             async function rpc(method, params = []) {
-                const res = await fetch(baseUrl() + '/jsonrpc/0', {
+                const res = await atxFetch('/jsonrpc/0', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
@@ -7213,7 +7270,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             async function testConnection() {
                 setStatus('連線測試中...', null);
                 try {
-                    const res = await fetch(baseUrl() + '/info');
+                    const res = await atxFetch('/info');
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const info = await res.json();
                     setStatus('✅ 已連線：' + (info.model || info.serial || 'uiautomator2 裝置'), true);
@@ -7338,7 +7395,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             const SCREEN_CHANGE_EXPECTED_TYPES = ['tap', 'tap_element', 'long_press', 'swipe'];
 
             async function getScreenshotBase64() {
-                const res = await fetch(baseUrl() + '/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
+                const res = await atxFetch('/screenshot/0?t=' + Date.now(), { cache: 'no-store' });
                 if (!res.ok) throw new Error('截圖失敗 HTTP ' + res.status);
                 const blob = await res.blob();
                 // 傳給 Gemini 的是縮小版（快），但回傳的 width/height 對應的就是這張縮小版的尺寸，
@@ -7727,6 +7784,22 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 
             // 呼叫 Gemini（視覺模型），依目前畫面截圖 + 任務目標 + 歷史，決定下一步動作
             async function decideNextAction(goal, history, screenshotB64, elementsText, imgW, imgH) {
+                // v2.6.24（批次 5a）：判斷器可選「Gemini Computer Use」；失敗時依設定退回原本的提示詞判斷器
+                const _st = appState.autoTaskSettings || {};
+                if (_st.judge === 'cu' && window.NovaAutoCU && !cuDisabledThisRun) {
+                    try {
+                        const fg = (typeof elementsText === 'string' && (elementsText.match(/前景 App 套件名稱：([\w.]+)/) || [])[1]) || '';
+                        return await NovaAutoCU.decide({
+                            goal, history, screenshotB64, imgW, imgH, apiKey: appState.keys.gemini, model: _st.cuModel || 'gemini-3.8-flash', fgApp: fg,
+                            deps: { shell: shellExec, confirm: (m) => window.showConfirm(m) }
+                        });
+                    } catch (cuErr) {
+                        if (!_st.cuFallback) throw cuErr;
+                        cuDisabledThisRun = true;
+                        try { NovaAutoCU.reset(); } catch (_) {}
+                        addMessage('⚠️ Computer Use 判斷器失敗（' + cuErr.message + '），本次任務改用原本的提示詞判斷器繼續。', 'system');
+                    }
+                }
                 const key = appState.keys.gemini;
                 if (!key) throw new Error('尚未設定 Gemini API Key，無法進行自主任務畫面判斷');
                 const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
@@ -7848,6 +7921,7 @@ ${elementsText}`;
                 if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
                 running = true;
                 cancelRequested = false;
+                cuDisabledThisRun = false; try { if (window.NovaAutoCU) NovaAutoCU.reset(); } catch (_) {}   // v2.6.24
                 // 修正「AI 自主任務執行到一半突然無反應，必須切回 NOVA 再切回才會有下一步動作」：
                 // 這其實是 Android WebView 在螢幕關閉/App 被系統判定為非前景時，會暫停 JS 計時器與
                 // fetch 回呼的排程（網路請求本身可能早就完成，只是回呼卡在暫停的事件迴圈裡等不到執行），
@@ -7894,9 +7968,19 @@ ${elementsText}`;
                 setStatus(`執行中（0/${maxRounds} 回合）`, null);
 
                 try {
+                    // v2.6.24：無障礙模式先檢查服務狀態，給出明確的下一步
+                    if (accActive()) {
+                        const _ir = await atxFetch('/info');
+                        if (!_ir.ok) {
+                            addMessage('❌ 無障礙服務無法使用：' + (await _ir.text()) + '\n\n請到「設定 → AI 自主任務」按「開啟無障礙服務」，在系統清單裡打開 NOVA 後再試；或把執行器改回 atx-agent。', 'system');
+                            setStatus('❌ 無障礙服務未啟用', false);
+                            running = false; hideFloatingStopButton();
+                            return;
+                        }
+                    }
                     // 先確認 atx-agent 是否可連線
                     try {
-                        const infoRes = await fetch(baseUrl() + '/info');
+                        const infoRes = await atxFetch('/info');
                         if (!infoRes.ok) throw new Error('HTTP ' + infoRes.status);
                     } catch (e) {
                         addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install "setuptools<70.0.0" "uiautomator2<3.0" && python -m uiautomator2 init（注意：uiautomator2 3.0+ 已移除 atx-agent，務必安裝 2.x 版本），確認服務已啟動後再試一次。', 'system');
@@ -7911,7 +7995,7 @@ ${elementsText}`;
                     // 官方文件建議的修復方式是強制重啟 uiautomator session：DELETE /uiautomator。
                     // 每次任務開始前先做一次，是低成本、高機率解決「座標明明對但點擊全部失敗」的方法。
                     try {
-                        await fetch(baseUrl() + '/uiautomator', { method: 'DELETE' });
+                        await atxFetch('/uiautomator', { method: 'DELETE' });
                         await new Promise(r => setTimeout(r, 1500)); // 重啟需要一點時間
                         addMessage('🔄 已重啟 uiautomator 觸控服務（修正已知的 session 失效問題，可能是先前點擊全部失敗的原因）', 'system');
                     } catch (resetErr) {
@@ -8194,7 +8278,7 @@ ${elementsText}`;
                                 // 不要傻傻再試第 3、4 次相同座標——直接重啟 session 再繼續。
                                 if (consecutiveSoftFails >= 2) {
                                     try {
-                                        await fetch(baseUrl() + '/uiautomator', { method: 'DELETE' });
+                                        await atxFetch('/uiautomator', { method: 'DELETE' });
                                         await new Promise(r => setTimeout(r, 1500));
                                         addMessage('🔄 連續多次動作未生效，已自動重啟 uiautomator 觸控服務後繼續', 'system');
                                         consecutiveSoftFails = 0;

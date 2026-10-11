@@ -4,4 +4,5 @@
     <string name="title_activity_main">NOVA 120 SSP</string>
     <string name="package_name">com.kirishimatoka00.nova120</string>
     <string name="custom_url_scheme">com.kirishimatoka00.nova120</string>
+    <string name="nova_accessibility_description">讓 NOVA 的「AI 自主任務」能讀取畫面上的元件、模擬點擊與滑動並擷取畫面，以代替你操作手機。只有在你下指令（/ap）時才會動作，可隨時在此關閉。</string>
 </resources>

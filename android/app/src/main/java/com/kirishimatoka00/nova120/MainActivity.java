@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingServicePlugin.class);
+        registerPlugin(NovaAccessibilityPlugin.class);   // v2.6.24：無障礙服務外掛（批次 5b）
         super.onCreate(savedInstanceState);
 
         // ★ Step 1：App 啟動時主動請求所有必要的 Android 系統權限
