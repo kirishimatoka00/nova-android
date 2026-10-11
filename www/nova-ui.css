@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.4.1
+   版本：v1.5.0
    版本紀錄：
+   v1.5.0 - v2.6.35：第 12 節——輸入區改單一卡片（對標桌面版手機殼：無框輸入、圖示列、無框模型下拉、多專家快捷鈕）；設定頁手機左右 8px、頂端 8px，內容更寬。
    v1.4.1 - v2.6.34：移除單一合併模型選單的規則，模型選單回到桌面版手機遠端的雙下拉（子模型＋供應商）；新增隱藏 #web-search-badge（對標桌面版）。
    v1.4.0 - 批次 9（v2.6.33）：新增第 11 節——主畫面頂列（.nv-top-btn、.nv-stop-pill 中止膠囊）與抽屜選單（.nv-drawer-item／extra／status）樣式。
    v1.2.1 - 設定頁在 ≤760px 改全螢幕（對標桌面版）、底部按鈕列可換行、輸入欄位 16px 防自動放大。
@@ -272,3 +273,29 @@ html:root body .nv-drawer-status { padding: 8px 16px; font-size: 12px; color: va
 html:root body #mobile-menu > div:last-child { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 
 html:root body #web-search-badge { display: none !important; }
+
+/* ───────────── 12. 輸入區單一卡片＋設定頁加寬（v2.6.35） ───────────── */
+html:root body div:has(> #nova-composer) { padding: 0 10px calc(8px + env(safe-area-inset-bottom, 0px)) 10px !important; background: transparent !important; border: 0 !important; }
+html:root body #nova-composer {
+  grid-template-columns: auto auto auto auto minmax(0, 1fr) auto !important; background: var(--nv-card) !important; border: 1px solid var(--nv-line-strong) !important;
+  border-radius: 22px !important; padding: 10px 12px 8px 12px !important; row-gap: 4px; box-shadow: none !important;
+}
+html:root body #nova-composer > #input-wrapper { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 2px 4px 0 !important; }
+html:root body #nova-composer > #input-wrapper textarea { font-size: 16px; }
+html:root body #nova-composer > button[onclick^="togglePlusMenu"], html:root body #nova-composer > #search-toggle-btn { background: transparent !important; }
+html:root body #nova-composer > #composer-experts-btn { grid-column: 4; grid-row: 2; margin: 0 !important; display: flex; }
+html:root body #nova-composer > #composer-experts-btn.nova-exp-on { background: rgba(168,85,247,.28) !important; color: #e9d5ff !important; }
+html:root body #nova-composer > #smart-action-btn { grid-column: 6 !important; grid-row: 2; }
+html:root body #nova-composer > #nova-model-picker { grid-column: 1 / -1; grid-row: 3; margin-top: 0; gap: 4px; }
+html:root body #nova-model-picker select {
+  border: 0 !important; background-color: transparent !important; color: var(--nv-muted) !important; font-size: 14px !important; font-weight: 600 !important;
+  height: 40px; padding: 0 6px !important;
+}
+html:root body #nova-model-picker select:focus { box-shadow: none !important; color: var(--nv-text) !important; }
+@media (max-width: 760px) {
+  html:root body #settings-modal > div { padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px !important; }
+  html:root body #settings-modal .ns-cat-head { padding-left: 4px; }
+  html:root body #settings-modal .ns-sec-body { padding: 10px 12px 12px; }
+}
+html:root body #nova-model-picker select#gemini-sub-model-select, html:root body #nova-model-picker select#grok-sub-model-select, html:root body #nova-model-picker select#gpt-sub-model-select { flex: 1.5 1 0; }
+html:root body #nova-model-picker select#main-model-select { flex: 1 1 0; }

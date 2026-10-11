@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════
    nova-mainui.js — NOVA Android 主畫面（頂列＋抽屜選單）重新設計（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.1
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - v2.6.35：輸入區「多專家」快捷鈕（#composer-experts-btn）開啟狀態跟 #experts-mode-toggle-btn 同步。
    v1.0.1 - v2.6.34：頂列拿掉「電腦遙控」鈕（對標桌面版手機殼只有 logo／天氣／設定／選單；遙控入口在抽屜與「+」選單）。
    v1.0.0 - 批次 9（App v2.6.33）。對標桌面版在手機寬度（遠端 /app 網頁殼）的主畫面：頂列＝logo／天氣／（新）電腦遙控／設定／選單；抽屜選單＝新增對話、
             最近的對話（含資料夾）、工具與紀錄、設定。手機版在這基礎上補：
@@ -51,6 +52,7 @@
 
     function lsGet(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
     function refresh() {
+        try { var src = $('experts-mode-toggle-btn'), cb = $('composer-experts-btn'); if (src && cb) cb.classList.toggle('nova-exp-on', src.classList.contains('nova-exp-on')); } catch (e) {}
         var running = false; try { running = !!(W.novaAutoTask && W.novaAutoTask.isRunning && W.novaAutoTask.isRunning()); } catch (e) {}
         var stop = $('nova-task-stop'); if (stop) stop.classList.toggle('hidden', !running);
         var st = $('nv-drawer-status');

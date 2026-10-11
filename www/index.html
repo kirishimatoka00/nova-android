@@ -482,11 +482,11 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.4.1">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.5.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -891,16 +891,6 @@
                                 </div>
                             </div>
                             <div class="flex flex-col gap-3 pt-2 border-t border-slate-700">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <label class="block text-xs text-purple-400 font-bold flex items-center gap-1"><i class="ph-fill ph-brain"></i> 長文記憶 (同對話記憶)</label>
-                                        <p class="text-[10px] text-slate-500 mt-1">開啟後，同一對話下 AI 會記住所有前文與人設，不會互相干擾。</p>
-                                    </div>
-                                    <label class="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
-                                        <input type="checkbox" id="key-long-memory" class="sr-only peer" onchange="appState.enableLongMemory=this.checked; localStorage.setItem('nova_long_memory', this.checked); showToast(this.checked ? '🧠 長文記憶已開啟（已自動儲存）' : '🧠 長文記憶已關閉（已自動儲存）');">
-                                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-500"></div>
-                                    </label>
-                                </div>
                                 <div class="flex items-center justify-between">
                                     <div>
                                         <label class="block text-xs text-emerald-400 font-bold flex items-center gap-1"><i class="ph-fill ph-eye-slash"></i> 隱藏 LIVE 自動截圖訊息</label>
@@ -1700,6 +1690,12 @@
                                 <i id="kb-mode-toggle-icon" class="ph-bold ph-database text-xl"></i>
                             </button>
 
+                            <!-- v2.6.34：多專家快捷鈕（對標桌面版手機殼輸入區第二排） -->
+                            <button id="composer-experts-btn" onclick="toggleNovaExpertsMode()" aria-label="多專家" title="多專家協作"
+                                class="p-2 mb-1 rounded-full shrink-0 transition-all flex items-center justify-center active:scale-90 h-[40px] w-[40px] bg-slate-800 text-slate-400">
+                                <i class="ph-bold ph-users-three text-xl"></i>
+                            </button>
+
                             <!-- 連續語音切換按鈕（桌機保留，手機隱藏）-->
                             <button id="continuous-btn" onclick="toggleContinuous()" class="hidden md:flex p-2 mb-1 rounded-full bg-slate-800 text-slate-400 hover:text-red-400 shrink-0 transition-all items-center justify-center active:scale-90 h-[40px] w-[40px]" title="連續語音">
                                 <i id="continuous-icon" class="ph-bold ph-microphone text-xl"></i>
@@ -2035,8 +2031,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.34';
+        const NOVA_APP_VERSION = '2.6.35';
         const NOVA_CHANGELOG = [
+            { v: '2.6.35', date: '2026-10-11', notes: [
+                '輸入區改成桌面版手機遠端的單一圓角卡片：輸入框無邊框、第二排「＋／聯網／知識庫／多專家」與右側麥克風、第三排模型下拉（無框、淡色）；新增「多專家」快捷鈕。',
+                '設定頁在手機上左右邊距縮小、頂端多餘空白拿掉，內容更寬（對照網頁版）。',
+                '移除舊的「長文記憶（同對話記憶）」開關與歷史塞入邏輯（與桌面版 v3.28.1 相同）：記憶已由「AI 記憶」系統取代，短期連貫性仍由既有的近期上下文維持。',
+            ] },
             { v: '2.6.34', date: '2026-10-11', notes: [
                 '修正無障礙連線測試：自 v2.6.28 起設定頁重新分類後，原本切換分頁時的同步程式（含自主任務「執行器」下拉的存檔）因找不到舊分頁外殼而整個丟錯，造成選了「無障礙服務」卻沒存進設定、測試連線仍走 atx-agent 而失敗。已補回；同時修復同一原因造成的模型勾選清單／記憶／語音選單沒更新。',
                 '模型選單改回桌面版手機遠端的雙下拉設計（左：子模型含「文字／圖像生成」分組；右：供應商 Gemini／Grok／Groq／Cohere／OpenAI／Local API）；頂列拿掉「連網搜尋」小標籤與遙控鈕（遙控入口在選單與「+」選單）。',
@@ -3538,7 +3539,7 @@ async function encodeMp3(audioBuffer) {
             hideLiveCapture: localStorage.getItem('nova_hide_live_capture') === 'true',
             autoTTS: localStorage.getItem('nova_auto_tts') !== 'false',
             isTTSPlaying: false,
-            enableLongMemory: localStorage.getItem('nova_long_memory') === 'true',
+            enableLongMemory: false,   // v2.6.34：已移除（由 AI 記憶系統取代）
             deepDiveMode: localStorage.getItem('nova_deep_dive') === 'true',
             enableContext: localStorage.getItem('nova_deep_dive') === 'true', // 與 deepDiveMode 同步
             uiColor: localStorage.getItem('nova_ui_color') || 'blue',
@@ -17128,11 +17129,7 @@ if (appState.pendingAnalyzeContextId) {
                 } else if (options.customHistory) {
                     // 如果是雙 AI 協作模式 (有帶入自訂歷史)
                     chatHistory = options.customHistory;
-                } else if (appState.enableLongMemory && appState.translateMode === 'off') {
-                // 長文記憶功能：獲取同一對話 (sessionId) 下的所有歷史紀錄，各自獨立不干擾
-                chatHistory = appState.messages.filter(m => (m.sender === 'user' || m.sender === 'ai') && String(m.sessionId || 'legacy') === String(appState.currentSessionId || 'legacy'));
-                // 賦予系統提示，使其能根據當下對話決定是否提起歷史，並保持人設
-                userText = `【系統記憶提示：在此對話中你具有長期記憶。請自然地依據我們過去的對話歷史與你被賦予的人設來回應。判斷當下我的問題是否跟前文有關：若無關，請直接針對新問題做出回答，切勿強行拉回舊話題，但必須繼續維持你的人設語氣。】\n\n` + userText;
+                // v2.6.34：舊的「長文記憶」（把整段對話歷史塞進每次呼叫）已移除，改由 AI 記憶系統（NovaMemory）取代；短期連貫性靠下面 enableContext。
             } else if (appState.enableContext && appState.translateMode === 'off') {
                 // 原有的短記憶也修正為同一對話內才觸發，避免互相干擾
                 chatHistory = appState.messages.filter(m => (m.sender === 'user' || m.sender === 'ai') && String(m.sessionId || 'legacy') === String(appState.currentSessionId || 'legacy')).slice(-4);
