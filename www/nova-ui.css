@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.9.0
+   版本：v1.10.0
    版本紀錄：
+   v1.10.0 - v2.6.39：頂列標題 .nv-top-title、頂列按鈕間距壓縮；筆記工具列手機版改圖示化（隱藏文字說明、色塊縮小）。
    v1.9.0 - v2.6.39：第 16 節——筆記編輯區（.note-editor-html）、表格拖曳把手、筆記工具列在手機窄螢幕的換行與觸控尺寸。
    v1.8.0 - v2.6.39：第 15 節——＋選單按鈕邊框與圖示同色（--pc），去掉白邊與光暈。
    v1.7.1 - v2.6.38：斜線指令選單貼在輸入卡片上方（預設 bottom 170px，實際位置由 JS 依輸入卡片計算）、touch-action: pan-y 可上下滑動。
@@ -376,4 +377,22 @@ body.nv-live.nv-live-pip #nova-composer-wrap { background: var(--nv-canvas, #020
   #note-edit-modal label.cursor-pointer, #fullscreen-content-editor label.cursor-pointer { min-height: 32px; }
   #note-ocr-model-select { margin-left: 0 !important; max-width: 100% !important; }
   #edit-note-content { min-height: 38vh; }
+}
+
+/* ═══ §17（v1.10.0）頂列標題＋筆記工具列手機圖示化 ═══ */
+.nv-top-title { flex: 1 1 0; min-width: 0; margin: 0 8px; font-size: 13px; color: var(--nv-text-dim, #94a3b8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:root body .nv-top-btn { min-width: 34px; min-height: 34px; }
+.nv-ico-only { display: none; }
+@media (max-width: 760px) {
+  #note-edit-modal .nv-lbl, #fullscreen-content-editor .nv-lbl { display: none; }
+  #note-edit-modal .nv-ico-only { display: inline-block; font-size: 16px; }
+  #note-edit-modal select#note-fmt-fontsize, #fullscreen-content-editor select#fse-fmt-fontsize { width: 74px; padding: 4px 2px; font-size: 13px; }
+  #note-edit-modal label:has(> input[type=color]), #fullscreen-content-editor label:has(> input[type=color]) {
+    flex-direction: column; gap: 2px; padding: 3px 7px; min-height: 0; justify-content: center; }
+  #note-edit-modal label:has(> input[type=color]) input[type=color], #fullscreen-content-editor label:has(> input[type=color]) input[type=color] {
+    width: 22px; height: 7px; border-radius: 3px; }
+  #note-edit-modal label:has(> input[type=color]) i, #fullscreen-content-editor label:has(> input[type=color]) i { font-size: 15px; line-height: 1; }
+  #note-edit-modal .flex-wrap, #fullscreen-content-editor .flex-wrap { gap: 5px; }
+  #note-edit-modal .flex-wrap button, #note-edit-modal .flex-wrap > label[for], #fullscreen-content-editor .flex-wrap button { padding: 5px 8px; font-size: 15px; }
+  #note-ocr-model-select { max-width: 150px !important; font-size: 12px !important; margin-left: auto !important; }
 }

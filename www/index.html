@@ -482,7 +482,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.9.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.10.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -762,11 +762,11 @@
         <!-- ================= 主要內容顯示區 ================= -->
         <main class="flex-1 flex flex-col relative bg-slate-950 overflow-hidden min-h-0">
             <!-- 手機版頂部導航列 -->
-            <div class="md:hidden flex items-center justify-between p-3 bg-transparent z-30 shrink-0">
+            <div class="md:hidden flex items-center justify-between px-3 py-1.5 bg-transparent z-30 shrink-0">
                 <div class="flex items-center shrink-0">
                     <i class="ph-bold ph-infinity" style="font-size:1.75rem;color:#06b6d4;"></i>
                 </div>
-                <div class="flex items-center space-x-3 ml-auto pl-2">
+                <div class="flex items-center space-x-1 ml-auto pl-1">
                     <div class="flex items-center space-x-1 bg-slate-800/50 px-2 py-1 rounded-lg border border-slate-700/50 cursor-pointer active:scale-95 transition-transform" onclick="cycleManualLocation()">
                         <i id="mobile-weather-icon" class="ph-fill ph-navigation-arrow text-blue-400"></i><span id="mobile-weather-temp" class="text-xs font-bold text-white whitespace-nowrap">更新</span>
                     </div>
@@ -1650,11 +1650,12 @@
 
                         </div>
 
-<div id="translate-settings" class="hidden w-full bg-slate-900 border-t border-slate-800 p-2 justify-center items-center gap-2 z-40 text-xs">
+<div id="translate-settings" class="hidden flex-wrap w-full bg-slate-900 border-t border-slate-800 p-2 justify-center items-center gap-2 z-40 text-xs">
                             <select id="trans-input-mode" onchange="handleTransModeChange()" class="bg-slate-800 text-purple-400 font-bold p-1.5 rounded outline-none border border-slate-700"><option value="voice">純語音</option><option value="ptt">按鍵收音</option><option value="text">純打字</option></select>
                             <select id="trans-lang-a" class="bg-slate-800 text-white p-1.5 rounded outline-none border border-slate-700"><option value="auto">自動偵測語言</option><option value="zh-TW">中文</option><option value="en">英文</option><option value="ja">日文</option><option value="ko">韓文</option></select>
                             <i class="ph-bold ph-arrows-left-right text-slate-500"></i>
                             <select id="trans-lang-b" class="bg-slate-800 text-white p-1.5 rounded outline-none border border-slate-700"><option value="zh-TW">翻譯為中文</option><option value="en">翻譯為英文</option><option value="ja">翻譯為日文</option><option value="ko">翻譯為韓文</option></select>
+                        <button id="trans-exit-btn" type="button" onclick="toggleTranslateMode(true)" title="結束口譯，回到一般對話" class="flex items-center gap-1 bg-red-900/50 hover:bg-red-800/50 text-red-200 font-bold px-2.5 py-1.5 rounded border border-red-500/50 active:scale-95 transition-all"><i class="ph-bold ph-x-circle"></i><span>結束口譯</span></button>
                         </div>
 
                         <div id="nova-composer" class="flex items-end gap-2 w-full relative z-50 p-2">
@@ -1923,12 +1924,12 @@
             <div id="todo-edit-modal" class="hidden fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
                 <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl flex-col">
                     <div class="flex justify-between items-center mb-4 shrink-0">
-                        <h3 class="text-xl font-bold text-white">編輯行程</h3>
+                        <h3 class="text-xl font-bold text-white">編輯任務</h3>
                         <button onclick="closeTodoEdit()" class="text-slate-400 hover:text-white"><i class="ph-bold ph-x text-xl"></i></button>
                     </div>
                     <input type="hidden" id="edit-todo-id">
                         <div class="space-y-4">
-                        <div><label class="text-xs text-slate-400 mb-1 block">行程內容</label><input type="text" id="edit-todo-text" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-blue-500 outline-none"></div>
+                        <div><label class="text-xs text-slate-400 mb-1 block">任務內容</label><input type="text" id="edit-todo-text" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-blue-500 outline-none"></div>
                         <div><label class="text-xs text-slate-400 mb-1 block">提醒時間</label><input type="datetime-local" id="edit-todo-time" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-blue-500 outline-none" style="color-scheme: dark;"></div>
                         <div>
                             <label class="text-xs text-slate-400 mb-1 block">重複設定 (自訂輸入，0為單次)</label>
@@ -2015,7 +2016,7 @@
                         <i class="ph-fill ph-highlighter-circle"></i>
                         <input type="color" id="fse-fmt-highlight" value="#fef08a" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyHighlight(this.value, 'fse-content')">
                     </label>
-                    <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight('fse-content')" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i> 去除螢光筆</button>
+                    <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight('fse-content')" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i><span class="nv-lbl"> 去除螢光筆</span></button>
                     <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-800 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="表格儲存格底色（游標先點進儲存格）">
                         <i class="ph-bold ph-square"></i>
                         <input type="color" id="fse-fmt-cellcolor" value="#1e293b" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyCellColor(this.value, 'fse-content')">
@@ -2024,7 +2025,7 @@
                         <i class="ph-bold ph-grid-four"></i>
                         <input type="color" id="fse-fmt-tableborder" value="#475569" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTableBorderColor(this.value, 'fse-content')">
                     </label>
-                    <button type="button" onclick="_novaNoteUnifyFont('fse-content')" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i> 字型自動統一</button>
+                    <button type="button" onclick="_novaNoteUnifyFont('fse-content')" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i><span class="nv-lbl"> 字型自動統一</span></button>
                 </div>
                 <div id="fse-content" contenteditable="true"
                     class="note-editor-html flex-1 w-full bg-slate-950 text-slate-100 text-base leading-relaxed p-4 outline-none overflow-y-auto"
@@ -2105,7 +2106,7 @@
                                     <i class="ph-fill ph-highlighter-circle"></i>
                                     <input type="color" id="note-fmt-highlight" value="#fef08a" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyHighlight(this.value)">
                                 </label>
-                                <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight()" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i> 去除螢光筆</button>
+                                <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight()" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i><span class="nv-lbl"> 去除螢光筆</span></button>
                                 <!-- ★ v3.30.136：使用者要求可以編輯表格「儲存格底色」跟「框線
                                      顏色」——游標點在表格的某個儲存格/表格裡面（不用先選取文字）
                                      就可以套用，完整說明見 _novaNoteApplyCellColor()／
@@ -2118,10 +2119,10 @@
                                     <i class="ph-bold ph-grid-four"></i>
                                     <input type="color" id="note-fmt-tableborder" value="#475569" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTableBorderColor(this.value)">
                                 </label>
-                                <button type="button" onclick="_novaNoteUnifyFont()" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i> 字型自動統一</button>
-                                <label for="edit-note-img-upload" class="text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded text-xs"><i class="ph-bold ph-image"></i> 插入圖片</label>
+                                <button type="button" onclick="_novaNoteUnifyFont()" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i><span class="nv-lbl"> 字型自動統一</span></button>
+                                <label for="edit-note-img-upload" class="text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded text-xs"><i class="ph-bold ph-image"></i><span class="nv-lbl"> 插入圖片</span></label>
                                 <input type="file" id="edit-note-img-upload" accept="image/*" multiple class="hidden" onchange="handleNoteEditImage(event)">
-                                <button onclick="openFullscreenEditor()" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 shrink-0" title="全螢幕編輯（手機建議使用）"><i class="ph-bold ph-arrows-out-simple"></i> 全螢幕編輯</button>
+                                <button onclick="openFullscreenEditor()" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 shrink-0" title="全螢幕編輯（手機建議使用）"><i class="ph-bold ph-arrows-out-simple"></i><span class="nv-lbl"> 全螢幕編輯</span></button>
                                 <!-- ★ v3.30.130：使用者要求可以自由關閉/開啟「貼上圖片時自動
                                      辨識並轉換」這個行為——關閉後貼上圖片會直接維持原始圖片，
                                      不呼叫 AI、不轉換，跟這個功能還沒做出來之前的行為一致。
@@ -2130,7 +2131,7 @@
                                      行為不因為升級而突然改變）。 -->
                                 <label class="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-2 py-1.5 cursor-pointer shrink-0" title="貼上圖片時，自動判斷並轉換其中的文字/表格內容；關閉的話貼上圖片只會維持原始圖片，不會呼叫 AI 辨識">
                                     <input type="checkbox" id="note-ocr-auto-toggle" onchange="localStorage.setItem('nova_note_ocr_auto_enabled', this.checked ? '1' : '0')" class="w-3.5 h-3.5 accent-emerald-500">
-                                    圖片自動辨識
+                                    <span class="nv-lbl">圖片自動辨識</span><i class="ph-bold ph-scan nv-ico-only" title="圖片自動辨識"></i>
                                 </label>
                                 <!-- ★ v3.30.99：使用者要求「讓我可以自己設定用來作為筆記圖形
                                      辨識的 model」——貼上圖片時判斷是不是文字/表格的那個模型，
@@ -2227,8 +2228,17 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.39';
+        const NOVA_APP_VERSION = '2.6.40';
         const NOVA_CHANGELOG = [
+            { v: '2.6.40', date: '2026-10-11', notes: [
+                'Google 整合（階段 1~3）：App 內 Google 授權（OAuth PKCE）；Drive 雙向同步（任務與筆記，與桌面版共用 NOVA_Sync_Bundle.json，桌面的知識庫資料原封保留）；Gmail 唯讀（列信、讀內文、AI 摘要、存成筆記）；Docs（筆記匯出成 Google 文件、Google 文件轉成筆記）。入口：＋選單「Google」、設定頁。',
+                '即時口譯設定列新增紅色「結束口譯」按鈕（同桌面版）。',
+                '三條線選單移除：技能、電腦遙控、深度研究、Jev 與自主任務設定，以及 Jev 開／技能數／遙控狀態。',
+                '頂列：按鈕間距壓縮，NOVA 圖示與天氣之間顯示目前對話標題。',
+                '「行程」相關畫面與提示文字統一改稱「任務」。',
+                '筆記編輯工具列手機版圖示化：隱藏文字說明，色塊改成小色條不再與圖示重疊。',
+                '對話紀錄與資料夾旁的功能收進「⋮」三點選單（重新命名／建立分支／匯出成 Markdown／移至資料夾／刪除；資料夾：重新命名／刪除），資料夾收合箭頭維持最右邊。'
+            ]},
             { v: '2.6.39', date: '2026-10-11', notes: [
                 '＋選單按鈕：邊框與圖示／文字統一同一個顏色，沒有白邊。',
                 '完整備份補強：設定頁所有參數（所有 nova_／cal_ 設定）、AI 記憶、模型選擇、筆記、全部對話、任務管理一併備份與還原；錄音檔本體不備份，但保留 AI 分析、摘要與逐字稿。',
@@ -10033,7 +10043,7 @@ msg.files : (msg.file ? [msg.file] : []);
             const repeatEl = document.getElementById('add-todo-repeat');
             const calSyncEl = document.getElementById('add-todo-cal-sync');
             const text = textEl && textEl.value.trim();
-            if (!text) { showToast('⚠️ 請輸入行程名稱'); return; }
+            if (!text) { showToast('⚠️ 請輸入任務名稱'); return; }
 
             const alertTime    = timeEl && timeEl.value ? new Date(timeEl.value).getTime() : null;
             const repeatInterval = repeatEl ? parseInt(repeatEl.value) : 0;
@@ -10061,12 +10071,12 @@ msg.files : (msg.file ? [msg.file] : []);
             if (alertTime && typeof CalEngine !== 'undefined') {
                 const calOk = await CalEngine.addTodoToCalendar(newTodo);
                 if (calOk) {
-                    showToast('✅ 已新增行程並同步至手機行事曆');
+                    showToast('✅ 已新增任務並同步至手機行事曆');
                 } else {
-                    showToast('✅ 已新增行程並設定提醒（行事曆同步失敗，請確認是否已授予行事曆權限）');
+                    showToast('✅ 已新增任務並設定提醒（行事曆同步失敗，請確認是否已授予行事曆權限）');
                 }
             } else {
-                showToast('✅ 已新增行程' + (alertTime ? '並設定提醒' : ''));
+                showToast('✅ 已新增任務' + (alertTime ? '並設定提醒' : ''));
             }
         };
 
@@ -10178,7 +10188,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 }
             }
 
-            renderTodos(); closeTodoEdit(); showToast("✅ 行程已更新");
+            renderTodos(); closeTodoEdit(); showToast("✅ 任務已更新");
         };
 
         window.openTodoDatePicker = function(id) {
@@ -12311,11 +12321,8 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     <i class="ph-bold ph-chat-circle text-base" style="flex-shrink:0;color:${isActive ? '#475569' : '#94a3b8'};"></i>
                     <span style="font-size:0.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${isActive ? '600' : '400'};color:${isActive ? '#e2e8f0' : '#94a3b8'};">${escapeHtml(title)}</span>
                 </div>
-                <div style="display:flex;align-items:center;flex-shrink:0;width:144px;background:transparent;">
-                    <button onclick="renameChatSession('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="重新命名"><i class="ph-bold ph-pencil-simple" style="font-size:1.1rem;"></i></button>
-                    <button onclick="openMoveFolderModal('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="移至資料夾"><i class="ph-fill ph-folder-open" style="font-size:1.1rem;"></i></button>
-                    <button onclick="branchChatSession('${sid}', event)" style="padding:8px;color:#64748b;flex:1;background:transparent;" title="建立分支對話"><i class="ph-bold ph-git-fork" style="font-size:1.1rem;"></i></button>
-                    <button onclick="deleteChatSession('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="刪除"><i class="ph-bold ph-trash" style="font-size:1.1rem;"></i></button>
+                <div style="display:flex;align-items:center;flex-shrink:0;background:transparent;">
+                    <button onclick="openChatItemMenu('${sid}', event)" style="padding:8px;color:#64748b;background:transparent;" title="更多操作"><i class="ph-bold ph-dots-three-vertical" style="font-size:1.1rem;"></i></button>
                 </div>
             </div>`;
         }
@@ -12390,8 +12397,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                             ${countBadge}
                         </div>
                         <div class="flex items-center gap-1 shrink-0">
-                            <button onclick="event.stopPropagation();renameChatFolder('${escapeHtml(f)}')" class="p-2 text-slate-400 active:text-blue-400" title="重新命名資料夾"><i class="ph-bold ph-pencil-simple text-sm"></i></button>
-                            <button onclick="event.stopPropagation();deleteChatFolder('${escapeHtml(f)}')" class="p-2 text-slate-400 active:text-red-400" title="刪除資料夾"><i class="ph-bold ph-trash text-sm"></i></button>
+                            <button onclick="event.stopPropagation();openChatFolderMenu('${escapeHtml(f)}', event)" class="p-2 text-slate-400 active:text-blue-400" title="更多操作"><i class="ph-bold ph-dots-three-vertical text-sm"></i></button>
                             <i class="ph-bold ph-caret-down text-slate-400 text-sm transition-transform ${caretClass}"></i>
                         </div>
                     </div>
@@ -20486,7 +20492,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-google.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

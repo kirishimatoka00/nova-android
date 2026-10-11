@@ -1,0 +1,5 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NOVA 授權完成</title>
+<style>body{font-family:sans-serif;background:#0b1220;color:#e2e8f0;padding:24px;line-height:1.6}code{word-break:break-all;display:block;background:#111c33;padding:10px;border-radius:8px;font-size:12px}a.b{display:inline-block;background:#0284c7;color:#fff;padding:10px 18px;border-radius:10px;text-decoration:none;margin:12px 0}</style></head><body>
+<h2>NOVA 授權完成</h2><p id="m">正在回到 NOVA App…</p><a id="go" class="b" href="#">回到 NOVA</a>
+<p style="font-size:13px;color:#94a3b8">若沒有自動跳回，請按上面的按鈕；仍然不行就複製下面整串網址，貼到 NOVA「Google 整合 → 連接 → 授權後沒有自動跳回」。</p><code id="u"></code>
+<script>var q=location.search||('#'+location.hash.slice(1));document.getElementById('u').textContent=location.href;var t='nova120://oauth'+location.search;document.getElementById('go').href=t;if(/error=/.test(q)){document.getElementById('m').textContent='授權被拒絕或失敗：'+q;}else{setTimeout(function(){location.href=t;},400);}</script></body></html>
