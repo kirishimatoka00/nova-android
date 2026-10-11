@@ -482,7 +482,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.2.1">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.3.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -1694,6 +1694,7 @@
 
                             <!-- v2.6.27：模型選單搬到輸入區（比照桌面版；元素 id 與 onchange 不變） -->
 <div id="nova-model-picker" class="flex shrink-0">
+                             <select id="nova-unified-model-select" onchange="novaUnifiedModelChange(this.value)" aria-label="選擇模型"></select>
                              <!-- Grok 子模型選擇 -->
                              <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
@@ -2022,8 +2023,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.27';
+        const NOVA_APP_VERSION = '2.6.28';
         const NOVA_CHANGELOG = [
+            { v: '2.6.28', date: '2026-10-11', notes: [
+                '模型選單簡化：輸入區原本的「主模型＋子模型」兩個下拉，合併成一個全展開選單（nova-model-picker.js）。點開後 Gemini／Grok／OpenAI／Groq／Cohere／Local 全部列出，只分「文字模型」與「生圖模型」兩組；設定頁停用的型號會自動從選單消失。舊的下拉仍保留在背景當資料來源，功能邏輯沒動。',
+                '設定頁對標桌面版手機版型（nova-settings-ui.js＋nova-ui.css 第 10 節）：頂端搜尋框、橫向膠囊分類列（一般與外觀／模型與金鑰／Agent 與自主任務／記憶／整合／語音與錄音），每類是帶標題與說明的卡片區塊，配色統一成桌面版的中性深色卡片。原本的欄位 id 與儲存／備份邏輯沒動；「技能」分類因手機版沒有對應功能未放。',
+                '誠實說明：只用 390px 寬度模擬畫面與模擬資料測過，尚未在真機上看過。',
+            ]},
             { v: '2.6.27', date: '2026-10-11', notes: [
                 '主畫面對標桌面版手機排版：輸入區改成三列——輸入框一整列；＋／聯網／知識庫／語音（送出）一列；模型選單（模型＋子模型）整列平分。模型選單從頂部列搬進輸入區，頂部列壓扁成一小條，不再需要橫向捲動才看得到選單。',
                 '純排版調整：所有元素 id／onchange 不變，功能沒動。僅用 390px 寬度模擬畫面確認，尚未在真機看過。',
@@ -19815,6 +19821,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
+<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.0.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

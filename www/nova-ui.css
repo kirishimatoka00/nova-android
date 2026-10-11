@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.2.1
+   版本：v1.3.0
    版本紀錄：
+   v1.3.0 - v2.6.28：第 10 節設定頁對標桌面版（搜尋框、分類膠囊列、卡片區塊 .ns-*、中性化配色、底部按鈕列）；第 9 節補單一模型選單 #nova-unified-model-select 樣式並隱藏舊的主／子模型下拉。
    v1.2.1 - 設定頁在 ≤760px 改全螢幕（對標桌面版）、底部按鈕列可換行、輸入欄位 16px 防自動放大。
    v1.2.0 - 批次 6c：主畫面輸入區對標桌面版手機排版（第 9 節）：#nova-composer 改三列格線（第 1 列輸入框；第 2 列 ＋／聯網／知識庫／送出；第 3 列模型選單整列、兩個下拉平分），
             模型選單由頂部列搬進輸入區（#nova-model-picker，index.html v2.6.27），頂部列壓扁成一小條，輸入區圓角卡片。純 CSS＋一段 HTML 搬移，id／onchange 不變。
@@ -185,3 +186,68 @@ html:root body #view-dashboard > div > div.shrink-0.relative.z-10 { padding: 4px
   html:root body #settings-modal input[type="text"], html:root body #settings-modal input[type="password"], html:root body #settings-modal input[type="number"],
   html:root body #settings-modal input[type="url"], html:root body #settings-modal select, html:root body #settings-modal textarea { font-size: 16px; max-width: 100%; box-sizing: border-box; }
 }
+
+html:root body #nova-model-picker > select:not(#nova-unified-model-select) { display: none !important; }
+html:root body #nova-model-picker > #nova-unified-model-select { display: block !important; flex: 1 1 100%; width: 100%; height: 38px; font-size: 14px !important; color: var(--nv-text) !important; font-weight: 600 !important; background-color: var(--nv-card-2) !important; }
+html:root body #nova-unified-model-select optgroup { color: var(--nv-accent-text); font-weight: 700; }
+
+/* ───────────── 10. 設定頁（對標桌面版：搜尋＋分類膠囊＋卡片區塊） ───────────── */
+html:root body #settings-modal { background: rgba(2,6,23,.62) !important; backdrop-filter: blur(6px); }
+html.theme-light body #settings-modal { background: rgba(60,50,30,.28) !important; }
+html:root body #settings-modal > div { background: var(--nv-card) !important; border: 0 !important; box-shadow: none; }
+html:root body #settings-modal > div > .flex.justify-between.items-center h3 { font-size: 19px; font-weight: 650; color: var(--nv-text) !important; }
+html:root body #settings-modal > div > .flex.justify-between.items-center button { color: var(--nv-muted); border-radius: 8px; padding: 4px; }
+html:root body #settings-modal > div > .flex.justify-between.items-center button i { color: inherit !important; font-size: 22px; }
+.ns-nav-wrap { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; margin-bottom: 10px; }
+.ns-search { position: relative; }
+.ns-search i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--nv-faint); font-size: 15px; pointer-events: none; }
+html:root body #settings-modal .ns-search input { width: 100%; height: 38px; padding: 0 12px 0 34px; border-radius: 10px; font-size: 16px;
+  background: var(--nv-card-2) !important; border: 1px solid var(--nv-line) !important; color: var(--nv-text) !important; outline: none; box-sizing: border-box; }
+html:root body #settings-modal .ns-search input:focus { border-color: var(--nv-accent) !important; box-shadow: 0 0 0 3px var(--nv-accent-soft); }
+html:root body #settings-modal #settings-nav-list.ns-nav { display: flex; flex-direction: row; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 0 0 4px 0 !important; background: transparent !important; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+html:root body #settings-modal #settings-nav-list.ns-nav::-webkit-scrollbar { display: none; }
+html:root body #settings-modal .ns-nav-item { position: relative; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; width: auto; white-space: nowrap; padding: 7px 13px; border-radius: 999px;
+  font-size: 13px; font-weight: 500; color: var(--nv-muted) !important; background: transparent !important; border: 1px solid var(--nv-line) !important; cursor: pointer; }
+html:root body #settings-modal .ns-nav-item i { font-size: 16px; color: inherit !important; opacity: .9; }
+html:root body #settings-modal .ns-nav-item.active { background: var(--nv-active) !important; color: var(--nv-text) !important; font-weight: 650; border-color: var(--nv-accent) !important; }
+html:root body #settings-modal .ns-nav-item.active i { color: var(--nv-accent-text) !important; opacity: 1; }
+.ns-empty { text-align: center; color: var(--nv-muted); padding: 60px 0; font-size: 14px; }
+.ns-empty.hidden { display: none; }
+.ns-cat { display: flex; flex-direction: column; gap: 14px; padding-bottom: 8px; }
+.ns-cat.hidden { display: none; }
+.ns-cat-head { padding: 2px 2px 4px; }
+.ns-cat-head h2 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; color: var(--nv-text); margin: 0 0 4px; }
+.ns-cat-head p { font-size: 13px; color: var(--nv-muted); margin: 0; }
+.ns-sec { background: var(--nv-card); border: 1px solid var(--nv-line); border-radius: 14px; overflow: hidden; min-width: 0; }
+html.theme-light .ns-sec { background: #fff; }
+.ns-sec.ns-hit-hide { display: none; }
+.ns-sec.ns-flash { box-shadow: 0 0 0 2px var(--nv-accent); transition: box-shadow .3s; }
+.ns-sec-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--nv-line); }
+.ns-sec-head h3 { font-size: 14.5px; font-weight: 650; color: var(--nv-text); margin: 0 0 2px; }
+.ns-sec-head p { font-size: 12.5px; color: var(--nv-muted); margin: 0; line-height: 1.5; }
+.ns-sec-body { padding: 12px 14px 14px; min-width: 0; }
+.ns-sec-body table, .ns-sec-body pre { display: block; max-width: 100%; overflow-x: auto; }
+/* 把原本五顏六色的卡片統一成中性外框（只在設定頁的區塊內） */
+html:root body #settings-modal .ns-sec-body [class*="from-blue-900"], html:root body #settings-modal .ns-sec-body [class*="from-sky-900"],
+html:root body #settings-modal .ns-sec-body [class*="to-indigo-900"] { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+html:root body #settings-modal .ns-sec-body [class*="border-"][class*="-900/"][class*="rounded"], html:root body #settings-modal .ns-sec-body [class*="bg-"][class*="-950/"][class*="rounded"] {
+  background: var(--nv-card-2) !important; border: 1px solid var(--nv-line) !important; border-radius: 12px !important; }
+html:root body #settings-modal .ns-sec-body label.block, html:root body #settings-modal .ns-sec-body label.flex[class*="font-bold"] { color: var(--nv-text) !important; font-weight: 600 !important; font-size: 13.5px !important; }
+html:root body #settings-modal .ns-sec-body label[class*="text-"][class*="-300"], html:root body #settings-modal .ns-sec-body label[class*="text-"][class*="-400"] { color: var(--nv-text) !important; }
+html:root body #settings-modal .ns-sec-body label i { color: var(--nv-accent-text) !important; }
+html:root body #settings-modal .ns-sec-body p.text-\[13px\], html:root body #settings-modal .ns-sec-body p.text-\[12px\], html:root body #settings-modal .ns-sec-body p.text-\[11px\], html:root body #settings-modal .ns-sec-body p.text-xs { color: var(--nv-muted) !important; line-height: 1.55; }
+html:root body #settings-modal .ns-sec-body input[type="text"], html:root body #settings-modal .ns-sec-body input[type="password"], html:root body #settings-modal .ns-sec-body input[type="number"],
+html:root body #settings-modal .ns-sec-body input[type="url"], html:root body #settings-modal .ns-sec-body input:not([type]), html:root body #settings-modal .ns-sec-body select, html:root body #settings-modal .ns-sec-body textarea {
+  background: var(--nv-card) !important; color: var(--nv-text) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 9px !important; font-size: 16px !important; min-height: 40px; box-sizing: border-box; max-width: 100%; }
+html.theme-light body #settings-modal .ns-sec-body input[type="text"], html.theme-light body #settings-modal .ns-sec-body input[type="password"], html.theme-light body #settings-modal .ns-sec-body input[type="number"],
+html.theme-light body #settings-modal .ns-sec-body select, html.theme-light body #settings-modal .ns-sec-body textarea { background: #fff !important; }
+html:root body #settings-modal .ns-sec-body input:focus, html:root body #settings-modal .ns-sec-body select:focus, html:root body #settings-modal .ns-sec-body textarea:focus { border-color: var(--nv-accent) !important; box-shadow: 0 0 0 3px var(--nv-accent-soft); outline: none; }
+html:root body #settings-modal .ns-sec-body select option { background: var(--nv-card-2); color: var(--nv-text); }
+html:root body #settings-modal .ns-sec-body > div[id^="tab-"] > .space-y-3 > h3:first-child { display: none; }
+/* 底部：備份／取消／儲存列 */
+html:root body #settings-modal > div > .mt-4.pt-2.flex { border-top: 1px solid var(--nv-line); margin-top: 10px; padding-top: 10px; flex-wrap: wrap; gap: 8px; }
+html:root body #settings-modal > div > .mt-4 button[onclick="saveKeys()"] { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; border-radius: 9px; font-weight: 650; box-shadow: none; }
+html:root body #settings-modal > div > .mt-4 button[onclick="closeSettings()"] { color: var(--nv-muted) !important; border-radius: 9px; }
+html:root body #settings-modal > div > .mt-4 button[onclick="exportSettings()"], html:root body #settings-modal > div > .mt-4 label[for="import-settings-input"] { background: transparent !important; color: var(--nv-text-2) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 9px; }
+html.theme-light:root body #settings-modal .peer:not(:checked) ~ div.rounded-full { background-color: #cdc8b9 !important; }
+html:not(.theme-light):root body #settings-modal .peer:not(:checked) ~ div.rounded-full { background-color: #3b4658 !important; }
