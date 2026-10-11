@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════
    nova-mainui.js — NOVA Android 主畫面（頂列＋抽屜選單）重新設計（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.1.1
    版本紀錄：
+   v1.1.1 - v2.6.37：抽屜項目「Pro 研究」改名「深度研究」。
    v1.1.0 - v2.6.35：輸入區「多專家」快捷鈕（#composer-experts-btn）開啟狀態跟 #experts-mode-toggle-btn 同步。
    v1.0.1 - v2.6.34：頂列拿掉「電腦遙控」鈕（對標桌面版手機殼只有 logo／天氣／設定／選單；遙控入口在抽屜與「+」選單）。
    v1.0.0 - 批次 9（App v2.6.33）。對標桌面版在手機寬度（遠端 /app 網頁殼）的主畫面：頂列＝logo／天氣／（新）電腦遙控／設定／選單；抽屜選單＝新增對話、
@@ -40,7 +41,7 @@
         var extra = mk('div', 'nv-drawer-extra'); extra.id = 'nv-drawer-extra';
         extra.appendChild(itemBtn('ph-puzzle-piece', '技能', function () { call('openSkillManager'); }, 'nv-d-skills'));
         extra.appendChild(itemBtn('ph-desktop', '電腦遙控', function () { call('openRemoteDesktop'); }, 'nv-d-remote'));
-        extra.appendChild(itemBtn('ph-flask', 'Pro 研究', function () { call('openProResearch'); }, 'nv-d-pro'));
+        extra.appendChild(itemBtn('ph-flask', '深度研究', function () { call('openProResearch'); }, 'nv-d-pro'));
         extra.appendChild(itemBtn('ph-lightning', 'Jev 與自主任務設定', function () { call('openSettings'); setTimeout(function () { call('switchSettingsCategory', 'agent'); }, 120); }, 'nv-d-agent'));
         nav.appendChild(extra);
         // 抽屜頂部狀態列

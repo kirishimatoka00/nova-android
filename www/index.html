@@ -482,12 +482,12 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.5.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.6.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script>
-    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1621,11 +1621,7 @@
                             </button>
 
                             <button onclick="openProResearch();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-indigo-500/50 hover:bg-slate-700 text-indigo-400 transition-colors active:scale-95">
-                                <i class="ph-bold ph-flask text-xl"></i><span class="text-[10px] font-bold">Pro研究</span>
-                            </button>
-
-                            <button onclick="openAgentModal()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-purple-500/50 hover:bg-slate-700 text-purple-400 transition-colors active:scale-95 shadow-lg shadow-purple-500/10">
-                                <i class="ph-bold ph-brain text-xl"></i><span class="text-[10px] font-bold">深度研究</span>
+                                <i class="ph-bold ph-flask text-xl"></i><span class="text-[10px] font-bold">深度研究</span>
                             </button>
 
                             <a href="./presentation_generator.html" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-violet-500/50 hover:bg-slate-700 text-violet-400 transition-colors active:scale-95 shadow-lg shadow-violet-500/10">
@@ -1650,16 +1646,10 @@
                                 <i id="translate-icon" class="ph-bold ph-translate text-2xl"></i><span id="translate-btn-text" class="text-[10px] font-bold">即時口譯</span>
                             </button>
 
-                            <!-- ★ Canvas 工作區按鈕 -->
-                            <button onclick="novaCanvas.openFromPlus();togglePlusMenu()"
-                                    class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 border border-cyan-500/40 hover:bg-slate-700 text-cyan-400 transition-colors active:scale-95 shadow-lg shadow-cyan-500/10">
-                                <i class="ph-bold ph-code-block text-2xl"></i>
-                                <span class="text-[10px] font-bold">Canvas</span>
-                            </button>
                         </div>
 
 <div id="translate-settings" class="hidden w-full bg-slate-900 border-t border-slate-800 p-2 justify-center items-center gap-2 z-40 text-xs">
-                            <select id="trans-input-mode" onchange="handleTransModeChange()" class="bg-slate-800 text-purple-400 font-bold p-1.5 rounded outline-none border border-slate-700"><option value="voice">純語音</option><option value="text">純打字</option></select>
+                            <select id="trans-input-mode" onchange="handleTransModeChange()" class="bg-slate-800 text-purple-400 font-bold p-1.5 rounded outline-none border border-slate-700"><option value="voice">純語音</option><option value="ptt">按鍵收音</option><option value="text">純打字</option></select>
                             <select id="trans-lang-a" class="bg-slate-800 text-white p-1.5 rounded outline-none border border-slate-700"><option value="auto">自動偵測語言</option><option value="zh-TW">中文</option><option value="en">英文</option><option value="ja">日文</option><option value="ko">韓文</option></select>
                             <i class="ph-bold ph-arrows-left-right text-slate-500"></i>
                             <select id="trans-lang-b" class="bg-slate-800 text-white p-1.5 rounded outline-none border border-slate-700"><option value="zh-TW">翻譯為中文</option><option value="en">翻譯為英文</option><option value="ja">翻譯為日文</option><option value="ko">翻譯為韓文</option></select>
@@ -2032,8 +2022,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.36';
+        const NOVA_APP_VERSION = '2.6.37';
         const NOVA_CHANGELOG = [
+            { v: '2.6.37', date: '2026-10-11', notes: [
+                '即時口譯新增「按鍵收音」模式（對標桌面版 v3.31.55）：口譯設定列的輸入模式多一個「按鍵收音」；按一下輸入列麥克風開始收音、再按一次立刻送出翻譯，不帶聊天歷史；上方紅燈顯示收音秒數，點紅燈也能送出；短於 0.5 秒視為誤觸、單次上限 3 分鐘；記住上次選的輸入模式。',
+                '＋選單：移除 Canvas 按鈕與舊的「深度研究」（經典代理）按鈕；原「Pro研究」改名「深度研究」（抽屜選單同步改名）。',
+                '深度研究設定頁改版成桌面版「多 AI 深度協同研究控制台」：研究深度、Firecrawl／Grok 開關、進階（規劃／撰稿／審稿／Grok 交叉審查、讀取／搜尋接地／Grok 三個勾選式模型池與預設、搜尋策略）、研究主題＋參考檔案上傳（文字／CSV／Excel／PDF）、專案經理／資料研究員／審查委員、「🤖 AI 模型智能分配」。',
+            ] },
             { v: '2.6.36', date: '2026-10-11', notes: [
                 '語音新增桌面版的 Gemini 語音（gemini-3.8-flash-lite-tts，備援 gemini-3.8-flash-tts）：設定→語音聲音清單多了 30 個 Gemini 聲音；選「自動」時優先 Gemini，失敗自動退回 Polly／系統語音並冷卻後再試。',
                 '朗讀分段合成、最多領先播放 2 段；同一則訊息播放中再按喇叭會真的停止；關閉 LIVE／即時口譯時 Polly／Gemini 佇列一併停止；「語音速度」套用在 Gemini 語音。',
@@ -13024,6 +13019,7 @@ document.getElementById('translate-settings').classList.add('hidden');
                 
                 appState.voiceTimeout = parseInt(localStorage.getItem('nova_voice_timeout')) || 5;
                 stopTranslateBAndSend(true); // Force stop & discard chunk
+                _pttResetUI();   // v2.6.37
                 // ★ 修正：安全呼叫，且用 try-finally 確保輸入框一定被解鎖
                 try { _novaStopAllTTS(); } catch(e) { try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e2) {} }
                 addMessage("🌐 全自動即時口譯已關閉，麥克風已完全釋放。", 'system');
@@ -13047,23 +13043,24 @@ document.getElementById('translate-settings').classList.add('hidden');
                 document.getElementById('translate-settings').classList.remove('hidden');
                 document.getElementById('translate-settings').classList.add('flex');
                 
-                // 💡 修正：依據目前選取的輸入模式給予不同的提示，並決定是否啟動收音
+                // v2.6.37：還原上次選的輸入模式（純語音／按鍵收音／純打字）
+                try { const _sv = localStorage.getItem('nova_trans_input_mode'); const _sel = document.getElementById('trans-input-mode'); if (_sel && _sv && Array.from(_sel.options).some(function (o) { return o.value === _sv; })) _sel.value = _sv; } catch (e) {}
                 const inputMode = document.getElementById('trans-input-mode') ? document.getElementById('trans-input-mode').value : 'voice';
                 const modeMsg = inputMode === 'voice' ? 
                     "**👉 系統已啟動收音，請直接對著設備說話！**\n*(如需結束，請點選上方閃爍紅燈，或對麥克風說「結束口譯」)*" : 
                     "**👉 目前為純打字模式，請直接在下方輸入文字進行口譯！**";
-                addMessage(`🌐 **即時口譯已啟動！**\n系統會自動判定來源與目標語言進行翻譯。\n${modeMsg}`, 'system');
+                const modeMsgFinal = inputMode === 'ptt' ? "**👉 按鍵收音模式：按一下輸入列的麥克風按鈕開始收音，說完再按一下，錄音會立刻送出翻譯。**\n*(要回到一般對話：按設定列的「口譯中...」或＋選單的「口譯中...」)*" : modeMsg;
+                addMessage(`🌐 **即時口譯已啟動！**\n系統會自動判定來源與目標語言進行翻譯。\n${modeMsgFinal}`, 'system');
                 
-                // 💡 修正 1-2：啟動口譯時，如果為純語音模式，立刻將打字區反灰禁用
                 const inputEl = document.getElementById('user-input');
-                if (inputMode === 'voice' && inputEl) {
-                    inputEl.disabled = true; inputEl.placeholder = "純語音模式下已禁用鍵盤輸入..."; inputEl.classList.add('opacity-50', 'cursor-not-allowed'); inputEl.value = '';
+                if (inputMode !== 'text' && inputEl) {
+                    inputEl.disabled = true; inputEl.placeholder = (inputMode === 'ptt' ? "按鍵收音模式：按右下角麥克風開始收音，再按一次送出翻譯..." : "純語音模式下已禁用鍵盤輸入..."); inputEl.classList.add('opacity-50', 'cursor-not-allowed'); inputEl.value = '';
                 } else if (inputEl) {
                     inputEl.disabled = false; inputEl.placeholder = "輸入訊息..."; inputEl.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
 
-                // 【NOVA 101 SP】防呆鎖：設定為 true，確保第一次收音前，絕對不會有任何系統聲音發出
-                appState.translateMuteUntilFirstCapture = true;
+                // 【NOVA 101 SP】防呆鎖：按鍵收音是使用者自己控制收音時機，不需要靜音鎖
+                appState.translateMuteUntilFirstCapture = (inputMode !== 'ptt');
                 if (inputMode === 'voice') {
                     setTimeout(() => { startTranslateBAutoRecord(); }, 1500);
                 }
@@ -13075,20 +13072,26 @@ document.getElementById('translate-settings').classList.add('hidden');
         // 💡 新增：處理模式切換的事件函數
         // 💡 新增：處理模式切換的事件函數
         window.handleTransModeChange = function() {
-            const mode = document.getElementById('trans-input-mode').value;
-            const inputEl = document.getElementById('user-input'); // 取得輸入框
-            if (appState.translateMode !== 'off') {
-                if (mode === 'text') {
-                    stopTranslateBAndSend(true); // 強制中斷並捨棄當前錄音
-                    addMessage("⌨️ 已切換為【純打字】口譯模式，麥克風已關閉。", "system");
-                    // 💡 修正 1-3：切換為打字時，解鎖輸入框
-                    if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "輸入訊息..."; inputEl.classList.remove('opacity-50', 'cursor-not-allowed'); }
-                } else {
-                    addMessage("🎙️ 已切換為【純語音】口譯模式，麥克風開啟中...", "system");
-                    // 💡 修正 1-3：切換為語音時，反灰禁用輸入框
-                    if (inputEl) { inputEl.disabled = true; inputEl.placeholder = "純語音模式下已禁用鍵盤輸入..."; inputEl.classList.add('opacity-50', 'cursor-not-allowed'); inputEl.value = ''; }
-                    setTimeout(() => { startTranslateBAutoRecord(); }, 500);
-                }
+            const mode = getTransInputMode();
+            try { localStorage.setItem('nova_trans_input_mode', mode); } catch (e) {}
+            if (appState.translateMode === 'off') return;
+            const inputEl = document.getElementById('user-input');
+            const lockInput = () => { if (inputEl) { inputEl.disabled = true; inputEl.placeholder = (getTransInputMode() === 'ptt' ? "按鍵收音模式：按右下角麥克風開始收音，再按一次送出翻譯..." : "純語音模式下已禁用鍵盤輸入..."); inputEl.classList.add('opacity-50', 'cursor-not-allowed'); inputEl.value = ''; } };
+            const unlockInput = () => { if (inputEl) { inputEl.disabled = false; inputEl.placeholder = "輸入訊息..."; inputEl.classList.remove('opacity-50', 'cursor-not-allowed'); } };
+            stopTranslateBAndSend(true);
+            _pttResetUI();
+            if (mode === 'text') {
+                addMessage("⌨️ 已切換為【純打字】口譯模式，麥克風已關閉。", "system");
+                unlockInput();
+            } else if (mode === 'ptt') {
+                addMessage("🎙️ 已切換為【按鍵收音】口譯模式：按一下輸入列的麥克風按鈕開始收音，說完再按一下，錄音會立刻送出翻譯。", "system");
+                lockInput();
+                appState.translateMuteUntilFirstCapture = false;
+            } else {
+                addMessage("🎙️ 已切換為【純語音】口譯模式，麥克風開啟中...", "system");
+                lockInput();
+                appState.translateMuteUntilFirstCapture = true;
+                setTimeout(() => { startTranslateBAutoRecord(); }, 500);
             }
         };
 
@@ -13096,7 +13099,7 @@ document.getElementById('translate-settings').classList.add('hidden');
             if (appState.translateMode !== 'auto') return;
             
             // 💡 修正：若是打字模式，絕對不要啟動麥克風與 VAD
-            if (document.getElementById('trans-input-mode') && document.getElementById('trans-input-mode').value === 'text') return;
+            if (document.getElementById('trans-input-mode') && ['text', 'ptt'].indexOf(document.getElementById('trans-input-mode').value) !== -1) return;
 
             // 防護網 1: 硬體狀態鎖 (如果在發聲，絕對不啟動麥克風，防止迴圈)
             // ★ Android 修正：安全判斷 speechSynthesis 是否存在，並加入重試上限防止無限等待
@@ -13308,6 +13311,154 @@ document.getElementById('translate-settings').classList.add('hidden');
             document.getElementById('recording-status').classList.remove('flex');
         }
 
+
+        // ════════════════════════════════════════════════════════════
+        // ★ v3.31.55：即時口譯「按鍵收音」——按一下麥克風開始收音，再按一下立刻把錄音直接送給 Gemini 翻譯（完整說明見檔頭 v3.31.55）
+        // ════════════════════════════════════════════════════════════
+        const TRANSLATE_PTT_MAX_MS = 3 * 60 * 1000;   // 單次按鍵收音上限：3 分鐘，忘了按停止會自動送出
+        const TRANSLATE_PTT_MIN_MS = 500;              // 短於 0.5 秒視為誤觸，放棄
+
+        function getTransInputMode() {
+            const el = document.getElementById('trans-input-mode');
+            return el ? el.value : 'voice';
+        }
+        function _pttIsActive() { return appState.translateMode === 'auto' && getTransInputMode() === 'ptt'; }
+
+        // AI 還在朗讀上一句翻譯時，先停掉（Polly 佇列＋瀏覽器語音），避免把 AI 的聲音錄進去
+        function _pttStopTTS() {
+            _novaStopAllTTS();   // ★ v3.31.61：原本只停瀏覽器語音與佇列，沒有讓還在合成中的 Gemini 請求作廢（回來之後會播進你的錄音裡）
+        }
+
+        // state: 'idle' | 'recording' | 'busy'。同時更新輸入列的麥克風按鈕（手機多工鍵／桌機連續語音鍵）與上方紅燈
+        function _pttSetUI(state) {
+            [['smart-action-btn', 'smart-action-icon'], ['continuous-btn', 'continuous-icon']].forEach(function (p) {
+                const btn = document.getElementById(p[0]), icon = document.getElementById(p[1]);
+                if (!btn || !icon) return;
+                if (state === 'recording') {
+                    btn.classList.add('bg-red-600', 'text-white'); btn.classList.remove('bg-slate-800', 'text-slate-400', 'bg-blue-600');
+                    icon.className = 'ph-bold ph-microphone text-xl animate-pulse';
+                    btn.title = '再按一次，立刻送出翻譯';
+                } else if (state === 'busy') {
+                    btn.classList.remove('bg-red-600', 'text-white', 'bg-blue-600'); btn.classList.add('bg-slate-800', 'text-slate-400');
+                    icon.className = 'ph-bold ph-circle-notch text-xl animate-spin';
+                    btn.title = 'AI 翻譯中...';
+                } else {
+                    btn.classList.remove('bg-red-600', 'text-white'); btn.classList.add('bg-slate-800', 'text-slate-400');
+                    icon.className = 'ph-bold ph-microphone text-xl';
+                    btn.title = p[0] === 'smart-action-btn' ? '傳送 / 語音' : '連續語音';
+                }
+            });
+            if (appState.pttTick) { clearInterval(appState.pttTick); appState.pttTick = null; }
+            const pill = document.getElementById('recording-status'), pillText = document.getElementById('recording-status-text');
+            if (pill) {
+                if (state === 'recording') {
+                    pill.classList.remove('hidden'); pill.classList.add('flex');
+                    const t0 = Date.now();
+                    const upd = function () {
+                        const sec = Math.floor((Date.now() - t0) / 1000);
+                        if (pillText) pillText.innerText = '🎙️ 收音中 ' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + '｜再按一次麥克風（或點這裡）立刻送出翻譯';
+                    };
+                    upd(); appState.pttTick = setInterval(upd, 250);
+                } else {
+                    pill.classList.add('hidden'); pill.classList.remove('flex');
+                }
+            }
+            if (state === 'idle') { try { if (typeof updateSmartActionBtn === 'function') updateSmartActionBtn(); } catch (e) {} }
+        }
+        function _pttResetUI() {
+            appState.pttRecording = false;
+            appState.pttBusy = false;
+            if (appState.pttMaxTimer) { clearTimeout(appState.pttMaxTimer); appState.pttMaxTimer = null; }
+            _pttSetUI('idle');
+        }
+
+        window.toggleTranslatePTT = async function () {
+            if (!_pttIsActive()) return;
+            if (appState.pttBusy) { try { showToast('AI 翻譯中，請稍候...'); } catch (e) {} return; }
+            if (appState.pttRecording) { pttStopAndSend(); return; }
+            await _pttStart();
+        };
+
+        async function _pttStart() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { addMessage("⚠️ 瀏覽器不支援錄音", 'system'); return; }
+            _pttStopTTS();
+            try {
+                releaseMicrophone();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+                if (!_pttIsActive()) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }   // 等權限的期間使用者已經關掉口譯或切換模式
+                enableBackgroundMode();
+                appState.recordingContext = 'translateB';
+                translateDiscardNext = false;
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                appState.activeMediaTracks.push(...stream.getTracks());
+                const rec = mediaRecorder;
+                rec.ondataavailable = function (e) { if (rec === mediaRecorder && e.data && e.data.size > 0) audioChunks.push(e.data); };
+                rec.onstop = processTranslatePtt;
+                appState.recordingStartTime = Date.now();
+                appState.pttMime = rec.mimeType || 'audio/webm';
+                rec.start(500);
+                appState.pttRecording = true;
+                _pttSetUI('recording');
+                appState.pttMaxTimer = setTimeout(function () {
+                    if (appState.pttRecording) {
+                        addMessage('⏱️ 已達單次收音上限（' + Math.round(TRANSLATE_PTT_MAX_MS / 60000) + ' 分鐘），自動送出翻譯。', 'system');
+                        pttStopAndSend();
+                    }
+                }, TRANSLATE_PTT_MAX_MS);
+            } catch (err) {
+                _pttResetUI();
+                addMessage("⚠️ 無法啟動錄音麥克風，請檢查權限。", 'system');
+            }
+        }
+
+        // 第二次按下：立刻停止錄音，onstop 會接著呼叫 processTranslatePtt 把錄音送出
+        function pttStopAndSend() {
+            if (!appState.pttRecording) return;
+            appState.pttRecording = false;    // 先標記，避免連按兩次重複送出
+            appState.pttBusy = true;          // 從停止的那一刻就視為忙碌，避免在錄音檔還沒處理完時又開始新的錄音
+            translateDiscardNext = false;
+            if (appState.pttMaxTimer) { clearTimeout(appState.pttMaxTimer); appState.pttMaxTimer = null; }
+            _pttSetUI('busy');
+            releaseMicrophone();
+        }
+
+        async function processTranslatePtt() {
+            const discard = translateDiscardNext;
+            const chunks = [...audioChunks];
+            audioChunks = [];
+            const dur = Date.now() - (appState.recordingStartTime || Date.now());
+            const mime = appState.pttMime || 'audio/webm';
+            if (discard || chunks.length === 0) { _pttResetUI(); return; }
+            appState.pttBusy = true;
+            _pttSetUI('busy');
+            try {
+                appState.translateMuteUntilFirstCapture = false;
+                if (dur < TRANSLATE_PTT_MIN_MS) {
+                    addMessage("⚠️ 收音時間太短（不到 0.5 秒），已放棄。請按一下麥克風再說一次，說完再按一下送出。", 'system');
+                    return;
+                }
+                let audioBlob = new Blob(chunks, { type: mime });
+                if (audioBlob.type.includes('webm') && typeof ysFixWebmDuration !== 'undefined') {
+                    audioBlob = await new Promise(function (resolve) {
+                        try { ysFixWebmDuration(audioBlob, dur, resolve); } catch (e) { resolve(audioBlob); }
+                    });
+                }
+                const dataUrl = await new Promise(function (resolve, reject) {
+                    const r = new FileReader();
+                    r.onloadend = function () { resolve(r.result); };
+                    r.onerror = function () { reject(r.error || new Error('讀取錄音檔失敗')); };
+                    r.readAsDataURL(audioBlob);
+                });
+                await _novaTranslateSendAudio(dataUrl, mime, { auto: false, durationMs: dur });
+            } catch (e) {
+                addMessage("翻譯失敗：" + (e && e.message || e), 'system');
+            } finally {
+                _pttResetUI();
+            }
+        }
+
+
         async function processTranslateB() {
             if (audioChunks.length === 0 || translateDiscardNext) {
                 audioChunks = [];
@@ -13330,12 +13481,19 @@ document.getElementById('translate-settings').classList.add('hidden');
                 });
             }
             
+            const _sendMime = mediaRecorder?.mimeType || 'audio/webm';
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
-            reader.onloadend = async () => {
-                const base64dataWithPrefix = reader.result;
+            reader.onloadend = () => { _novaTranslateSendAudio(reader.result, _sendMime, { auto: true, durationMs: recordDuration }); };
+        }
+
+        // v2.6.37：翻譯送出（自動收音與按鍵收音共用；對標桌面版 v3.31.55）
+        async function _novaTranslateSendAudio(base64dataWithPrefix, mimeType, opts) {
+            opts = opts || {};
+            const isAuto = opts.auto !== false;
+            {
                 appState.recordingContext = 'default';
-                addMessage("🎙️ 音軌已自動擷取，AI 翻譯中... (麥克風已完全釋放)", "user");
+                addMessage(isAuto ? "🎙️ 音軌已自動擷取，AI 翻譯中... (麥克風已完全釋放)" : `🎙️ 錄音已送出（約 ${Math.max(1, Math.round((opts.durationMs || 0) / 1000))} 秒），AI 翻譯中...`, "user");
                 appState.isThinking = true;
                 renderThinkingState(true);
                 try {
@@ -13358,7 +13516,7 @@ document.getElementById('translate-settings').classList.add('hidden');
 
                     const origGeminiModel = appState.geminiModel;
 appState.geminiModel = NOVA_GEMINI_MODEL_DEFAULT; // 預設 LLM 模型（v2.6.20：集中常數）
-let res = await fetchAIResponse(prompt, 'gemini', { files: [{ category: 'media', data: base64dataWithPrefix, mime: mediaRecorder?.mimeType || 'audio/webm', name: 'Voice_Input.weba' }] });
+let res = await fetchAIResponse(prompt, 'gemini', { files: [{ category: 'media', data: base64dataWithPrefix, mime: mimeType || 'audio/webm', name: 'Voice_Input.weba' }], customHistory: [], noChatDecor: true, disableSearch: true });
                     
                     appState.geminiModel = origGeminiModel; // 恢復設定
 
@@ -13378,9 +13536,8 @@ let isHallucination = false;
 let checkCmd = ""; 
 
 try {
-    let jsonMatch = rawTxt.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        let parsed = JSON.parse(jsonMatch[0]);
+    let parsed = _novaExtractFirstJsonObject(rawTxt, _novaIsTranslationJson);
+    if (parsed) {
         if (parsed.original && parsed.translated) {
             displayTxt = `**【原文】**\n${parsed.original}\n\n**【翻譯】**\n${parsed.translated}`;
             speakTxt = parsed.translated;
@@ -13438,7 +13595,7 @@ try {
                     appState.isThinking = false;
                     renderThinkingState(false);
                 }
-            };
+            }
         }
 
         function toggleContinuous() {
@@ -13448,6 +13605,7 @@ try {
             const smartBtn = document.getElementById('smart-action-btn');
             const smartIcon = document.getElementById('smart-action-icon');
 
+            if (appState.translateMode === 'auto' && getTransInputMode() === 'ptt') { toggleTranslatePTT(); return; }   // v2.6.37：按鍵收音模式下，麥克風按鈕＝開始／送出
             if (appState.translateMode === 'auto') {
                 toggleTranslateMode(true);
                 return;
@@ -13822,6 +13980,7 @@ try {
         }
 
         function stopAudioRecording() {
+            if (appState.translateMode === 'auto' && getTransInputMode() === 'ptt' && appState.pttRecording) { pttStopAndSend(); return; }   // v2.6.37：按鍵收音錄音中，點紅燈＝送出
             if (appState.translateMode === 'auto') {
                 toggleTranslateMode(true);
                 return;
@@ -19914,7 +20073,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
-<script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
+<script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>

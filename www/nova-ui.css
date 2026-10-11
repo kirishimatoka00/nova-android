@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.5.0
+   版本：v1.6.0
    版本紀錄：
+   v1.6.0 - v2.6.37：第 13 節——深度研究控制台的勾選式下拉（.nova-ms*）與智能分配（.nova-assign-*）樣式。
    v1.5.0 - v2.6.35：第 12 節——輸入區改單一卡片（對標桌面版手機殼：無框輸入、圖示列、無框模型下拉、多專家快捷鈕）；設定頁手機左右 8px、頂端 8px，內容更寬。
    v1.4.1 - v2.6.34：移除單一合併模型選單的規則，模型選單回到桌面版手機遠端的雙下拉（子模型＋供應商）；新增隱藏 #web-search-badge（對標桌面版）。
    v1.4.0 - 批次 9（v2.6.33）：新增第 11 節——主畫面頂列（.nv-top-btn、.nv-stop-pill 中止膠囊）與抽屜選單（.nv-drawer-item／extra／status）樣式。
@@ -299,3 +300,33 @@ html:root body #nova-model-picker select:focus { box-shadow: none !important; co
 }
 html:root body #nova-model-picker select#gemini-sub-model-select, html:root body #nova-model-picker select#grok-sub-model-select, html:root body #nova-model-picker select#gpt-sub-model-select { flex: 1.5 1 0; }
 html:root body #nova-model-picker select#main-model-select { flex: 1 1 0; }
+
+
+/* ═══ §13（v1.6.0）多 AI 深度協同研究控制台——勾選式下拉＋AI 模型智能分配（移植自桌面 nova-ui.css v1.0.12；手機上標籤不隱藏、列高 40px）═══ */
+/* ═══ v1.0.12：多 AI 深度協同研究控制台——勾選式下拉＋AI 模型智能分配 ═══ */
+.nova-ms { position: relative; }
+html:root body .nova-ms-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; box-sizing: border-box; text-align: left; cursor: pointer;
+  background: var(--nv-card-2) !important; color: var(--nv-text) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+html:root body .nova-ms-btn:hover { border-color: var(--nv-accent) !important; }
+.nova-ms-sum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nova-ms-sum.nova-ms-empty { color: var(--nv-muted); }
+.nova-ms-arrow { color: var(--nv-muted); font-size: 12px; }
+.nova-ms-panel { position: fixed; z-index: 10050; overflow-y: auto; box-sizing: border-box; padding: 6px;
+  background: var(--nv-card); color: var(--nv-text); border: 1px solid var(--nv-line-strong); border-radius: 10px; box-shadow: var(--nv-shadow); }
+.nova-ms-group { font-size: 11px; font-weight: 700; color: var(--nv-muted); padding: 6px 8px 2px; letter-spacing: .02em; }
+.nova-ms-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--nv-text); }
+.nova-ms-item:hover { background: var(--nv-hover); }
+.nova-ms-name { flex: 0 1 auto; }
+.nova-ms-tag { margin-left: auto; font-size: 11px; color: var(--nv-faint); text-align: right; }
+html:root body .nova-assign-btn { cursor: pointer; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 9px;
+  background: var(--nv-accent-soft) !important; color: var(--nv-accent-text) !important; border: 1px solid var(--nv-accent) !important; }
+html:root body .nova-assign-btn:hover { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; }
+html:root body .nova-assign-btn:disabled { opacity: .6; cursor: default; }
+.nova-assign-result { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 12px; line-height: 1.7; color: var(--nv-text-2);
+  background: var(--nv-card-2); border: 1px solid var(--nv-line-strong); }
+.nova-assign-result.nova-assign-bad { border-color: var(--nv-danger); color: var(--nv-danger); }
+.nova-assign-h { font-weight: 700; color: var(--nv-text); }
+.nova-assign-warn { color: #d97706; }
+
+.nova-ms-item { min-height: 40px; }
+.nova-ms-tag { max-width: 46%; text-align: right; }
