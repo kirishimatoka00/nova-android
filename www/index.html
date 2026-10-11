@@ -482,7 +482,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.1.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.2.1">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -1575,66 +1575,7 @@
                             <button onclick="clearChatHistory()" class="text-[10px] text-slate-500 hover:text-red-400 flex items-center space-x-1 border border-slate-700 px-2 py-0.5 rounded-lg transition-colors"><i class="ph-bold ph-trash"></i><span>清空對話</span></button>
                          </div>
                          
-                         <div class="flex space-x-2 ml-auto shrink-0">
-                             <!-- Grok 子模型選擇 -->
-                             <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
-                                 <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
-                                 <optgroup label="Grok 文字模型">
-                                     <option value="grok-4.7">Grok 4.7</option>
-                                     <option value="grok-4.6">Grok 4.6</option>
-                                     <option value="grok-4.5">Grok 4.5</option>
-                                     <option value="grok-4.3">Grok 4.3</option>
-                                     <option value="grok-latest">Grok Latest</option>
-                                     <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
-                                     <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
-                                     <option value="grok-4.20-0309-non-reasoning">Grok 4.20 (0309) Non-Reasoning</option>
-                                     <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
-                                     <option value="grok-build-latest">Grok Build Latest</option>
-                                 </optgroup>
-                                 <optgroup label="Grok 圖像生成模型">
-                                     <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (繪圖)</option>
-                                     <option value="grok-imagine-image">Grok Imagine Image (繪圖)</option>
-                                 </optgroup>
-                             </select>
-                             <!-- OpenAI 子模型選擇（v2.6.19，對齊桌面版） -->
-                             <select id="gpt-sub-model-select" onchange="setGptModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
-                                 <optgroup label="OpenAI 文字模型">
-                                     <option value="gpt-6-luna">GPT-6 Luna</option>
-                                     <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
-                                     <option value="gpt-4o-mini">GPT-4o mini</option>
-                                 </optgroup>
-                             </select>
-                             <!-- Gemini 子模型選擇 -->
-                             <select id="gemini-sub-model-select" onchange="setGeminiModel(this.value)" class="bg-blue-900 border border-blue-500/50 text-blue-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-blue-400 font-medium max-w-[140px] md:max-w-none">
-                                 <option value="gemini-multi">⚡ 智慧切換 (Auto)</option>
-                                 <optgroup label="Gemini 文字模型">
-                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
-                                     <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-                                     <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
-                                     <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-                                     <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-                                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
-                                     <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                     <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
-                                 </optgroup>
-                                 <optgroup label="Gemini 圖像生成模型">
-                                     <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1</option>
-                                     <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite Image</option>
-                                     <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
-                                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
-                                 </optgroup>
-                             </select>
-                             <!-- 主模型切換 -->
-                             <select id="main-model-select" onchange="setModel(this.value)" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-3 py-1 outline-none focus:border-blue-500 font-bold tracking-wide">
-                                 <option value="gemini">Gemini</option>
-                                 <option value="grok">Grok</option>
-                                 <option value="groq">Groq</option>
-                                 <option value="cohere">Cohere</option>
-                                 <option value="gpt">OpenAI</option>
-                                 <option value="local">Local API</option>
-                             </select>
-                         </div>
+                         <!-- v2.6.27：模型選單已搬到輸入區（#nova-model-picker），比照桌面版手機排版 -->
                     </div>
                     
                     <!-- LIVE 視訊畫面層 (分層：放大比例，保留對話) -->
@@ -1750,6 +1691,68 @@
                             <button id="continuous-btn" onclick="toggleContinuous()" class="hidden md:flex p-2 mb-1 rounded-full bg-slate-800 text-slate-400 hover:text-red-400 shrink-0 transition-all items-center justify-center active:scale-90 h-[40px] w-[40px]" title="連續語音">
                                 <i id="continuous-icon" class="ph-bold ph-microphone text-xl"></i>
                             </button>
+
+                            <!-- v2.6.27：模型選單搬到輸入區（比照桌面版；元素 id 與 onchange 不變） -->
+<div id="nova-model-picker" class="flex shrink-0">
+                             <!-- Grok 子模型選擇 -->
+                             <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
+                                 <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
+                                 <optgroup label="Grok 文字模型">
+                                     <option value="grok-4.7">Grok 4.7</option>
+                                     <option value="grok-4.6">Grok 4.6</option>
+                                     <option value="grok-4.5">Grok 4.5</option>
+                                     <option value="grok-4.3">Grok 4.3</option>
+                                     <option value="grok-latest">Grok Latest</option>
+                                     <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
+                                     <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
+                                     <option value="grok-4.20-0309-non-reasoning">Grok 4.20 (0309) Non-Reasoning</option>
+                                     <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
+                                     <option value="grok-build-latest">Grok Build Latest</option>
+                                 </optgroup>
+                                 <optgroup label="Grok 圖像生成模型">
+                                     <option value="grok-imagine-image-2.0">Grok Imagine Image 2.0 (繪圖)</option>
+                                     <option value="grok-imagine-image">Grok Imagine Image (繪圖)</option>
+                                 </optgroup>
+                             </select>
+                             <!-- OpenAI 子模型選擇（v2.6.19，對齊桌面版） -->
+                             <select id="gpt-sub-model-select" onchange="setGptModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
+                                 <optgroup label="OpenAI 文字模型">
+                                     <option value="gpt-6-luna">GPT-6 Luna</option>
+                                     <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+                                     <option value="gpt-4o-mini">GPT-4o mini</option>
+                                 </optgroup>
+                             </select>
+                             <!-- Gemini 子模型選擇 -->
+                             <select id="gemini-sub-model-select" onchange="setGeminiModel(this.value)" class="bg-blue-900 border border-blue-500/50 text-blue-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-blue-400 font-medium max-w-[140px] md:max-w-none">
+                                 <option value="gemini-multi">⚡ 智慧切換 (Auto)</option>
+                                 <optgroup label="Gemini 文字模型">
+                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+                                     <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                                     <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
+                                     <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                                     <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                                     <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                     <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                     <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                                 </optgroup>
+                                 <optgroup label="Gemini 圖像生成模型">
+                                     <option value="gemini-nano-banana-2.1">Gemini Nano Banana 2.1</option>
+                                     <option value="gemini-3.1-flash-lite-image">Gemini 3.1 Flash-Lite Image</option>
+                                     <option value="gemini-3-pro-image">Gemini 3 Pro-Image</option>
+                                     <option value="gemini-2.5-flash-image">Gemini 2.5 Flash-Image</option>
+                                 </optgroup>
+                             </select>
+                             <!-- 主模型切換 -->
+                             <select id="main-model-select" onchange="setModel(this.value)" class="bg-slate-800 border border-slate-600 text-white text-xs rounded-lg px-3 py-1 outline-none focus:border-blue-500 font-bold tracking-wide">
+                                 <option value="gemini">Gemini</option>
+                                 <option value="grok">Grok</option>
+                                 <option value="groq">Groq</option>
+                                 <option value="cohere">Cohere</option>
+                                 <option value="gpt">OpenAI</option>
+                                 <option value="local">Local API</option>
+                             </select>
+                         </div>
 
                             <!-- ★ 多工按鈕：打字中→傳送，空白→麥克風 -->
                             <button id="smart-action-btn" onclick="handleSmartAction()"
@@ -2019,8 +2022,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.26';
+        const NOVA_APP_VERSION = '2.6.27';
         const NOVA_CHANGELOG = [
+            { v: '2.6.27', date: '2026-10-11', notes: [
+                '主畫面對標桌面版手機排版：輸入區改成三列——輸入框一整列；＋／聯網／知識庫／語音（送出）一列；模型選單（模型＋子模型）整列平分。模型選單從頂部列搬進輸入區，頂部列壓扁成一小條，不再需要橫向捲動才看得到選單。',
+                '純排版調整：所有元素 id／onchange 不變，功能沒動。僅用 390px 寬度模擬畫面確認，尚未在真機看過。',
+            ]},
             { v: '2.6.26', date: '2026-10-11', notes: [
                 '批次 6a（對標桌面版 Pro 深度研究）：新增 deep-research-engine.js（桌面 v1.1.0 引擎原樣移植）與 nova-dr-glue.js（手機接線層）。＋選單新增「Pro研究」：主題、深度（標準／深入／極限）、規劃／撰寫／審稿模型、搜尋策略、Firecrawl／Grok 開關，開跑前顯示預估，進度面板釘在畫面上方，完成後報告貼回對話並存到 Documents/NOVA。',
                 '設定頁 API Key 新增 Firecrawl（選填；沒填則用 SerpApi／Gemini 搜尋＋直連讀頁）；備份匯出／還原已納入。',

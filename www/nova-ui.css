@@ -1,7 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.2.1
    版本紀錄：
+   v1.2.1 - 設定頁在 ≤760px 改全螢幕（對標桌面版）、底部按鈕列可換行、輸入欄位 16px 防自動放大。
+   v1.2.0 - 批次 6c：主畫面輸入區對標桌面版手機排版（第 9 節）：#nova-composer 改三列格線（第 1 列輸入框；第 2 列 ＋／聯網／知識庫／送出；第 3 列模型選單整列、兩個下拉平分），
+            模型選單由頂部列搬進輸入區（#nova-model-picker，index.html v2.6.27），頂部列壓扁成一小條，輸入區圓角卡片。純 CSS＋一段 HTML 搬移，id／onchange 不變。
    v1.1.0 - 批次 4：新增「多專家／會議／並行作業」手機排版（第 8 節）：管理視窗全螢幕＋可橫向滑動分頁、派工確認／成員命名視窗全螢幕、
             進度面板與任務看板貼底（避開輸入列）、輸入框上方狀態列滿版、發言者（msg.speaker）頭像與名稱樣式。純 CSS，不改功能。
    v1.0.0 - 初版。仿照 NOVA Desktop 的 nova-ui.css（v1.0.13）「手機寬度」版本的設計語言，只移植手機用得到的部分：
@@ -146,3 +149,39 @@ html.theme-light .nv-speaker-name { filter: none; }
 /* 「＋」選單裡的多專家按鈕（開啟時紫色光暈） */
 #experts-mode-toggle-btn.nova-exp-on { background: linear-gradient(135deg, rgba(168,85,247,.45), rgba(99,102,241,.2)) !important; color: #e9d5ff !important; border-color: rgba(168,85,247,.8) !important; }
 html.theme-light #experts-mode-toggle-btn.nova-exp-on { color: #581c87 !important; }
+
+
+/* ───────────── 9. 主畫面（對標桌面版 nova-ui.css v1.0.11 手機排版） ───────────── */
+html:root body #nova-composer {
+  display: grid !important; grid-template-columns: auto auto auto minmax(0, 1fr) auto; align-items: center; row-gap: 2px; column-gap: 4px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px)) 10px !important; border-radius: 22px;
+}
+html:root body #nova-composer > #input-wrapper { grid-column: 1 / -1; grid-row: 1; padding: 4px 8px 0 !important; }
+html:root body #nova-composer > button[onclick^="togglePlusMenu"] { grid-column: 1; grid-row: 2; margin: 0 !important; }
+html:root body #nova-composer > #search-toggle-btn { grid-column: 2; grid-row: 2; margin: 0 !important; box-shadow: none !important; outline: none; }
+html:root body #nova-composer > #kb-mode-toggle-btn { grid-column: 3; grid-row: 2; margin: 0 !important; box-shadow: none !important; outline: none; }
+html:root body #nova-composer > #continuous-btn { display: none !important; }
+html:root body #nova-composer > #smart-action-btn { grid-column: 5; grid-row: 2; margin: 0 !important; }
+html:root body #nova-composer > #nova-model-picker { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; margin-top: 2px; }
+html:root body #nova-model-picker > * { margin: 0 !important; }
+html:root body #nova-model-picker select {
+  flex: 1 1 0; min-width: 0; max-width: none; height: 34px; padding: 5px 8px !important; font-size: 13px !important; font-weight: 600 !important;
+  background-color: transparent !important; color: var(--nv-muted) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 9px;
+}
+html:root body #nova-model-picker select:focus { border-color: var(--nv-accent) !important; color: var(--nv-text) !important; }
+html:root body #nova-model-picker select option, html:root body #nova-model-picker select optgroup { background: var(--nv-card-2); color: var(--nv-text); }
+html:root body #nova-model-picker select.hidden { display: none !important; }
+/* 頂部列：只剩狀態標示與「清空對話」，壓扁成一小條（桌面版 #nova-chat-topbar） */
+html:root body #view-dashboard > div > div.shrink-0.relative.z-10 { padding: 4px 12px !important; min-height: 28px; }
+
+/* 設定頁：手機全螢幕（桌面版 ≤760px 規則） */
+@media (max-width: 760px) {
+  html:root body #settings-modal { padding: 0 !important; align-items: stretch !important; }
+  html:root body #settings-modal > div {
+    width: 100vw !important; max-width: 100vw !important; height: 100vh !important; height: 100dvh !important; max-height: none !important;
+    border-radius: 0 !important; border-width: 0 !important; margin: 0 !important;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px)) !important; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important; box-sizing: border-box;
+  }
+  html:root body #settings-modal input[type="text"], html:root body #settings-modal input[type="password"], html:root body #settings-modal input[type="number"],
+  html:root body #settings-modal input[type="url"], html:root body #settings-modal select, html:root body #settings-modal textarea { font-size: 16px; max-width: 100%; box-sizing: border-box; }
+}
