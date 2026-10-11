@@ -1,4 +1,4 @@
-/* nova-google.js — v1.1.0 (2026-10-11)
+/* nova-google.js — v1.2.0 (2026-10-11)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.2.0 2026-10-11  「Docs」分頁改為「📁 雲端硬碟」（由 nova-gdrive.js 提供瀏覽／讀寫）；匯出內部存取點 _raw／_token／_has／_connected 給 nova-gdrive.js
  *   v1.1.0 2026-10-11  Drive 同步新增：知識庫（documents／folders／chunks，向量不上傳、收到端用 Gemini 補算）、AI 記憶（呼叫 nova-memsync.js，與桌面版共用 NOVA_Memory_Sync.json）；合併知識庫頁記下的刪除墓碑
  *   v1.0.2 2026-10-11  Docs：筆記匯出／文件轉筆記改走 Drive 轉檔與 export（只需 Drive 權限，不需啟用 Docs API）；錯誤提示不再被視窗蓋住（toast 層級提高）
  *   v1.0.1 2026-10-11  修正介面顯示：專案 Tailwind 為預編譯，新類別不生效，導致視窗背景透明、按鈕無樣式；改為自帶 <style>（#nova-google-modal 範圍）＋實心背景，並修正設定頁按鈕樣式
@@ -330,7 +331,7 @@
   var BTN = 'ng-btn ';
   function render() {
     var m = D.getElementById('nova-google-modal'); if (!m || m.style.display === 'none') return;
-    var tabs = [['main', '連接'], ['drive', '☁️ Drive 同步'], ['gmail', '✉️ Gmail'], ['docs', '📄 Docs']];
+    var tabs = [['main', '連接'], ['drive', '☁️ Drive 同步'], ['gmail', '✉️ Gmail'], ['docs', '📁 雲端硬碟']];
     D.getElementById('ng-tabs').innerHTML = tabs.map(function (t) { return '<button onclick="NovaGoogle.tab(\'' + t[0] + '\')" class="ng-tab ' + (tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('');
     var b = D.getElementById('ng-body'), c = cfg();
     if (tab === 'main') {
@@ -358,6 +359,7 @@
         '<div class="flex gap-2"><input id="ng-gq" class="' + IN + '" placeholder="搜尋（Gmail 語法，例如 is:unread newer_than:2d）"><button class="' + BTN + 'ng-sky shrink-0" onclick="NovaGoogle._gmailLoad()">列出</button></div><div id="ng-gl" class="space-y-2"></div><div id="ng-gr" style="display:none"></div>';
       if (has('gmail')) _gmailLoad();
     } else if (tab === 'docs') {
+      if (W.NovaGDrive) { W.NovaGDrive.render(b); return; }
       b.innerHTML = (has('docs') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Docs。</p>') +
         '<p class="text-xs text-slate-400">筆記 → Google 文件：到筆記中心，於下方選擇筆記。Google 文件 → 筆記：點下方文件。</p>' +
         '<div class="text-xs font-bold text-slate-300">匯出筆記為 Google 文件</div><div class="flex gap-2"><select id="ng-nsel" class="' + IN + '">' + appState.notes.slice(0, 80).map(function (n) { return '<option value="' + n.id + '">' + esc(n.title || '(無標題)') + '</option>'; }).join('') + '</select><button class="' + BTN + 'ng-green shrink-0" onclick="NovaGoogle._n2d()">匯出</button></div>' +
@@ -394,7 +396,7 @@
   function _paste() { var e = D.getElementById('ng-paste'); if (!e || !e.value.trim()) return; var v = e.value.trim(); handleRedirect(/^https?:|^nova120:|\?/.test(v) ? v : ('?code=' + encodeURIComponent(v))); }
   function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.style.display = 'flex'; render(); }
   function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
-  W.NovaGoogle = { _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
+  W.NovaGoogle = { _raw: api, _token: accessToken, _has: has, _connected: connected, _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
     gmailList: gmailList, gmailRead: gmailRead, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
     _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
 

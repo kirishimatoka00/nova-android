@@ -496,6 +496,10 @@
     <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
+    /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
+    window.novaHasDrive = window.novaHasDrive || function () { try { return !!(window.appState && appState.driveUrl); } catch (e) { return false; } };
+    </script>
+    <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
     window.NOVA_GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash';
     window.NOVA_GEMINI_MODEL_LITE = 'gemini-3.5-flash-lite';
@@ -1097,7 +1101,7 @@
                                         <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
                                     </label>
                                 </div>
-                                <p class="text-[10px] text-amber-400/80">⚠️ 自動上傳需已設定 Google Drive Apps Script URL，且音檔 &lt; 10 MB。大檔案請手動上傳。</p>
+                                <p class="text-[10px] text-amber-400/80">⚠️ 已連接 Google 整合（Drive 授權）時直接上傳到雲端硬碟，大小不限；否則需設定 Apps Script URL 且音檔 &lt; 10 MB。</p>
                             </div>
 
                             <!-- 自動分切設定 -->
@@ -2234,8 +2238,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.42';
+        const NOVA_APP_VERSION = '2.6.43';
         const NOVA_CHANGELOG = [
+            { v: '2.6.43', date: '2026-10-11', notes: [
+                '錄音／筆記音訊：已連接 Google 且授權含 Drive 時，直接走 Drive 可續傳上傳（分段，不受 10MB 限制），放在雲端硬碟「NOVA 錄音」資料夾；未連接時維持 Apps Script',
+                'Google 整合「Docs」分頁改為「📁 雲端硬碟」：瀏覽／搜尋、開啟編輯文字檔與 Google 文件（純文字）、上傳、新增資料夾與文字檔、匯出筆記、重新命名、移到垃圾桶、下載到手機',
+            ] },
             { v: '2.6.42', date: '2026-10-11', notes: [
                 'Google 整合 Docs：匯出筆記／文件轉筆記改走 Drive 轉檔，不需另外啟用 Docs API；錯誤提示不再被視窗蓋住',
                 'Drive 同步新增：知識庫（向量資料庫）與 AI 記憶，與桌面版共用 NOVA_Sync_Bundle.json／NOVA_Memory_Sync.json（向量由收到端重算）',
@@ -10688,7 +10696,7 @@ ${dateRtf}\\par
 
         window.backupNoteToDrive = async function(id) {
             const n = appState.notes.find(x => String(x.id) === String(id)); if(!n) return;
-            if(!appState.driveUrl) { showToast("請先在「設定」中填寫 Google Drive 備份 URL (Apps Script)"); return; }
+            if(!novaHasDrive()) { showToast("請先在「設定」中填寫 Google Drive 備份 URL (Apps Script)"); return; }
             
             const btn = document.getElementById('btn-backup-' + id);
             if(btn) { btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin"></i> 備份中...'; btn.disabled = true; }
@@ -11964,7 +11972,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
 
             // ── 批次上傳 Drive（多段群組）────────────────────────────────
             window.batchUploadToDrive = async function(groupIds) {
-                if (!appState.driveUrl) { showToast('⚠️ 請先設定 Google Drive Apps Script URL'); return; }
+                if (!novaHasDrive()) { showToast('⚠️ 請先設定 Google Drive Apps Script URL'); return; }
                 const ids = Array.isArray(groupIds) ? groupIds : [groupIds];
                 let successCount = 0;
                 for (let i = 0; i < ids.length; i++) {
@@ -12940,7 +12948,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 // 已備份：只要任一段有 driveUrl 就顯示
                 const anyDriveUrl = segs.find(r => r.driveUrl && !r.driveUrl.startsWith('blob:'))?.driveUrl;
 
-                const cloudBtn = appState.driveUrl
+                const cloudBtn = novaHasDrive()
                     ? (anyDriveUrl
                         ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm bg-blue-900/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-800/50 transition-colors"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
                         : `<button onclick="manualUploadToDrive('${primary.id}')" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors shadow"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive</button>`)
@@ -12983,7 +12991,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     ${transcriptHtml}
                     ${summaryHtml}
                     <div class="flex flex-wrap items-center gap-2 mt-3">
-                        ${appState.driveUrl ? (anyDriveUrl
+                        ${novaHasDrive() ? (anyDriveUrl
                             ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm bg-blue-900/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-800/50 transition-colors"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
                             : `<button onclick="batchUploadToDrive([${segs.map(s=>`'${s.id}'`).join(',')}])" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors shadow"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>`)
                             : ''}
@@ -14402,7 +14410,7 @@ try {
                 const segMsg = isSegment ? ` (自動分切第 ${segIndex} 段)` : '';
                 addMessage(`📝 語音筆記已安全儲存至「筆記/文件」分頁${segMsg}。`, 'system'); renderNotes();
                 // ── 自動上傳 Google Drive（筆記/文件頁分段錄音）
-                if (appState.recSettings.autoUploadNotes && appState.driveUrl) {
+                if (appState.recSettings.autoUploadNotes && novaHasDrive()) {
                     setTimeout(() => uploadNoteAudioToDrive(newNote.id), 1500);
                 }
             } else {
@@ -14424,7 +14432,7 @@ try {
                 const segMsg = isSegment ? ` (自動分切第 ${segIndex} 段)` : '';
                 addMessage(`📼 錄音已安全儲存至本地「錄音紀錄」分頁${segMsg}。`, 'system'); renderAudioRecords();
                 // ── 自動上傳 Google Drive
-                if (appState.recSettings.autoUploadAudio && appState.driveUrl) {
+                if (appState.recSettings.autoUploadAudio && novaHasDrive()) {
                     setTimeout(() => manualUploadToDrive(String(newRecord.id)), 1500);
                 }
             }
@@ -14800,7 +14808,7 @@ try {
                         renderAudioRecords();
                         addMessage(`✅ 已建立「${mergedRecord.title}」：包含完整接合音訊（${Math.round(mergedRecord.duration/60)}分${mergedRecord.duration%60}秒）與 AI 分析結果。`, 'system');
                         // ── 自動上傳合併錄音至 Google Drive
-                        if (appState.recSettings.autoUploadNotes && appState.driveUrl) {
+                        if (appState.recSettings.autoUploadNotes && novaHasDrive()) {
                             setTimeout(() => manualUploadToDrive(String(mergedRecord.id)), 2000);
                         }
                     }
@@ -15038,7 +15046,7 @@ try {
 
         // ── 自動上傳筆記/文件頁音訊至 Google Drive ─────────────────────────
         window.uploadNoteAudioToDrive = async function(id) {
-            if (!appState.driveUrl) return;
+            if (!novaHasDrive()) return;
             const note = appState.notes.find(x => String(x.id) === String(id));
             if (!note || note.driveUrl) return; // 已上傳則跳過
             try {
@@ -15066,7 +15074,7 @@ try {
 
         // ── 手動上傳 Google Drive ────────────────────────────────────────
         window.manualUploadToDrive = async function(id) {
-            if (!appState.driveUrl) { showToast('⚠️ 請先在設定中填入 Google Drive Apps Script URL'); return; }
+            if (!novaHasDrive()) { showToast('⚠️ 請先在設定中填入 Google Drive Apps Script URL'); return; }
             const rec = appState.audioRecords.find(x => String(x.id) === String(id));
             if (!rec) return;
 
@@ -20507,7 +20515,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.1.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
