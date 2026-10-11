@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-skill-ui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1223,6 +1223,9 @@
                             </div>
                         </div>
 
+                        <!-- 分頁：技能（v2.6.30） -->
+                        <div id="tab-skills" class="space-y-3 hidden"></div>
+
                         <!-- 分頁：AI 自主任務 -->
                         <div id="tab-autotask" class="space-y-3 hidden">
                             <div class="bg-gradient-to-r from-fuchsia-900/30 to-purple-900/30 p-4 rounded-xl border border-fuchsia-500/50 shadow-inner space-y-3">
@@ -1614,6 +1617,10 @@
                             <!-- v2.6.23：多專家協作／會議／並行作業開關 -->
                             <button id="experts-mode-toggle-btn" onclick="toggleNovaExpertsMode();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-fuchsia-500/50 hover:bg-slate-700 text-fuchsia-400 transition-colors active:scale-95">
                                 <i class="ph-bold ph-users-three text-xl"></i><span class="text-[10px] font-bold">多專家</span>
+                            </button>
+
+                            <button onclick="openSkillManager();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors">
+                                <i class="ph-bold ph-toolbox text-xl"></i><span class="text-[10px] font-bold">技能</span>
                             </button>
 
                             <button onclick="openProResearch();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-indigo-500/50 hover:bg-slate-700 text-indigo-400 transition-colors active:scale-95">
@@ -2023,8 +2030,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.29';
+        const NOVA_APP_VERSION = '2.6.30';
         const NOVA_CHANGELOG = [
+            { v: '2.6.30', date: '2026-10-11', notes: [
+                '新增「技能」功能（對標桌面版）：自主任務成功後，底部會出現「存成技能」，把這次的手機操作紀錄存成可重播的技能（存在 Documents/NovaSkills/）。',
+                '技能支援參數（{{名稱}}）、複製／編輯／重新命名、匯入匯出、組裝流程、提示範本；失敗的任務可存成「半成品」，下次規劃時給 AI 當經驗參考。',
+                '/ap 執行前會先比對已存技能，找到相似的可直接重播（失敗時可讓 AI 接手）。入口：+ 選單「技能」與設定 → Agent 與自主任務 → 技能。',
+            ] },
             { v: '2.6.29', date: '2026-10-11', notes: [
                 '修正自主任務「無障礙服務」連線測試誤報：選了無障礙執行器卻顯示「無法連線 atx-agent／請在 Termux 執行…」。原因是外掛當下取不到時會悄悄退回 atx-agent 路徑，且錯誤訊息寫死成 Termux 指引。現在選了無障礙就一律走無障礙；失敗時狀態列會顯示真正原因（外掛有無、系統是否已啟用、服務是否已連上、Android 版本）。',
                 '若顯示「系統已啟用但服務尚未連上」：到系統「無障礙」把 NOVA 關掉再打開一次即可（App 更新後常見）。',
@@ -2729,180 +2741,7 @@ async function encodeMp3(audioBuffer) {
         //   主體相同的權限（IndexedDB、API keys、Capacitor plugins）。
         //   僅將信任的 .js 檔放入 NovaSkills 資料夾。
         // ═══════════════════════════════════════════════════════════
-        window.NovaSkills = (function() {
-            const registry = {};      // name -> async function(args)
-            let manifest = [];        // [{name, description, parameters}]
-            let lastLoadError = null;
-
-            function _getCapFS() {
-                return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
-            }
-
-            // ★ 找出 skills.json 所在的目錄
-            //   優先嘗試公開儲存空間（EXTERNAL_STORAGE = /storage/emulated/0/Documents/，
-            //   使用者用「檔案管理員」看到並放檔案的位置），
-            //   再 fallback 到 App 私有空間（DOCUMENTS）
-            // ★ EXTERNAL_STORAGE（/storage/emulated/0/）在 Android 11+ 讀取任意路徑
-            //   會 EACCES（需要 MANAGE_EXTERNAL_STORAGE 特殊權限，一般 app 沒有）。
-            //   僅使用 DOCUMENTS（app 私有空間，保證可讀寫，無需任何權限）。
-            //   使用者可透過設定頁的「匯入技能檔案」功能，從手機任意位置選取檔案。
-            const _SKILL_DIRS = ['DOCUMENTS'];
-
-            async function _readSkillFile(CapFS, relPath) {
-                let lastErr = null;
-                for (const dir of _SKILL_DIRS) {
-                    try {
-                        const result = await CapFS.readFile({
-                            path: relPath,
-                            directory: dir,
-                            encoding: 'utf8'
-                        });
-                        return { data: result.data, dir };
-                    } catch(e) {
-                        lastErr = e;
-                        continue;
-                    }
-                }
-                throw lastErr || new Error('檔案不存在');
-            }
-
-            async function load() {
-                const CapFS = _getCapFS();
-                if (!CapFS) { lastLoadError = '僅 Android App 支援本地技能'; return []; }
-
-                let manifestFile;
-                try {
-                    manifestFile = await _readSkillFile(CapFS, 'NovaSkills/skills.json');
-                } catch(e) {
-                    // 記錄實際錯誤訊息，便於診斷（檔案不存在 vs 權限問題等）
-                    console.warn('[NovaSkills] 找不到 skills.json:', e && e.message);
-                    const isNotFound = e && /not exist|ENOENT|no such file|does not exist|找不到/i.test(e.message || '');
-                    if (isNotFound) {
-                        // 資料夾/檔案不存在屬正常情況（使用者尚未建立技能）
-                        lastLoadError = null;
-                    } else {
-                        // 其他錯誤（權限不足等），顯示給使用者
-                        lastLoadError = `無法讀取 skills.json: ${e.message || '未知錯誤'}`;
-                    }
-                    manifest = [];
-                    return [];
-                }
-
-                let manifestData;
-                try {
-                    manifestData = JSON.parse(manifestFile.data);
-                } catch(e) {
-                    lastLoadError = 'skills.json 格式錯誤: ' + e.message;
-                    console.error('[NovaSkills]', lastLoadError);
-                    return [];
-                }
-
-                const skills = Array.isArray(manifestData.skills) ? manifestData.skills : [];
-                const loaded = [];
-                const failedSkills = [];
-                for (const skill of skills) {
-                    if (!skill.name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(skill.name)) {
-                        console.warn('[NovaSkills] 跳過不合法的技能名稱:', skill.name);
-                        failedSkills.push(`${skill.name || '(未命名)'}: 名稱格式不合法（僅允許英文字母/數字/底線，且不能以數字開頭）`);
-                        continue;
-                    }
-                    try {
-                        const jsFile = await _readSkillFile(CapFS, `NovaSkills/${skill.name}.js`);
-                        // ⚠️ new Function：將技能 .js 內容編譯為可執行的 async 函式
-                        //   函式內可存取 args（呼叫參數）及全域 window/document/appState 等
-                        //   nova.* 為提供給技能使用的安全輔助函式（見下方 nova 物件）
-                        registry[skill.name] = new Function('args', 'nova', `return (async () => { ${jsFile.data} })();`);
-                        loaded.push({
-                            name: skill.name,
-                            description: skill.description || '',
-                            parameters: skill.parameters || { type: 'object', properties: {} }
-                        });
-                        console.log(`[NovaSkills] ✅ 已載入技能: ${skill.name} (來源: ${jsFile.dir})`);
-                    } catch(e) {
-                        console.warn(`[NovaSkills] 載入 ${skill.name}.js 失敗:`, e.message);
-                        failedSkills.push(`${skill.name}.js: 找不到檔案（已嘗試 ${_SKILL_DIRS.join(', ')}）`);
-                    }
-                }
-                manifest = loaded;
-                lastLoadError = (loaded.length === 0 && failedSkills.length > 0)
-                    ? failedSkills.join('；')
-                    : null;
-                return loaded;
-            }
-
-            // ★ 提供給技能腳本使用的輔助物件（nova.xxx）
-            //   技能可呼叫 nova.showToast()、nova.getLocation() 等，
-            //   不必直接觸碰 window 上的內部變數
-            const novaHelper = {
-                showToast: (msg, duration) => { if (typeof showToast === 'function') showToast(msg, duration); },
-                getAppState: () => appState,
-                fetch: (...a) => fetch(...a),
-            };
-
-            async function run(name, args) {
-                if (!registry[name]) throw new Error(`未知的技能: ${name}`);
-                return await registry[name](args || {}, novaHelper);
-            }
-
-            function getManifest() { return manifest; }
-            function getLastError() { return lastLoadError; }
-            function getCount() { return manifest.length; }
-
-            // ★ 新增/更新一個技能：寫入 {name}.js，並更新 skills.json
-            //   供「自然語言描述 → AI 生成技能」功能使用
-            async function saveSkill(name, description, parameters, code) {
-                const CapFS = _getCapFS();
-                if (!CapFS) throw new Error('僅 Android App 支援本地技能');
-                if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
-                    throw new Error(`技能名稱不合法: ${name}`);
-                }
-                if (typeof code !== 'string' || !code.trim()) {
-                    throw new Error('技能程式碼不可為空');
-                }
-
-                // 1. 寫入 {name}.js（純 utf8 文字，與 load() 讀取方式一致）
-                await CapFS.writeFile({
-                    path: `NovaSkills/${name}.js`,
-                    data: code,
-                    directory: 'DOCUMENTS',
-                    recursive: true,
-                    encoding: 'utf8'
-                });
-
-                // 2. 讀取現有 skills.json（若不存在則建立新的）
-                let manifestData = { skills: [] };
-                try {
-                    const existing = await _readSkillFile(CapFS, 'NovaSkills/skills.json');
-                    const parsed = JSON.parse(existing.data);
-                    if (Array.isArray(parsed.skills)) manifestData = parsed;
-                } catch(e) { /* 不存在則使用空清單 */ }
-
-                // 3. 新增或更新對應的技能項目
-                const entry = {
-                    name,
-                    description: description || '',
-                    parameters: parameters || { type: 'object', properties: {} }
-                };
-                const idx = manifestData.skills.findIndex(s => s.name === name);
-                if (idx >= 0) manifestData.skills[idx] = entry;
-                else manifestData.skills.push(entry);
-
-                // 4. 寫回 skills.json
-                await CapFS.writeFile({
-                    path: 'NovaSkills/skills.json',
-                    data: JSON.stringify(manifestData, null, 2),
-                    directory: 'DOCUMENTS',
-                    recursive: true,
-                    encoding: 'utf8'
-                });
-
-                // 5. 重新載入，讓新技能立即生效
-                await load();
-                return entry;
-            }
-
-            return { load, run, getManifest, getLastError, getCount, saveSkill };
-        })();
+        // v2.6.30（批次 7a）：NovaSkills 已搬到 nova-skills.js（v2.0.0，統一技能格式）；這裡留空，檔案在 <head> 載入。
 
         // ═══════════════════════════════════════════════════════════
         // ★ NovaImageStore — 圖片檔案參考儲存架構
@@ -7932,7 +7771,8 @@ ${elementsText}`;
                     if (!res.ok) return '';
                     const data = await res.json();
                     const txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
-                    return txt.trim();
+                    let hints = ''; try { if (window.NovaSkillUI) hints = NovaSkillUI.planningHints(goal) || ''; } catch (_) {}
+                    return (txt.trim() + (hints ? '\n\n' + hints : '')).trim();
                 } catch (_) {
                     return ''; // 規劃失敗不影響主流程，直接跳過即可，退化成原本的逐回合反應式判斷
                 }
@@ -7965,7 +7805,128 @@ ${elementsText}`;
                 }
             }
 
-            async function run(goal) {
+            // ════════════════════════════════════════════════════════════
+            // v2.6.30（批次 7a）：技能——記錄步驟、重播
+            // ════════════════════════════════════════════════════════════
+            let lastRun = null;   // { goal, steps, status:'done'|'failed'|'cancelled', history }
+
+            // 把 AI 的動作轉成「可重播的技能步驟」。tap_element 存成元件特徵（文字／描述／id）＋相對座標備援，
+            // 這樣下次畫面稍有不同（例如捲動位置不同）也能用文字找到元件。
+            async function toSkillStep(rawAction, el, hierarchyXml) {
+                const a = rawAction || {}, say = a.say ? String(a.say).slice(0, 80) : undefined;
+                const rel = async (x, y) => {
+                    try { const d = await getDeviceDisplaySize(hierarchyXml); return { rx: +(x / d.width).toFixed(4), ry: +(y / d.height).toFixed(4) }; } catch (_) { return {}; }
+                };
+                switch (a.type) {
+                    case 'tap_element': {
+                        if (!el) return null;
+                        const r = await rel(Math.round((el.x1 + el.x2) / 2), Math.round((el.y1 + el.y2) / 2));
+                        const st = { type: 'tap_el', text: el.text || '', desc: el.desc || '', id: el.rid || '', say };
+                        if (r.rx !== undefined) { st.rx = r.rx; st.ry = r.ry; }
+                        return st;
+                    }
+                    case 'tap': case 'long_press': return { type: a.type, x: a.x, y: a.y, say };
+                    case 'swipe': return { type: 'swipe', x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, duration_ms: a.duration_ms || 300, say };
+                    case 'text': return { type: 'text', text: a.text || '', say };
+                    case 'key': return { type: 'key', key: a.key, say };
+                    case 'open_app': return { type: 'open_app', package: a.package, activity: a.activity || undefined, say };
+                    case 'open_url': return { type: 'open_url', url: a.url, say };
+                    case 'wait': return { type: 'wait', ms: Math.min(a.ms || 1000, 5000) };
+                    default: return null;
+                }
+            }
+
+            // 參數代入：{{名稱}} 原樣、{{名稱@u}} 網址編碼
+            function applyStepParams(step, values) {
+                if (!values) return step;
+                const sub = (v) => typeof v !== 'string' ? v : v.replace(/\{\{([^{}@]+)(@u)?\}\}/g, (m, n, u) => {
+                    if (!(n in values)) return m; const x = String(values[n] == null ? '' : values[n]); return u ? encodeURIComponent(x) : x;
+                });
+                const out = {}; Object.keys(step).forEach(k => { out[k] = sub(step[k]); }); return out;
+            }
+
+            function scoreEl(el, st) {
+                let sc = 0; const t = (el.text || '').trim(), d = (el.desc || '').trim();
+                if (st.text) { if (t === st.text) sc += 6; else if (t && (t.includes(st.text) || st.text.includes(t))) sc += 3; else if (d === st.text) sc += 4; }
+                if (st.desc) { if (d === st.desc) sc += 5; else if (d && (d.includes(st.desc) || st.desc.includes(d))) sc += 2; }
+                if (st.id && el.rid === st.id) sc += 4;
+                if (sc > 0 && el.clickable) sc += 1;
+                return sc;
+            }
+
+            // 執行一個技能步驟；回傳說明文字，失敗丟錯
+            async function execSkillStep(st) {
+                const wait = (ms) => new Promise(r => setTimeout(r, ms));
+                switch (st.type) {
+                    case 'tap_el': {
+                        let xml = '';
+                        for (let attempt = 0; attempt < 4; attempt++) {
+                            try { xml = await getHierarchyDump(); } catch (_) { xml = ''; }
+                            const els = parseHierarchyElements(xml, 400);
+                            let best = null, bs = 0;
+                            els.forEach(e => { const sc = scoreEl(e, st); if (sc > bs) { bs = sc; best = e; } });
+                            if (best && bs >= 3) {
+                                return await performAction({ type: 'tap', x: Math.round((best.x1 + best.x2) / 2), y: Math.round((best.y1 + best.y2) / 2) });
+                            }
+                            if (attempt < 3) await wait(1000);   // 畫面可能還在載入
+                        }
+                        if (st.rx !== undefined && st.ry !== undefined) {   // 找不到元件 → 退回記錄當時的相對座標
+                            const d = await getDeviceDisplaySize(xml);
+                            return await performAction({ type: 'tap', x: Math.round(st.rx * d.width), y: Math.round(st.ry * d.height) }) + '（找不到元件，改用記錄的座標）';
+                        }
+                        throw new Error('畫面上找不到「' + (st.text || st.desc || st.id || '元件') + '」');
+                    }
+                    case 'tap': case 'long_press': {
+                        const d = await getDeviceDisplaySize(''); return await performAction({ type: st.type, x: Math.round(st.x * d.width), y: Math.round(st.y * d.height) });
+                    }
+                    case 'swipe': {
+                        const d = await getDeviceDisplaySize('');
+                        return await performAction({ type: 'swipe', x1: Math.round(st.x1 * d.width), y1: Math.round(st.y1 * d.height), x2: Math.round(st.x2 * d.width), y2: Math.round(st.y2 * d.height), duration_ms: st.duration_ms });
+                    }
+                    case 'shell': return await shellExec(st.command || '');
+                    default: return await performAction(st);   // text／key／open_app／open_url／wait
+                }
+            }
+
+            // 重播技能。entry: {name, goal, steps, params}；values: 參數值 {名稱: 值}；opts.silent: 少一點聊天訊息
+            async function replay(entry, values, opts) {
+                opts = opts || {};
+                if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return { ok: false, error: '已有任務執行中' }; }
+                running = true; cancelRequested = false;
+                enableBackgroundMode(); showFloatingStopButton();
+                const steps = (entry.steps || []).map(s => applyStepParams(s, values));
+                if (!opts.silent) addMessage('▶️ 重播技能「' + (entry.name || '') + '」（共 ' + steps.length + ' 步）' + (values && Object.keys(values).length ? '\n參數：' + Object.keys(values).map(k => k + '=' + values[k]).join('、') : ''), 'system');
+                let done = 0, err = null;
+                try {
+                    for (let i = 0; i < steps.length; i++) {
+                        if (cancelRequested) { addMessage('⏹ 技能重播已由使用者中斷（完成 ' + done + '/' + steps.length + ' 步）。', 'system'); setStatus('⏹ 已由使用者中斷', false); return { ok: false, error: '使用者中斷', done }; }
+                        setStatus('重播技能（' + (i + 1) + '/' + steps.length + '）', null);
+                        try { await execSkillStep(steps[i]); }
+                        catch (e) { err = '第 ' + (i + 1) + ' 步（' + (window.NovaSkills ? NovaSkills.stepOutline(steps[i]) : steps[i].type) + '）失敗：' + e.message; break; }
+                        done++;
+                        await new Promise(r => setTimeout(r, steps[i].type === 'open_app' || steps[i].type === 'open_url' ? 2000 : 900));
+                    }
+                } finally { running = false; hideFloatingStopButton(); }
+                if (!err) {
+                    if (!opts.silent) addMessage('✅ 技能「' + (entry.name || '') + '」重播完成（' + done + ' 步）。', 'ai');
+                    setStatus('✅ 技能重播完成', true);
+                    return { ok: true, done };
+                }
+                addMessage('⚠️ 技能重播中斷：' + err, 'system'); setStatus('⚠️ 技能重播失敗', false);
+                // 失敗後可讓 AI 從目前畫面接手完成原本的目標（單步流程子項不問）
+                if (!opts.silent && entry.goal) {
+                    let takeover = false; try { takeover = await window.showConfirm('技能重播在第 ' + (done + 1) + ' 步失敗。\n要讓 AI 從目前畫面接手完成目標嗎？\n\n目標：' + entry.goal); } catch (_) { /* ignore */ }
+                    if (takeover) { run(entry.goal + '\n（已先用技能「' + entry.name + '」完成前 ' + done + ' 步，請從目前畫面接續完成；不要重做已完成的步驟）', { noSkill: true, fromReplay: true }); }
+                }
+                return { ok: false, error: err, done };
+            }
+
+            async function run(goal, opts) {
+                opts = opts || {};
+                // v2.6.30（批次 7a）：執行前先比對已存的技能；比對到就（經確認）直接重播，不用再讓 AI 一步步判斷
+                if (!opts.noSkill && !running && window.NovaSkillUI && typeof NovaSkillUI.tryMatchAndReplay === 'function') {
+                    try { if (await NovaSkillUI.tryMatchAndReplay(goal)) return; } catch (_) { /* 比對失敗就照原本流程 */ }
+                }
                 if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
                 running = true;
                 cancelRequested = false;
@@ -7982,6 +7943,8 @@ ${elementsText}`;
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
                 const history = [];
+                const recorded = [];            // v2.6.30：成功執行的步驟（轉成技能用）
+                let finishedDone = false;
                 let consecutiveSoftFails = 0;
                 // 卡關求助觸發過的次數，避免同一個任務裡無限重複呼叫（每次都要額外等待網路回應）。
                 let consultCount = 0;
@@ -8168,6 +8131,7 @@ ${elementsText}`;
 
                             let action = rawAction;
                             let scaleNote = '';
+                            let usedEl = null;
                             try {
                                 if (rawAction.type === 'tap_element') {
                                     // 元件清單的座標已經是裝置真實觸控座標，直接算中心點即可，完全不需要縮放換算。
@@ -8175,6 +8139,7 @@ ${elementsText}`;
                                     if (!el) {
                                         throw new Error(`tap_element 指定的 index ${rawAction.index} 找不到對應的畫面元件（這一回合共有 ${currentElements.length} 個元件）`);
                                     }
+                                    usedEl = el;
                                     action = {
                                         type: 'tap',
                                         x: Math.round((el.x1 + el.x2) / 2),
@@ -8284,6 +8249,7 @@ ${elementsText}`;
                             addMessage(`⚙️ 正在執行（第 ${round}/${maxRounds} 回合）：${action.say || action.type}${scaleNote}\n\`\`\`\n${describeAction(action)}\n\`\`\``, 'system');
 
                             if (action.type === 'done') {
+                                finishedDone = true;
                                 addMessage(`✅ 自主任務完成：${action.say || goal}`, 'ai');
                                 setStatus('✅ 上次任務已完成', true);
                                 clearTimeout(roundTimer);
@@ -8355,6 +8321,7 @@ ${elementsText}`;
                                     : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
                                 addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
                                 history.push({ round, action: rawAction, result: resultText });
+                                try { const _st = await toSkillStep(rawAction, usedEl, hierarchyXml); if (_st) recorded.push(_st); } catch (_) { /* 記錄失敗不影響任務 */ }
                             }
                             clearTimeout(roundTimer);
 
@@ -8415,6 +8382,12 @@ ${elementsText}`;
                 } finally {
                     running = false;
                     hideFloatingStopButton();
+                    // v2.6.30：留下這次執行的紀錄，供「存成技能／存成半成品」使用
+                    try {
+                        lastRun = { goal, steps: recorded.slice(), status: finishedDone ? 'done' : (cancelRequested ? 'cancelled' : 'failed'), at: Date.now(),
+                            history: history.slice(-12).map(h => ({ round: h.round, action: h.action && h.action.type, say: h.action && h.action.say, result: String(h.result || '').slice(0, 120) })) };
+                        if (window.NovaSkillUI && !opts.fromReplay) NovaSkillUI.onTaskEnd(lastRun);
+                    } catch (_) { /* ignore */ }
                     // 只有在沒有其他功能（錄音／即時翻譯／連續模式）還需要保活機制時才關閉，
                     // 避免自主任務結束時，順手把其他正在進行中的背景保活也一起關掉。
                     try {
@@ -8426,7 +8399,7 @@ ${elementsText}`;
                 }
             }
 
-            return { run, testConnection, isRunning: () => running, cancel };
+            return { run, testConnection, isRunning: () => running, cancel, replay, getLastRun: () => lastRun, clearLastRun: () => { lastRun = null; }, toSkillStep, applyStepParams };
         })();
 
 window.clearChatHistory = async function() {
@@ -9332,7 +9305,7 @@ msg.files : (msg.file ? [msg.file] : []);
         // ② 本地技能
         window.novaFcRegistry.register({ id: 'skills', label: '本地技能', list: async function () {
             if (typeof window.NovaSkills !== 'object') return [];
-            return window.NovaSkills.getManifest().filter(function (s) { return !window.novaFcCfg.isOff('skill:' + s.name); }).map(function (s) {
+            return window.NovaSkills.getManifest().filter(function (s) { return !s.partial && !window.novaFcCfg.isOff('skill:' + s.name); }).map(function (s) {
                 return { name: 'skill__' + s.name, label: '技能 ' + s.name, description: s.description || s.name, parameters: s.parameters || { type: 'object', properties: {} },
                     run: async function (a) { return await window.NovaSkills.run(s.name, a || {}); } };
             });
@@ -19831,7 +19804,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
-<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.0.0"></script><!-- v2.6.28：單一展開式模型選單 -->
+<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.1.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
