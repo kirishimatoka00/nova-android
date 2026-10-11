@@ -482,11 +482,11 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.3.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.4.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -2036,8 +2036,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.32';
+        const NOVA_APP_VERSION = '2.6.33';
         const NOVA_CHANGELOG = [
+            { v: '2.6.33', date: '2026-10-11', notes: [
+                '主畫面重新設計（對標桌面版手機殼）：頂列新增「電腦遙控」鈕；自主任務執行中頂列出現紅色「中止」膠囊；抽屜選單項目加大成 48px 觸控高度、新增「技能」「電腦遙控」「Pro 研究」「Jev 與自主任務設定」入口，並在抽屜頂部顯示自主任務／Jev／遙控／技能狀態。',
+            ] },
             { v: '2.6.32', date: '2026-10-11', notes: [
                 '新增「電腦遙控」（+ 選單／設定 → 整合）：全螢幕內嵌電腦端 NOVA Desktop 的 /app 網頁殼，輸入電腦位址（Tailscale 或同網段 IP，預設埠 8000）即可連線，配對碼流程在內嵌頁面完成，API 金鑰仍留在電腦。可存多組位址、記住上次連線並自動連上。',
             ] },

@@ -19,7 +19,7 @@
 
     function mk(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
     function field(label, hint) { var d = mk('div', 'margin-top:12px;'); d.appendChild(mk('div', 'font-size:13px;font-weight:700;', label)); if (hint) d.appendChild(mk('div', 'font-size:11px;opacity:.65;margin:2px 0 6px;', hint)); return d; }
-    var INP = 'width:100%;min-height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:var(--nv-bg2,rgba(15,23,42,.6));color:inherit;font-size:14px;box-sizing:border-box;';
+    var INP = 'width:100%;min-height:44px;padding:8px 12px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:var(--nv-card-2,#1e293b);color:inherit;font-size:14px;box-sizing:border-box;';
     function toggle(id, label, hint) {
         var row = mk('label', 'display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--nv-line,#1e293b);');
         var cb = mk('input'); cb.type = 'checkbox'; cb.id = id; cb.style.cssText = 'width:20px;height:20px;flex:none;margin-top:2px;';

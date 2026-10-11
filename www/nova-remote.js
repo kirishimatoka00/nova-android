@@ -16,7 +16,7 @@
     function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function mk(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
     function toast(m) { try { if (W.showToast) W.showToast(m); else if (W.novaToast) W.novaToast(m); } catch (e) {} }
-    var INP = 'width:100%;min-height:46px;padding:8px 12px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:var(--nv-bg2,rgba(15,23,42,.6));color:inherit;font-size:15px;box-sizing:border-box;';
+    var INP = 'width:100%;min-height:46px;padding:8px 12px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:var(--nv-card-2,#1e293b);color:inherit;font-size:15px;box-sizing:border-box;';
     var BTN = 'min-height:46px;padding:0 16px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:transparent;color:inherit;font-weight:700;font-size:14px;';
     var BTNP = 'min-height:46px;padding:0 16px;border-radius:10px;border:0;background:#6366f1;color:#fff;font-weight:700;font-size:14px;';
 
@@ -51,7 +51,7 @@
     function close() { if (ov) { ov.remove(); ov = null; } }
     function open(urlArg) {
         close();
-        ov = mk('div', 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;background:var(--nv-bg,#020617);color:var(--nv-text,#e2e8f0);'); ov.id = 'nova-remote-overlay';
+        ov = mk('div', 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;background:var(--nv-canvas,#020617);color:var(--nv-text,#e2e8f0);'); ov.id = 'nova-remote-overlay';
         var bar = mk('div', 'display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 8px;border-bottom:1px solid var(--nv-line,#1e293b);flex:none;');
         var title = mk('div', 'flex:1;min-width:0;font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', '🖥️ 電腦遙控');
         function ib(txt, label, fn) { var b = mk('button', 'width:44px;height:44px;border-radius:10px;border:0;background:transparent;color:inherit;font-size:20px;', txt); b.type = 'button'; b.setAttribute('aria-label', label); b.onclick = fn; return b; }
