@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.7.1
+   版本：v1.9.0
    版本紀錄：
+   v1.9.0 - v2.6.39：第 16 節——筆記編輯區（.note-editor-html）、表格拖曳把手、筆記工具列在手機窄螢幕的換行與觸控尺寸。
+   v1.8.0 - v2.6.39：第 15 節——＋選單按鈕邊框與圖示同色（--pc），去掉白邊與光暈。
    v1.7.1 - v2.6.38：斜線指令選單貼在輸入卡片上方（預設 bottom 170px，實際位置由 JS 依輸入卡片計算）、touch-action: pan-y 可上下滑動。
    v1.7.0 - v2.6.38：第 14 節——LIVE 影像模式改成 Gemini Live 風格（影像滿版背景、對話貼在輸入區上方、輸入區半透明、可縮成右上小視窗）。
    v1.6.0 - v2.6.37：第 13 節——深度研究控制台的勾選式下拉（.nova-ms*）與智能分配（.nova-assign-*）樣式。
@@ -352,3 +354,26 @@ body.nv-live.nv-live-pip #live-pip-btn { top: auto; bottom: 4px; left: 4px; padd
 body.nv-live.nv-live-pip #live-pip-label { display: none; }
 body.nv-live.nv-live-pip #chat-container { flex: 1 1 auto !important; max-height: none; background: var(--nv-canvas, #020617); padding-top: 8px; }
 body.nv-live.nv-live-pip #nova-composer-wrap { background: var(--nv-canvas, #020617) !important; }
+
+
+/* ═══ §15（v1.8.0）＋選單按鈕：邊框與圖示／文字同一個顏色（--pc），沒有白邊、沒有光暈 ═══ */
+#plus-menu .nv-pm { border: 1px solid color-mix(in srgb, var(--pc) 60%, transparent) !important; box-shadow: none !important; color: var(--pc) !important; outline: none !important; }
+#plus-menu .nv-pm i, #plus-menu .nv-pm span { color: var(--pc) !important; }
+#plus-menu .nv-pm:active, #plus-menu .nv-pm:focus, #plus-menu .nv-pm:focus-visible { border-color: var(--pc) !important; outline: none !important; box-shadow: none !important; }
+
+/* ═══ §16（v1.9.0）筆記編輯器（對標桌面）═══ */
+.note-editor-html img { max-width: 100%; height: auto; border-radius: 0.5rem; margin: 0.5rem 0; background-color: #f8fafc; }
+.note-editor-html a { color: #60a5fa !important; text-decoration: underline !important; }
+.note-editor-html ul { list-style-type: disc; margin-left: 1.5rem; }
+.note-editor-html ol { list-style-type: decimal; margin-left: 1.5rem; }
+.note-editor-html iframe { border-radius: 0.5rem; max-width: 100%; }
+.note-editor-html table { border-collapse: collapse; }
+.note-editor-html td, .note-editor-html th { border: 1px solid #475569; padding: 4px 8px; }
+.nova-tbl-resize-handle:hover { background: rgba(16, 185, 129, 0.45); }
+#note-edit-modal select, #fullscreen-content-editor select { font-size: 16px; }
+@media (max-width: 760px) {
+  #note-edit-modal input[type=color], #fullscreen-content-editor input[type=color] { width: 28px; height: 28px; }
+  #note-edit-modal label.cursor-pointer, #fullscreen-content-editor label.cursor-pointer { min-height: 32px; }
+  #note-ocr-model-select { margin-left: 0 !important; max-width: 100% !important; }
+  #edit-note-content { min-height: 38vh; }
+}

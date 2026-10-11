@@ -482,11 +482,11 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.7.1">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.9.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script>
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.0"></script>
     <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
@@ -741,7 +741,7 @@
                     </button>
                     <nav id="tools-section" class="space-y-1 mt-1">
                         <button onclick="switchTab('dashboard')" id="nav-dashboard" class="flex items-center space-x-3 w-full p-2 rounded-lg bg-slate-800 text-blue-400 transition-all text-sm"><i class="ph-fill ph-chats-circle text-lg"></i><span>助理對話</span></button>
-                        <button onclick="switchTab('schedule')" id="nav-schedule" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>行程管理</span></button>
+                        <button onclick="switchTab('schedule')" id="nav-schedule" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>任務管理</span></button>
                         <button onclick="switchTab('notes')" id="nav-notes" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-notebook text-lg"></i><span>筆記/文件</span></button>
                         <button onclick="switchTab('audio')" id="nav-audio" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-waveform text-lg"></i><span>錄音紀錄</span></button>
                     </nav>
@@ -812,7 +812,7 @@
                         <h3 class="text-xs font-bold text-slate-500 tracking-wider mb-2">工具與紀錄</h3>
                         <nav class="space-y-1">
                             <button onclick="switchTab('dashboard'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg bg-slate-800 text-blue-400 transition-all text-sm"><i class="ph-fill ph-chats-circle text-lg"></i><span>助理對話</span></button>
-                            <button onclick="switchTab('schedule'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>行程管理</span></button>
+                            <button onclick="switchTab('schedule'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>任務管理</span></button>
                             <button onclick="switchTab('notes'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-notebook text-lg"></i><span>筆記/文件</span></button>
                             <button onclick="switchTab('audio'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-waveform text-lg"></i><span>錄音紀錄</span></button>
                         </nav>
@@ -1610,42 +1610,42 @@
                         <div id="plus-menu" class="hidden absolute bottom-full left-0 mb-1 w-full bg-slate-900 border-t border-slate-800 p-4 grid grid-cols-5 gap-2 z-40 rounded-t-2xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] transition-all">
                             
                             <!-- v2.6.23：多專家協作／會議／並行作業開關 -->
-                            <button id="experts-mode-toggle-btn" onclick="toggleNovaExpertsMode();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-fuchsia-500/50 hover:bg-slate-700 text-fuchsia-400 transition-colors active:scale-95">
-                                <i class="ph-bold ph-users-three text-xl"></i><span class="text-[10px] font-bold">多專家</span>
+                            <button id="experts-mode-toggle-btn" onclick="toggleNovaExpertsMode();togglePlusMenu()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-fuchsia-500/50 hover:bg-slate-700 text-fuchsia-400 transition-colors active:scale-95" style="--pc:#e879f9">
+                                <i class="ph-bold ph-users-three text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">多專家</span>
                             </button>
 
-                            <button onclick="openRemoteDesktop();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-sky-500/50 hover:bg-slate-700 text-sky-400 transition-colors">
-                                <i class="ph-bold ph-desktop text-xl"></i><span class="text-[10px] font-bold">電腦遙控</span>
+                            <button onclick="openRemoteDesktop();togglePlusMenu()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-sky-500/50 hover:bg-slate-700 text-sky-400 transition-colors" style="--pc:#38bdf8">
+                                <i class="ph-bold ph-desktop text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">電腦遙控</span>
                             </button>
 
-                            <button onclick="openSkillManager();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors">
-                                <i class="ph-bold ph-toolbox text-xl"></i><span class="text-[10px] font-bold">技能</span>
+                            <button onclick="openSkillManager();togglePlusMenu()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors" style="--pc:#34d399">
+                                <i class="ph-bold ph-toolbox text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">技能</span>
                             </button>
 
-                            <button onclick="openProResearch();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-indigo-500/50 hover:bg-slate-700 text-indigo-400 transition-colors active:scale-95">
-                                <i class="ph-bold ph-flask text-xl"></i><span class="text-[10px] font-bold">深度研究</span>
+                            <button onclick="openProResearch();togglePlusMenu()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-indigo-500/50 hover:bg-slate-700 text-indigo-400 transition-colors active:scale-95" style="--pc:#818cf8">
+                                <i class="ph-bold ph-flask text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">深度研究</span>
                             </button>
 
-                            <a href="./presentation_generator.html" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-violet-500/50 hover:bg-slate-700 text-violet-400 transition-colors active:scale-95 shadow-lg shadow-violet-500/10">
-                                <i class="ph-bold ph-presentation-chart text-xl"></i><span class="text-[10px] font-bold">簡報生成</span>
+                            <a href="./presentation_generator.html" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-violet-500/50 hover:bg-slate-700 text-violet-400 transition-colors active:scale-95 shadow-lg shadow-violet-500/10" style="--pc:#a78bfa">
+                                <i class="ph-bold ph-presentation-chart text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">簡報生成</span>
                             </a>
 
                             <!-- ★ 向量資料庫按鈕 -->
-                            <a href="./knowledgebank.html" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors active:scale-95 shadow-lg shadow-emerald-500/10">
-                                <i class="ph-bold ph-database text-xl"></i><span class="text-[10px] font-bold">向量資料庫</span>
+                            <a href="./knowledgebank.html" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors active:scale-95 shadow-lg shadow-emerald-500/10" style="--pc:#2dd4bf">
+                                <i class="ph-bold ph-database text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">向量資料庫</span>
                             </a>
 
-                            <label for="chat-file-input" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 cursor-pointer text-slate-300 transition-colors active:scale-95">
-                                <i class="ph-bold ph-paperclip text-2xl text-blue-400"></i><span class="text-[10px] font-bold">多檔上傳</span>
+                            <label for="chat-file-input" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 cursor-pointer text-slate-300 transition-colors active:scale-95" style="--pc:#60a5fa">
+                                <i class="ph-bold ph-paperclip text-xl text-blue-400"></i><span class="text-[10px] font-bold whitespace-nowrap">多檔上傳</span>
                             </label>
                             <input type="file" id="chat-file-input" accept="*/*" class="hidden" multiple onchange="handleChatFileSelect(event)">
                             
-                            <button id="live-btn" onclick="toggleLiveMode()" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition-colors active:scale-95">
-                                <i id="live-icon" class="ph-bold ph-camera text-2xl"></i><span class="text-[10px] font-bold">LIVE影像</span>
+                            <button id="live-btn" onclick="toggleLiveMode()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition-colors active:scale-95" style="--pc:#f87171">
+                                <i id="live-icon" class="ph-bold ph-camera text-xl"></i><span class="text-[10px] font-bold whitespace-nowrap">LIVE影像</span>
                             </button>
                             
-                            <button id="translate-btn" onclick="toggleTranslateMode()" class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition-colors active:scale-95">
-                                <i id="translate-icon" class="ph-bold ph-translate text-2xl"></i><span id="translate-btn-text" class="text-[10px] font-bold">即時口譯</span>
+                            <button id="translate-btn" onclick="toggleTranslateMode()" class="nv-pm flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition-colors active:scale-95" style="--pc:#fbbf24">
+                                <i id="translate-icon" class="ph-bold ph-translate text-xl"></i><span id="translate-btn-text" class="text-[10px] font-bold whitespace-nowrap">即時口譯</span>
                             </button>
 
                         </div>
@@ -1790,11 +1790,11 @@
                 </div>
             </div>
 
-            <!-- ================= 行程管理介面 (Schedule View) ================= -->
+            <!-- ================= 任務管理介面 (Schedule View) ================= -->
             <div id="view-schedule" class="hidden flex-col h-full w-full p-6 overflow-y-auto">
                 <div class="max-w-3xl mx-auto w-full">
                     <header class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-white">行程管理</h2>
+                        <h2 class="text-2xl font-bold text-white">任務管理</h2>
                         <button onclick="window.addTodoManually && window.addTodoManually()" class="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-500 transition-colors"><i class="ph-bold ph-plus"></i><span>新增</span></button>
                     </header>
                     <div id="full-todo-list" class="space-y-3"></div>
@@ -1815,8 +1815,11 @@
                                 <input type="text" id="note-search-input" oninput="renderNotes()" placeholder="搜尋標題或內容..." class="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg pl-9 pr-3 py-2 w-full focus:border-blue-500 outline-none transition-colors">
                             </div>
                             <button onclick="openFolderManage()" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors" title="管理資料夾"><i class="ph-bold ph-folder-plus text-lg"></i></button>
+                            <button onclick="openNoteGraph()" class="bg-slate-800 hover:bg-purple-800 text-purple-300 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors" title="檢視筆記關聯性知識圖譜"><i class="ph-bold ph-graph text-lg"></i></button>
+                            <button onclick="openBrainGraph()" class="px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors" style="background:#1e293b;color:#c4b5fd;" title="AI 大腦圖譜：筆記、向量庫、記憶、技能、檔案卡的關聯與狀態"><i class="ph-bold ph-brain"></i> 大腦圖譜</button>
                         </div>
                     </div>
+                    <div id="note-tag-filter-container" class="hidden flex flex-wrap items-center gap-3 mb-4 -mt-2"></div>
 
                     <!-- 本地筆記中心操作列 -->
                     <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -1828,6 +1831,11 @@
                         </div>
                     </header>
                     <div id="full-note-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+                <div id="note-cross-analysis-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-purple-700 text-white px-4 py-3 rounded-xl shadow-2xl items-center gap-3" style="bottom:calc(env(safe-area-inset-bottom,0px) + 80px);">
+                    <span id="note-cross-analysis-count" class="text-sm font-bold"></span>
+                    <button onclick="openCrossNoteAnalysisModePicker()" style="background-color:#ffffff; color:#7e22ce;" class="px-3 py-1.5 rounded-lg text-sm font-bold">分析選取的筆記</button>
+                    <button onclick="clearNoteSelectionForAnalysis()" class="text-purple-200 hover:text-white text-xs">清除選取</button>
                 </div>
             </div>
 
@@ -1943,17 +1951,83 @@
                 </div>
             </div>
 
+            <!-- ================= 筆記圖譜 / 大腦圖譜 ================= -->
+            <div id="note-graph-modal" class="hidden fixed inset-0 bg-slate-950 flex-col" style="z-index:210;">
+                <div class="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0" style="padding-top:calc(env(safe-area-inset-top,0px) + 12px);">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2"><i class="ph-bold ph-graph text-purple-400"></i> 筆記關聯性知識圖譜</h3>
+                    <button onclick="closeNoteGraph()" class="text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-lg"><i class="ph-bold ph-x text-xl"></i></button>
+                </div>
+                <div id="note-graph-container" class="flex-1 relative overflow-hidden"></div>
+            </div>
+            <div id="brain-graph-modal" class="hidden fixed inset-0 bg-slate-950 flex-col" style="z-index:211;">
+                <div class="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 shrink-0" style="padding-top:calc(env(safe-area-inset-top,0px) + 12px);">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2"><i class="ph-bold ph-brain text-violet-300"></i> AI 大腦圖譜</h3>
+                    <button onclick="closeBrainGraph()" class="text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-lg"><i class="ph-bold ph-x text-xl"></i></button>
+                </div>
+                <div id="brain-graph-legend" class="flex flex-wrap gap-2 px-3 py-2 bg-slate-900/80 border-b border-slate-800 text-[11px] text-slate-300 shrink-0"></div>
+                <div id="brain-graph-container" class="flex-1 relative overflow-hidden"></div>
+                <div id="brain-graph-info" class="px-3 py-2 text-xs text-slate-400 bg-slate-900 border-t border-slate-800 shrink-0 min-h-[34px]">點節點查看詳情；雙指縮放、單指拖曳。</div>
+            </div>
+
             <!-- ================= 全螢幕筆記內容編輯器（手機鍵盤友好）================= -->
             <div id="fullscreen-content-editor" class="hidden fixed inset-0 z-[200] bg-slate-950 flex flex-col" style="padding-top: env(safe-area-inset-top, 0px);">
                 <div class="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-700 shrink-0">
-                    <span class="text-sm font-bold text-white truncate max-w-[60vw]" id="fse-title">✏️ 編輯內容</span>
+                    <span class="text-sm font-bold text-white truncate max-w-[40vw]" id="fse-title">✏️ 編輯內容</span>
                     <div class="flex gap-2">
+                        <!-- ★ v3.30.122：使用者回報全螢幕模式沒有「切換回原本視窗大小」
+                             的功能——原本「儲存」按鈕雖然功能上也會把內容同步回主編輯器
+                             再關閉全螢幕（等於間接做到縮小視窗），但按鈕標示是「儲存」，
+                             容易讓人誤會成「這會直接把筆記存進資料庫」，跟真正的儲存
+                             （主編輯器視窗裡的「儲存變更」按鈕，會真的寫進 IndexedDB）
+                             混淆。這裡新增一個語意明確、單純「縮小回原本視窗大小」的
+                             按鈕，內容一樣會保留（不是取消/捨棄），只是不強調「儲存」
+                             這個字眼，避免誤解。 -->
+                        <button onclick="collapseFullscreenEditor()" title="縮小回原本視窗大小（內容不會遺失）" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm px-3 py-2 rounded-lg transition-colors active:scale-95 flex items-center gap-1"><i class="ph-bold ph-arrows-in-simple"></i> 縮小視窗</button>
                         <button onclick="saveFullscreenEditor()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors active:scale-95"><i class="ph-bold ph-check"></i> 儲存</button>
                         <button onclick="closeFullscreenEditor()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm px-3 py-2 rounded-lg transition-colors">取消</button>
                     </div>
                 </div>
+                <!-- ★ v3.30.122：使用者要求把格式化工具列/表格拖曳調整也加進全螢幕
+                     編輯模式——跟主編輯器那份是同一套函式，差別只在每個呼叫都明確傳
+                     'fse-content' 當目標元素，完整設計說明見主編輯器工具列上方的
+                     模組註解，這裡不重複。 -->
+                <div class="flex flex-wrap items-center gap-2 px-4 py-2 shrink-0 bg-slate-900 border-b border-slate-800">
+                    <select id="fse-fmt-fontsize" title="字體大小" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyFontSize(this.value, 'fse-content'); this.value='';"
+                            class="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded px-1.5 py-1 outline-none focus:border-emerald-500">
+                        <option value="" selected disabled>字體大小</option>
+                        <option value="6">6px</option>
+                        <option value="8">8px</option>
+                        <option value="10">10px</option>
+                        <option value="12">12px</option>
+                        <option value="14">14px</option>
+                        <option value="16">16px（預設）</option>
+                        <option value="18">18px</option>
+                        <option value="20">20px</option>
+                        <option value="24">24px</option>
+                        <option value="28">28px</option>
+                        <option value="32">32px</option>
+                    </select>
+                    <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-800 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="文字顏色">
+                        <i class="ph-bold ph-text-aa"></i>
+                        <input type="color" id="fse-fmt-textcolor" value="#e2e8f0" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTextColor(this.value, 'fse-content')">
+                    </label>
+                    <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-800 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="螢光筆顏色">
+                        <i class="ph-fill ph-highlighter-circle"></i>
+                        <input type="color" id="fse-fmt-highlight" value="#fef08a" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyHighlight(this.value, 'fse-content')">
+                    </label>
+                    <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight('fse-content')" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i> 去除螢光筆</button>
+                    <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-800 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="表格儲存格底色（游標先點進儲存格）">
+                        <i class="ph-bold ph-square"></i>
+                        <input type="color" id="fse-fmt-cellcolor" value="#1e293b" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyCellColor(this.value, 'fse-content')">
+                    </label>
+                    <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-800 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="表格框線顏色（游標先點進表格裡）">
+                        <i class="ph-bold ph-grid-four"></i>
+                        <input type="color" id="fse-fmt-tableborder" value="#475569" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTableBorderColor(this.value, 'fse-content')">
+                    </label>
+                    <button type="button" onclick="_novaNoteUnifyFont('fse-content')" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i> 字型自動統一</button>
+                </div>
                 <div id="fse-content" contenteditable="true"
-                    class="flex-1 w-full bg-slate-950 text-slate-100 text-base leading-relaxed p-4 outline-none overflow-y-auto"
+                    class="note-editor-html flex-1 w-full bg-slate-950 text-slate-100 text-base leading-relaxed p-4 outline-none overflow-y-auto"
                     style="min-height:0; -webkit-overflow-scrolling:touch; resize:none;"
                     placeholder="在此輸入筆記內容…"></div>
             </div>
@@ -1981,18 +2055,147 @@
                             <div class="md:w-48"><label class="text-xs text-slate-400 mb-1 block">分類資料夾</label><select id="edit-note-folder" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white focus:border-emerald-500 outline-none h-[52px]"></select></div>
                         </div>
 
-                        <div class="flex-1 flex flex-col min-h-0 mt-2">
-                            <label class="text-xs text-slate-400 mb-1 flex justify-between shrink-0">
-                                內文 (支援直接貼上網頁圖文排版、YouTube 網址)
-                                <label for="edit-note-img-upload" class="text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded"><i class="ph-bold ph-image"></i> 插入圖片</label>
-                                <input type="file" id="edit-note-img-upload" accept="image/*" multiple class="hidden" onchange="handleNoteEditImage(event)">
-                            </label>
-                            <div class="flex items-center justify-between mb-1">
-                                <label class="text-xs text-slate-400 font-bold">筆記內容</label>
-                                <button onclick="openFullscreenEditor()" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600" title="全螢幕編輯（手機建議使用）"><i class="ph-bold ph-arrows-out-simple"></i> 全螢幕編輯</button>
+                        <!-- ★ v3.30.128：標籤——輕量、跨資料夾的分類方式。標籤本身只是
+                             note.tags 這個字串陣列，沒有另外的標籤主檔，新增標籤就是打字
+                             按 Enter，跟 Gmail/Notion 那種自由格式標籤一致，不需要事先
+                             建立好標籤清單才能用。 -->
+                        <div class="shrink-0">
+                            <label class="text-xs text-slate-400 mb-1 flex items-center gap-1"><i class="ph-bold ph-tag"></i> 標籤</label>
+                            <div id="edit-note-tags-container" class="flex flex-wrap gap-1.5 items-center bg-slate-950 border border-slate-700 rounded-lg p-2 min-h-[42px] focus-within:border-emerald-500">
+                                <input type="text" id="edit-note-tag-input" placeholder="輸入標籤後按 Enter 新增…" class="flex-1 min-w-[120px] bg-transparent text-sm text-white outline-none placeholder-slate-600" onkeydown="if(event.key==='Enter'){event.preventDefault(); addNoteTagFromInput();}">
                             </div>
-                            <div id="edit-note-content" contenteditable="true" placeholder="在這裡輸入文字，或直接 Ctrl+V 貼上網頁圖文、YouTube連結..." class="note-html-content flex-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-base md:text-lg leading-relaxed text-slate-200 focus:border-emerald-500 outline-none overflow-y-auto"></div>
+                        </div>
+
+                        <div class="flex-1 flex flex-col min-h-0 mt-2">
+                            <!-- ★ v3.30.127：使用者要求「筆記本有功能的介面排在同一列，
+                                 MODEL 選擇放在最右邊」——原本分散在三列（提示文字+插入圖片、
+                                 筆記內容標籤+model選單+全螢幕編輯、格式化工具列）合併成一列，
+                                 用 flex-wrap 讓視窗窄的時候自然換行，不會裁切掉任何控制項；
+                                 note-ocr-model-select 用 ml-auto 頂到最右邊，即使其他控制項
+                                 換行了，它還是會待在當下這一行的最右側，不受換行影響。原本
+                                 「內文 (支援直接貼上網頁圖文排版、YouTube 網址)」這句提示文字
+                                 太長，會議壓縮到其他控制項的空間，改成一個帶 title 提示的
+                                 ⓘ 圖示，滑鼠移過去看得到完整說明，資訊沒有遺失只是不佔用
+                                 常駐的一整行空間。 -->
+                            <div class="flex flex-wrap items-center gap-2 mb-2 shrink-0">
+                                <label class="text-xs text-slate-400 font-bold shrink-0 flex items-center gap-1">
+                                    筆記內容
+                                    <i class="ph-bold ph-info" title="支援直接貼上網頁圖文排版、YouTube 網址"></i>
+                                </label>
+                                <select id="note-fmt-fontsize" title="字體大小" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyFontSize(this.value); this.value='';"
+                                        class="bg-slate-900 border border-slate-600 text-slate-200 text-xs rounded px-1.5 py-1 outline-none focus:border-emerald-500">
+                                    <option value="" selected disabled>字體大小</option>
+                                    <option value="6">6px</option>
+                                    <option value="8">8px</option>
+                                    <option value="10">10px</option>
+                                    <option value="12">12px</option>
+                                    <option value="14">14px</option>
+                                    <option value="16">16px（預設）</option>
+                                    <option value="18">18px</option>
+                                    <option value="20">20px</option>
+                                    <option value="24">24px</option>
+                                    <option value="28">28px</option>
+                                    <option value="32">32px</option>
+                                </select>
+                                <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="文字顏色">
+                                    <i class="ph-bold ph-text-aa"></i>
+                                    <input type="color" id="note-fmt-textcolor" value="#e2e8f0" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTextColor(this.value)">
+                                </label>
+                                <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="螢光筆顏色">
+                                    <i class="ph-fill ph-highlighter-circle"></i>
+                                    <input type="color" id="note-fmt-highlight" value="#fef08a" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyHighlight(this.value)">
+                                </label>
+                                <button type="button" onmousedown="_novaNoteSaveSelection()" onclick="_novaNoteClearHighlight()" title="去除螢光筆顏色" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-eraser"></i> 去除螢光筆</button>
+                                <!-- ★ v3.30.136：使用者要求可以編輯表格「儲存格底色」跟「框線
+                                     顏色」——游標點在表格的某個儲存格/表格裡面（不用先選取文字）
+                                     就可以套用，完整說明見 _novaNoteApplyCellColor()／
+                                     _novaNoteApplyTableBorderColor() 上方的模組註解。 -->
+                                <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="表格儲存格底色（游標先點進儲存格）">
+                                    <i class="ph-bold ph-square"></i>
+                                    <input type="color" id="note-fmt-cellcolor" value="#1e293b" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyCellColor(this.value)">
+                                </label>
+                                <label class="flex items-center gap-1 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-1.5 py-1 cursor-pointer" title="表格框線顏色（游標先點進表格裡）">
+                                    <i class="ph-bold ph-grid-four"></i>
+                                    <input type="color" id="note-fmt-tableborder" value="#475569" class="w-5 h-5 p-0 border-0 bg-transparent cursor-pointer" onmousedown="_novaNoteSaveSelection()" onchange="_novaNoteApplyTableBorderColor(this.value)">
+                                </label>
+                                <button type="button" onclick="_novaNoteUnifyFont()" title="把整篇筆記裡混雜的不同字型統一成同一種" class="flex items-center gap-1 text-xs text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-700 border border-slate-600 rounded px-2 py-1"><i class="ph-bold ph-text-columns"></i> 字型自動統一</button>
+                                <label for="edit-note-img-upload" class="text-emerald-400 hover:text-emerald-300 cursor-pointer flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded text-xs"><i class="ph-bold ph-image"></i> 插入圖片</label>
+                                <input type="file" id="edit-note-img-upload" accept="image/*" multiple class="hidden" onchange="handleNoteEditImage(event)">
+                                <button onclick="openFullscreenEditor()" class="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 shrink-0" title="全螢幕編輯（手機建議使用）"><i class="ph-bold ph-arrows-out-simple"></i> 全螢幕編輯</button>
+                                <!-- ★ v3.30.130：使用者要求可以自由關閉/開啟「貼上圖片時自動
+                                     辨識並轉換」這個行為——關閉後貼上圖片會直接維持原始圖片，
+                                     不呼叫 AI、不轉換，跟這個功能還沒做出來之前的行為一致。
+                                     存在 localStorage（nova_note_ocr_auto_enabled），跨筆記
+                                     共用同一個設定，預設是開啟（沒設定過視為 '1'，維持既有
+                                     行為不因為升級而突然改變）。 -->
+                                <label class="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 border border-slate-600 rounded px-2 py-1.5 cursor-pointer shrink-0" title="貼上圖片時，自動判斷並轉換其中的文字/表格內容；關閉的話貼上圖片只會維持原始圖片，不會呼叫 AI 辨識">
+                                    <input type="checkbox" id="note-ocr-auto-toggle" onchange="localStorage.setItem('nova_note_ocr_auto_enabled', this.checked ? '1' : '0')" class="w-3.5 h-3.5 accent-emerald-500">
+                                    圖片自動辨識
+                                </label>
+                                <!-- ★ v3.30.99：使用者要求「讓我可以自己設定用來作為筆記圖形
+                                     辨識的 model」——貼上圖片時判斷是不是文字/表格的那個模型，
+                                     原本寫死用 NOVA_GEMINI_MODEL_DEFAULT（gemini-2.5-flash），
+                                     這裡改成使用者自己選、存進 localStorage
+                                     （nova_note_ocr_model），下次開啟還記得。選項涵蓋 Gemini
+                                     與 Grok 兩邊有視覺輸入能力的文字模型（生圖專用模型，例如
+                                     -image/imagine 結尾的那些，對這個「辨識既有圖片內容」的
+                                     用途沒有意義，不列進來）——_novaHandleNotePasteImageWithOCR()
+                                     會依選到的模型名稱字首自動判斷要打 Gemini 還是 Grok 的
+                                     API，兩邊各自的呼叫方式/金鑰/CORS 代理都跟主程式一般對話
+                                     用的是同一套，不是另外兜的。 -->
+                                <select id="note-ocr-model-select" title="筆記貼上圖片時，用來辨識文字/表格的 AI 模型"
+                                        class="ml-auto bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 max-w-[190px] shrink-0"
+                                        onchange="localStorage.setItem('nova_note_ocr_model', this.value)">
+                                    <optgroup label="Gemini">
+                                        <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
+                                        <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                                        <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
+                                        <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                                        <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
+                                        <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+                                        <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                        <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+                                    </optgroup>
+                                    <optgroup label="Grok">
+                                        <option value="grok-4.6">Grok 4.6</option>
+                                        <option value="grok-4.5">Grok 4.5</option>
+                                        <option value="grok-4.3">Grok 4.3</option>
+                                        <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
+                                        <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
+                                        <option value="grok-4.20-0309-non-reasoning">Grok 4.20 (0309) Non-Reasoning</option>
+                                        <option value="grok-code-fast-1">Grok Code Fast 1</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <!-- ★ v3.30.123：這個 contenteditable 內容區塊在 v3.30.121 加入
+                                 上面那排格式化工具列時，因為 str_replace 沒有把原本元素完整
+                                 包含進替換範圍，被誤刪掉了，導致筆記打開後內文完全看不到
+                                 （工具列下方整片空白）。這裡補回來，內容/屬性跟被刪掉之前
+                                 完全一致，沒有其他變動。 -->
+                            <div id="edit-note-content" contenteditable="true" placeholder="在這裡輸入文字，或直接 Ctrl+V 貼上網頁圖文、YouTube連結..." class="note-editor-html flex-1 w-full bg-slate-950 border border-slate-700 rounded-lg p-4 text-base md:text-lg leading-relaxed text-slate-200 focus:border-emerald-500 outline-none overflow-y-auto"></div>
+
                             <div id="edit-note-img-preview-container" class="hidden mt-3 flex-wrap gap-2 shrink-0"></div>
+
+                            <!-- ★ v3.30.128：雙向連結——使用者要求「用既有向量相似度做 AI
+                                 建議連結」，不是 Obsidian 那種手動打 [[筆記名稱]]。note.links
+                                 只存「這則筆記主動連出去」的對象（{id, title}），「被誰連結」
+                                 （backlinks）不另外存一份、每次都用 appState.notes 掃一次
+                                 誰的 links 裡有我的 id 現算——避免雙向各存一份、兩邊改一邊
+                                 忘記改另一邊的資料不一致風險。AI 建議是比對這則筆記在向量
+                                 資料庫裡的 chunks 平均向量，跟其他「已經匯入過向量資料庫」
+                                 的筆記兩兩算 cosine 相似度，取分數最高的幾個——完整邏輯見
+                                 _novaSuggestRelatedNotes()，只對已經匯入過向量資料庫的筆記
+                                 才算得出建議，未匯入的筆記會提示先匯入。 -->
+                            <div class="shrink-0 border-t border-slate-800 pt-3 mt-1">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <label class="text-xs text-slate-400 flex items-center gap-1"><i class="ph-bold ph-link"></i> 相關筆記（雙向連結）</label>
+                                    <button type="button" onclick="suggestRelatedNotesForCurrentEdit()" class="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"><i class="ph-bold ph-sparkle"></i> AI 建議相關筆記</button>
+                                </div>
+                                <div id="edit-note-links-container" class="flex flex-wrap gap-1.5 mb-1.5"></div>
+                                <div id="edit-note-backlinks-container" class="flex flex-wrap gap-1.5"></div>
+                                <div id="edit-note-link-suggestions-container" class="hidden mt-2 p-2 bg-slate-800/40 border border-slate-700 rounded-lg"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="flex justify-end space-x-3 mt-4 shrink-0 pt-4 border-t border-slate-800">
@@ -2024,8 +2227,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.38';
+        const NOVA_APP_VERSION = '2.6.39';
         const NOVA_CHANGELOG = [
+            { v: '2.6.39', date: '2026-10-11', notes: [
+                '＋選單按鈕：邊框與圖示／文字統一同一個顏色，沒有白邊。',
+                '完整備份補強：設定頁所有參數（所有 nova_／cal_ 設定）、AI 記憶、模型選擇、筆記、全部對話、任務管理一併備份與還原；錄音檔本體不備份，但保留 AI 分析、摘要與逐字稿。',
+                '筆記本對標桌面版：富文本工具列（字體大小、文字色、螢光筆、表格儲存格色／框線色、字型自動統一）、標籤與標籤篩選、雙向連結與 AI 建議相關筆記、貼圖 OCR（文字／表格，可選 Gemini／Grok 模型與開關）、單篇與跨筆記 AI 分析模式（自動標籤與相關筆記）、筆記關聯圖譜（3D，離線自動改 2D）與 AI 大腦圖譜（手機版自行實作）。',
+                '任務管理對標桌面版：新增任務分「AI排程任務」（一般對話／聯網查詢／生成圖片／AI 自主模式／技能範本重播）與「一般提醒」；列表加類型標籤；行程管理改名為任務管理。'
+            ]},
             { v: '2.6.38', date: '2026-10-11', notes: [
                 'LIVE 影像模式改成 Gemini Live 風格：影像滿版當背景，AI 回覆與對話貼在輸入區上方（半透明、最高 38% 螢幕），輸入區半透明貼底，打字區與 AI 回覆區都看得到；左上「縮小影像」可把影像縮成右上小視窗、對話區拉高。',
                 '「/」命令提示改貼在輸入卡片正上方（依輸入卡片實際位置計算，鍵盤彈出也跟著），不再蓋住打字區；改成輕點才選取，可以上下滑動瀏覽整份清單，碰到或捲動選單不會被收掉。',
@@ -3248,7 +3457,8 @@ async function encodeMp3(audioBuffer) {
                     messages: appState.messages || [],
                     notes: appState.notes || [],
                     todos: appState.todos || [],
-                    audioRecords: (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; }),
+                    audioRecords: (window.NovaBackupExt ? NovaBackupExt.stripAudio(appState.audioRecords) : (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; })),   // v2.6.39：連分段音檔一併剝除，保留 AI 分析／摘要
+                    lsSettings: (window.NovaBackupExt ? NovaBackupExt.collectLs() : {}),   // v2.6.39
                 };
 
                 // 用既有的串流備份函式（避免 OOM）
@@ -3360,6 +3570,7 @@ async function encodeMp3(audioBuffer) {
                     if (data.keys.aws_sk)     localStorage.setItem('nova_key_aws_sk',     data.keys.aws_sk);
                     if (data.keys.aws_region) localStorage.setItem('nova_key_aws_region', data.keys.aws_region);
                 }
+                if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) {} }   // v2.6.39
                 if (data.doc)    { appState.docMonitorUrl = data.doc;    localStorage.setItem('nova_doc_url',    data.doc); }
                 if (data.drive)  { appState.driveUrl      = data.drive;  localStorage.setItem('nova_drive_url',  data.drive); }
                 if (data.corsProxy) { appState.corsProxyUrl = data.corsProxy; localStorage.setItem('nova_cors_proxy_url', data.corsProxy); }
@@ -3556,6 +3767,8 @@ async function encodeMp3(audioBuffer) {
             ttsVoice: localStorage.getItem('nova_tts_voice') || '',
             noteFolders: JSON.parse(localStorage.getItem('nova_folders')) || ['未分類', '工作', '生活'],
             currentNoteFolder: '全部',
+            currentNoteTagFilter: null,
+            selectedNoteIdsForAnalysis: [],
             // 對話資料夾
             chatFolders: JSON.parse(localStorage.getItem('nova_chat_folders') || '[]'),
             sessionFolderMap: JSON.parse(localStorage.getItem('nova_session_folder_map') || '{}'),
@@ -6336,7 +6549,8 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                 messages: appState.messages || [],
                 notes: appState.notes || [],
                 todos: appState.todos || [],
-                audioRecords: (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; }),
+                audioRecords: (window.NovaBackupExt ? NovaBackupExt.stripAudio(appState.audioRecords) : (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; })),   // v2.6.39：連分段音檔一併剝除，保留 AI 分析／摘要
+                ...(window.NovaBackupExt ? await NovaBackupExt.extraFields() : {}),   // v2.6.39：所有 nova_／cal_ 設定＋AI 記憶＋模型／主題
             };
 
             if (CapFS) {
@@ -6471,6 +6685,9 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
 
                 try {
                     // 1. 還原系統設定與金鑰
+                    if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) { console.warn(e); } }   // v2.6.39：全部設定頁參數
+                    if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }
+                    ['currentModel', 'geminiModel', 'grokModel', 'gptModel', 'theme', 'uiColor'].forEach(function (k) { if (data[k]) appState[k] = data[k]; });
                     if(data.keys) {
                         Object.keys(data.keys).forEach(k => { 
                             appState.keys[k] = data.keys[k]; 
@@ -6660,7 +6877,7 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     renderAll();
                     updateModelUI();
                     
-                    showToast("✅ 完整備份還原成功！系統已更新。");
+                    showToast("✅ 完整備份還原成功！建議完全關閉 App 再重新開啟，讓所有設定頁參數完整套用。", 9000);
                     
                     // 清除 input，允許重複選取同一個檔案
                     e.target.value = '';
@@ -12246,7 +12463,24 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
         // --- UI 渲染功能 (待辦事項) ---
         function renderTodos() { 
             const el = document.getElementById('full-todo-list'); const mini = document.getElementById('mini-todo-list');
-            if(el) el.innerHTML=appState.todos.map(t=>`<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in"><div class="flex items-center space-x-4"><button onclick="toggleTodo(${t.id})" class="text-slate-500 hover:text-blue-400"><i class="ph${t.done?'-fill ph-check-circle text-green-500':' ph-circle'} text-2xl"></i></button><div><p class="text-base ${t.done?'line-through text-slate-600':'text-slate-200'}">${escapeHtml(t.text)}</p><span class="text-xs text-slate-500">${t.time}</span></div></div><div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(${t.id})" class="${t.alertEnabled !== false ? 'text-yellow-500' : 'text-slate-600'} hover:text-yellow-400 p-2" title="${t.alertEnabled !== false ? '關閉提醒' : '開啟提醒'}"><i class="ph-bold ${t.alertEnabled !== false ? 'ph-bell-ringing' : 'ph-bell-slash'}"></i></button><button onclick="openTodoEdit('${t.id}')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button><button onclick="deleteTodo('${t.id}')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>`).join('')||'<p class="text-slate-500 text-center mt-10">無任務</p>'; 
+            // ★ v3.7.0：小標籤區分「🤖 AI排程任務」（含自主模式子分類）跟一般提醒，
+            //   讓使用者在列表上一眼就能分辨這筆到時間會不會實際呼叫 AI 做事。
+            const todoBadge = (t) => {
+                let badges = '';
+                if (t.isAutoTask) {
+                    const isAutonomous = t.taskType === 'autonomous';
+                    const isReplay = t.taskType === 'replay';
+                    const label = isReplay ? '🔁 重播任務' : (isAutonomous ? '🤖 自主任務' : '🤖 AI排程');
+                    const cls = isReplay ? 'bg-emerald-900/60 text-emerald-300' : (isAutonomous ? 'bg-purple-900/60 text-purple-300' : 'bg-sky-900/60 text-sky-300');
+                    badges += `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${cls} shrink-0">${label}</span>`;
+                }
+                // ★ v3.13.0：一般提醒有同步到 Google 行事曆的話，顯示一個小標籤
+                if (t.gcalEventId) {
+                    badges += `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-900/40 text-sky-300 shrink-0" title="已同步到 Google 行事曆"><i class="ph-fill ph-google-logo"></i></span>`;
+                }
+                return badges;
+            };
+            if(el) el.innerHTML=appState.todos.map(t=>`<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in"><div class="flex items-center space-x-4"><button onclick="toggleTodo(${t.id})" class="text-slate-500 hover:text-blue-400"><i class="ph${t.done?'-fill ph-check-circle text-green-500':' ph-circle'} text-2xl"></i></button><div><p class="text-base ${t.done?'line-through text-slate-600':'text-slate-200'} flex items-center gap-1.5 flex-wrap">${todoBadge(t)}<span>${escapeHtml(t.text)}</span></p><span class="text-xs text-slate-500">${t.time}</span></div></div><div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(${t.id})" class="${t.alertEnabled !== false ? 'text-yellow-500' : 'text-slate-600'} hover:text-yellow-400 p-2" title="${t.alertEnabled !== false ? '關閉提醒' : '開啟提醒'}"><i class="ph-bold ${t.alertEnabled !== false ? 'ph-bell-ringing' : 'ph-bell-slash'}"></i></button><button onclick="openTodoEdit('${t.id}')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button><button onclick="deleteTodo('${t.id}')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>`).join('')||'<p class="text-slate-500 text-center mt-10">無任務</p>'; 
             if(mini) mini.innerHTML=appState.todos.slice(0,3).map(t=>`<div class="flex items-center space-x-3 p-2 bg-slate-950/50 rounded-lg border border-slate-800/50"><div class="w-1.5 h-8 rounded-full ${t.done?'bg-green-500':'bg-blue-500'}"></div><div class="flex-1 min-w-0"><p class="text-xs truncate ${t.done?'line-through text-slate-600':'text-slate-300'}">${escapeHtml(t.text)}</p></div></div>`).join('')||'<p class="text-xs text-slate-500 text-center">無待辦</p>'; 
         }
 
@@ -17192,15 +17426,76 @@ if (appState.pendingAnalyzeContextId) {
                         if (r) { r.transcript = (r.transcript ? r.transcript + "\n\n" : "") + `[AI 完整轉錄與分析${totalPartsNote}]\n${fullAnalysisText}`; saveToDB('audioRecords', r); renderAudioRecords(); addMessage(`✅ 分析完成${totalPartsNote}！逐字稿與摘要已自動儲存至錄音紀錄「${r.title}」。`, 'system'); }
                     } else if (appState.pendingAnalyzeType === 'textNote') {
                         const n = appState.notes.find(x => String(x.id) === String(appState.pendingAnalyzeContextId));
-                        if (n) { 
-                            const analysisHtml = `\n\n<hr><div style="margin-top:1em; padding:1em; background:rgba(147,51,234,0.1); border-left:4px solid #9333ea; border-radius:0.5em;"><strong>🤖 AI 深度分析摘要 (${MODEL_CONFIG[modelToUse]?.name})${totalPartsNote}</strong><br>${fullAnalysisText.replace(/\n/g, '<br>')}</div>`;
+                        if (n) {
+                            // ★ v3.30.103：解析 ###TAGS###／###RELATED### 這兩行
+                            // 格式化標記（見 _novaBuildTagLinkPromptSuffix()／
+                            // summarizeTextNote() 的說明），拿掉這兩行才是真正
+                            // 要顯示/存回筆記內文的乾淨文字。
+                            const parsed = _novaParseTagLinkSuffix(fullAnalysisText);
+                            const modeInfo = NOVA_NOTE_ANALYSIS_MODES[appState.pendingAnalyzeMode] || NOVA_NOTE_ANALYSIS_MODES.summary;
+
+                            // 「萃取成表格」模式：如果回應真的是一段 Markdown
+                            // 表格，直接轉成 <table> 插入筆記（沿用貼上圖片 OCR
+                            // 那邊已經有的 _novaMdTableToHtml()），比整段文字塞
+                            // 進一個 <br> 分隔的段落更有用、也真的可以編輯儲存格。
+                            const tableHtml = (appState.pendingAnalyzeMode === 'table') ? _novaMdTableToHtml(parsed.cleanText) : null;
+                            const bodyHtml = tableHtml || parsed.cleanText.replace(/\n/g, '<br>');
+
+                            // 自動標籤：合併進筆記既有的 n.tags（去重），不存在
+                            // 就直接建立這個欄位——舊筆記原本沒有 tags 欄位，
+                            // 第一次跑到這裡才會自然補上，不用另外寫遷移程式。
+                            if (parsed.tags.length) {
+                                n.tags = Array.from(new Set([...(n.tags || []), ...parsed.tags]));
+                            }
+
+                            // 自動相關筆記連結：把模型挑出來的標題比對回真正的
+                            // 筆記 id（只接受模型從「既有筆記標題清單」裡選出來、
+                            // 確實存在的標題，避免它自己編一個不存在的標題卻做成
+                            // 一個點了沒反應的假連結）。
+                            const relatedNotes = parsed.relatedTitles
+                                .map(function (title) { return appState.notes.find(function (x) { return x.title === title && String(x.id) !== String(n.id); }); })
+                                .filter(Boolean);
+                            const relatedHtml = relatedNotes.length
+                                ? `<div style="margin-top:0.75em;">🔗 相關筆記：` + relatedNotes.map(function (r) {
+                                    return `<button onclick="openNoteEdit('${r.id}')" style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;font-size:0.8em;cursor:pointer;">${escapeHtml(r.title)}</button>`;
+                                }).join('') + `</div>`
+                                : '';
+                            const tagsHtml = (n.tags && n.tags.length)
+                                ? `<div style="margin-top:0.5em;">🏷️ ` + n.tags.map(function (t) { return `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#6ee7b7;font-size:0.8em;">${escapeHtml(t)}</span>`; }).join('') + `</div>`
+                                : '';
+
+                            const analysisHtml = `\n\n<hr><div style="margin-top:1em; padding:1em; background:rgba(147,51,234,0.1); border-left:4px solid #9333ea; border-radius:0.5em;"><strong>🤖 AI ${escapeHtml(modeInfo.label)} (${MODEL_CONFIG[modelToUse]?.name})${totalPartsNote}</strong><br>${bodyHtml}${tagsHtml}${relatedHtml}</div>`;
                             if(n.isHtml) n.content += analysisHtml;
-                            else n.content += `\n\n====================\n[🤖 AI 深度分析摘要 (${MODEL_CONFIG[modelToUse]?.name})${totalPartsNote}]\n${fullAnalysisText}`; 
-                            saveToDB('notes', n); renderNotes(); 
-                            addMessage(`✅ 分析完成${totalPartsNote}！重點摘要已自動附加至筆記「${n.title}」的底部。`, 'system'); 
+                            else n.content += `\n\n====================\n[🤖 AI ${modeInfo.label} (${MODEL_CONFIG[modelToUse]?.name})${totalPartsNote}]\n${parsed.cleanText}`;
+                            saveToDB('notes', n); renderNotes();
+                            const tagMsg = parsed.tags.length ? `，已自動加上標籤：${parsed.tags.join('、')}` : '';
+                            addMessage(`✅ ${modeInfo.label}完成${totalPartsNote}！結果已自動附加至筆記「${n.title}」的底部${tagMsg}。`, 'system');
                         }
+                    } else if (appState.pendingAnalyzeType === 'crossNotes') {
+                        // ★ v3.30.103：跨筆記分析——結果不適合「附加到某一篇筆記」
+                        // （分析對象本來就是好幾篇筆記，附加到哪一篇都很奇怪），
+                        // 改成直接生成一篇全新的筆記當作這次分析的產出，使用者
+                        // 可以像對待任何一篇筆記一樣繼續編輯/匯入向量資料庫。
+                        const parsed = _novaParseTagLinkSuffix(fullAnalysisText);
+                        const srcTitles = (appState._crossNoteAnalysisTitles || []).join('、');
+                        const newNote = {
+                            id: Date.now(),
+                            title: `跨筆記分析：${srcTitles.length > 40 ? srcTitles.slice(0, 40) + '…' : srcTitles}`,
+                            content: `<p style="color:#94a3b8;font-size:0.85em;">🔗 本篇由跨筆記分析自動產生，來源筆記：${escapeHtml(srcTitles)}</p><hr>${parsed.cleanText.replace(/\n/g, '<br>')}`,
+                            isHtml: true,
+                            date: new Date().toLocaleString(),
+                            type: 'text',
+                            images: [],
+                            folder: '未分類',
+                            tags: parsed.tags
+                        };
+                        appState.notes.unshift(newNote);
+                        saveToDB('notes', newNote);
+                        renderNotes();
+                        addMessage(`✅ 跨筆記分析完成！已建立新筆記「${newNote.title}」。`, 'system');
+                        appState._crossNoteAnalysisTitles = null;
                     }
-                    appState.pendingAnalyzeContextId = null; appState.pendingAnalyzeType = ""; appState.pendingAnalyzePrompt = ""; appState.pendingAnalyzeDuration = 0;
+                    appState.pendingAnalyzeContextId = null; appState.pendingAnalyzeType = ""; appState.pendingAnalyzePrompt = ""; appState.pendingAnalyzeDuration = 0; appState.pendingAnalyzeMode = "";
                 }
 
             } catch (error) {
@@ -18758,7 +19053,7 @@ ${evts.map(e=>`• ${e.start.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'
                 });
             }
 
-            attachRichPasteHandler('edit-note-content');
+            /* v2.6.39：貼上處理改由 nova-notes-pro.js 接手 */
 
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) { 
                 const SR = window.SpeechRecognition || window.webkitSpeechRecognition; 
@@ -18923,13 +19218,39 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                         saveToDB('todos', t); 
                         renderTodos();
 
-                        // 判斷任務類型：自動化任務 vs 一般鬧鐘
-                        if ((t.isAutoTask && t.taskQuery) || (t.isAutoSearch && t.searchQuery)) {
-                            const query = t.taskQuery || t.searchQuery;
-                            const taskType = t.taskType || 'general'; // 'image' | 'search' | 'general'
-                            addMessage(`🔄 [排程任務觸發] 正在為您執行：${query}…`, 'system');
+                        // 判斷任務類型：技能範本重播 / 自動化任務 vs 一般鬧鐘（v2.6.39：對標桌面版，新增 replay 與 autonomous）
+                        if (t.taskType === 'replay' && t.replayFile) {
+                            addMessage(`🔁 [排程任務觸發] 正在執行技能範本：${t.replayFile}…`, 'system');
                             try {
-                                if (taskType === 'image') {
+                                if (!window.NovaSkills || typeof NovaSkills.run !== 'function') {
+                                    addMessage('⚠️ 技能系統尚未就緒，無法執行技能範本', 'system');
+                                } else if (!NovaSkills.get(t.replayFile)) {
+                                    addMessage('❌ 找不到名為「' + t.replayFile + '」的技能範本，可能已被刪除或改名——請重新建立這個排程任務。', 'system');
+                                } else {
+                                    const loopCount = Math.max(1, parseInt(t.replayLoopCount) || 1);
+                                    for (let li = 0; li < loopCount; li++) {
+                                        if (loopCount > 1) addMessage(`🔁 開始第 ${li + 1}/${loopCount} 輪執行...`, 'system');
+                                        const r = await NovaSkills.run(t.replayFile, {});
+                                        if (r && r.ok === false) { addMessage(`⚠️ 第 ${li + 1} 輪執行失敗，已停止後續循環`, 'system'); break; }
+                                        if (r && r.started === 'autonomous') break;   // 自主模式是背景執行，不重複觸發
+                                        if (r && r.prompt) {   // 一般（prompt）技能：交給對話模型
+                                            const sres = await fetchAIResponse(r.prompt, appState.currentModel, { enableSearch: false });
+                                            const stxt = typeof sres === 'string' ? sres : (sres.text || '');
+                                            addMessage(stxt ? `📊 **排程技能範本結果 [${t.replayFile}]**\n\n${stxt}` : `⚠️ 排程技能範本 [${t.replayFile}] 失敗：無法取得有效回覆。`, stxt ? 'ai' : 'system', appState.currentModel, (sres && sres.sources) || [], (sres && sres.file) || null);
+                                        }
+                                    }
+                                }
+                            } catch (e) { addMessage('❌ 執行技能範本失敗：' + (e.message || e), 'system'); }
+                        } else if ((t.isAutoTask && t.taskQuery) || (t.isAutoSearch && t.searchQuery)) {
+                            const query = t.taskQuery || t.searchQuery;
+                            const taskType = t.taskType || 'general'; // 'image' | 'search' | 'general' | 'autonomous'
+                            if (taskType !== 'autonomous') addMessage(`🔄 [排程任務觸發] 正在為您執行：${query}…`, 'system');
+                            try {
+                                if (taskType === 'autonomous') {
+                                    addMessage(`🤖 [排程任務觸發] 啟動 AI 自主任務：${query}`, 'system');
+                                    if (window.novaAutoTask && typeof window.novaAutoTask.run === 'function') window.novaAutoTask.run(query);
+                                    else addMessage('⚠️ 自主任務引擎尚未載入，這次排程未執行。', 'system');
+                                } else if (taskType === 'image') {
                                     // ── 生成圖片：依序嘗試正確的圖像 API ─────────────────────
                                     // 順序：Grok Image Pro → Grok Image → Gemini 2.5 Flash-Image → Gemini 3.1 Flash-Image
                                     addMessage(`🎨 排程任務「${query}」：呼叫 AI 圖像生成…`, 'system');
@@ -19784,36 +20105,91 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
     <!-- ✅ 新增行程 Modal（移至 body 最底層確保 z-index 生效）-->
     <div id="add-todo-modal" class="hidden fixed inset-0 z-[99998] flex items-end justify-center" style="background:rgba(2,6,23,0.85);">
-        <div class="bg-slate-800 border border-slate-600 rounded-t-2xl shadow-2xl w-full max-w-lg p-5 flex flex-col space-y-3" style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom));">
-            <div class="flex items-center justify-between mb-1">
-                <h3 class="text-white font-bold text-base flex items-center gap-2"><i class="ph-fill ph-calendar-plus text-blue-400"></i> 新增行程</h3>
+        <div class="bg-slate-800 border border-slate-600 rounded-t-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[88vh]" style="padding-bottom:env(safe-area-inset-bottom);">
+            <div class="flex items-center justify-between p-5 pb-3 shrink-0">
+                <h3 class="text-white font-bold text-base flex items-center gap-2"><i class="ph-fill ph-calendar-plus text-blue-400"></i> 新增任務</h3>
                 <button onclick="window.closeAddTodoModal()" class="text-slate-400 hover:text-white p-1"><i class="ph-bold ph-x"></i></button>
             </div>
-            <input id="add-todo-text" type="text" placeholder="行程名稱（必填）"
-                class="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 outline-none">
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <label class="text-[10px] text-slate-400 mb-1 block">📅 提醒日期時間（選填）</label>
-                    <input id="add-todo-time" type="datetime-local"
-                        class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+
+            <div class="overflow-y-auto px-5 space-y-4 pb-2">
+                <!-- 任務類型切換 -->
+                <div class="flex bg-slate-950 rounded-xl p-1 gap-1 border border-slate-700">
+                    <button id="add-todo-type-tab-ai" onclick="window._novaSwitchTodoTypeTab('ai')" class="flex-1 py-2 rounded-lg text-xs font-bold transition-colors">🤖 AI排程任務</button>
+                    <button id="add-todo-type-tab-reminder" onclick="window._novaSwitchTodoTypeTab('reminder')" class="flex-1 py-2 rounded-lg text-xs font-bold transition-colors">🔔 一般提醒</button>
                 </div>
+                <p id="add-todo-type-desc" class="text-[10px] text-slate-500 -mt-2"></p>
+
                 <div>
-                    <label class="text-[10px] text-slate-400 mb-1 block">🔁 重複（選填）</label>
-                    <select id="add-todo-repeat" class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
-                        <option value="0">不重複</option>
-                        <option value="86400000">每天</option>
-                        <option value="604800000">每週</option>
-                        <option value="2592000000">每月</option>
-                    </select>
+                    <label id="add-todo-text-label" class="text-[10px] text-slate-400 mb-1 block">任務標題（必填）</label>
+                    <input id="add-todo-text" type="text" placeholder="任務標題（必填）"
+                        class="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 outline-none">
                 </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <input type="checkbox" id="add-todo-cal-sync" class="w-4 h-4 accent-blue-500">
-                <label for="add-todo-cal-sync" class="text-xs text-slate-300">同步到手機行事曆</label>
-            </div>
-            <div class="flex gap-2 pt-1">
+
+                <!-- 🤖 AI排程任務 專屬欄位 -->
+                <div id="add-todo-ai-fields" class="space-y-3 hidden">
+                    <div id="add-todo-ai-prompt-wrap">
+                        <label class="text-[10px] text-slate-400 mb-1 block">描述 AI 應該做什麼（必填）</label>
+                        <textarea id="add-todo-ai-prompt" rows="3" placeholder="例如：幫我查詢今天台北的天氣並整理重點 / 幫我整理今天的行事曆並用 email 寄給我"
+                            class="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 outline-none resize-none"></textarea>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 mb-1 block">執行方式</label>
+                        <select id="add-todo-ai-mode" onchange="window._novaOnAddTodoModeChange && window._novaOnAddTodoModeChange(this.value)" class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+                            <option value="general">💬 一般對話（單次回覆，等同直接輸入 prompt）</option>
+                            <option value="search">🌐 聯網查詢（強制開啟搜尋）</option>
+                            <option value="image">🎨 生成圖片</option>
+                            <option value="autonomous">🤖 AI 自主模式（可操作電腦、多輪執行，較複雜的任務適用）</option>
+                            <option value="replay">📋 執行已儲存的技能範本（含可重播的執行紀錄／技能範本，跟「技能範本」清單一致）</option>
+                        </select>
+                    </div>
+                    <!-- ★ v3.8.0：選「重播」時才顯示——挑選要重播的 .replay.json + 循環次數 -->
+                    <!-- ★ v3.28.51：範圍從「只能選 type:replay 的執行紀錄」擴大成「Skill 管理／
+                         側邊欄技能範本清單裡的所有技能都能選」，欄位標籤跟著調整用詞 -->
+                    <div id="add-todo-replay-fields" class="space-y-3 hidden">
+                        <div>
+                            <label class="text-[10px] text-slate-400 mb-1 block">選擇要執行的技能範本</label>
+                            <select id="add-todo-replay-file" class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+                                <option value="">（尚未載入，請稍候...）</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 mb-1 block">🔁 每次觸發要執行幾次</label>
+                            <input id="add-todo-replay-loop-count" type="number" min="1" step="1" value="1"
+                                class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 詳細資訊 -->
+                <div class="pt-1">
+                    <p class="text-[10px] text-slate-500 font-bold mb-2">頻率</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label id="add-todo-time-label" class="text-[10px] text-slate-400 mb-1 block">📅 執行日期時間</label>
+                            <input id="add-todo-time" type="datetime-local"
+                                class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-slate-400 mb-1 block">🔁 重複</label>
+                            <select id="add-todo-repeat" class="w-full bg-slate-900 border border-slate-600 rounded-xl p-2.5 text-xs text-slate-100 focus:border-blue-500 outline-none">
+                                <option value="0">不重複</option>
+                                <option value="86400000">每天</option>
+                                <option value="604800000">每週</option>
+                                <option value="2592000000">每月</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="add-todo-cal-sync" class="w-4 h-4 accent-blue-500">
+                    <label for="add-todo-cal-sync" class="text-xs text-slate-300">同步到手機行事曆</label>
+                </div>
+                            </div>
+
+            <div class="flex gap-2 p-5 pt-3 shrink-0">
                 <button onclick="window.closeAddTodoModal()" class="flex-1 py-2.5 text-sm font-bold bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl">取消</button>
-                <button onclick="window.confirmAddTodo()" class="flex-1 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl">新增</button>
+                <button onclick="window.confirmAddTodo()" class="flex-1 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-xl">建立</button>
             </div>
         </div>
     </div>
@@ -20109,6 +20485,9 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
+<script src="./nova-experts-glue.js?v=1.0.0"></script>
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-notes-pro.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
+<script src="./nova-brain-graph.js?v=1.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>
