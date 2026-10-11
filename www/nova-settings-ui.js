@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-settings-ui.js — NOVA Android 設定頁重新分類（跟 index.html 放同一個資料夾 www/）
-   版本：v1.2.0
+   版本：v1.3.0
    版本紀錄：
+   v1.3.0 - 批次 8（v2.6.32）。「整合」分類新增「🖥️ 電腦遙控」區塊（tab-remote，內容由 nova-remote.js 繪製）。
    v1.2.0 - 批次 7b（v2.6.31）。「Agent 與自主任務」分類新增「⚡ Jev 快速判斷」區塊（tab-jev，內容由 nova-jev-ui.js 繪製）。
    v1.1.0 - 批次 7a（v2.6.30）。「Agent 與自主任務」分類新增「技能」區塊（tab-skills，內容由 nova-skill-ui.js 繪製）。
    v1.0.0 - 初版（v2.6.28）。對標桌面版 v3.51.0「設定頁分 6～7 大類」的手機版：頂端搜尋框＋橫向膠囊分類列（一般與外觀／模型與金鑰／Agent 與自主任務／記憶／整合／語音與錄音），
@@ -18,7 +19,7 @@
         { id: 'models', icon: 'ph-lock-key', name: '模型與金鑰', desc: 'API 金鑰、本機模型，以及主畫面可選的模型。', secs: [['keys', 'API 金鑰與 Local API', '各家 AI 與搜尋服務的金鑰，只存在這支手機。'], ['models', '啟用的模型', '取消勾選的模型不會出現在主畫面選單。']] },
         { id: 'agent', icon: 'ph-robot', name: 'Agent 與自主任務', desc: 'AI 操作手機的執行器、判斷器與限制。', secs: [['autotask', 'AI 自主任務', '執行器、判斷器、回合數與逾時。'], ['skills', '技能', '自主任務存成技能、重播與管理。'], ['jev', '⚡ Jev 快速判斷', 'TypeSafe 小決策模型：完成複查、技能比對、參數建議。']] },
         { id: 'memory', icon: 'ph-brain', name: '記憶', desc: '跨對話的長期記憶與 Profile。', secs: [['memory', 'AI 記憶', '中期摘要、長期事實與維護守則。']] },
-        { id: 'integrations', icon: 'ph-plug', name: '整合', desc: 'Google、Telegram、行事曆與工具。', secs: [['google', 'Google 與代理', '系統代理、雲端備份與 Canvas CORS 代理。'], ['tg', 'Telegram', '接收排程推播與提醒。'], ['cal', '行事曆', '行事曆提醒與同步。'], ['tools', '工具與 MCP', 'Function Calling、遠端 MCP、Context Caching。']] },
+        { id: 'integrations', icon: 'ph-plug', name: '整合', desc: 'Google、Telegram、行事曆與工具。', secs: [['remote', '🖥️ 電腦遙控', '內嵌電腦端 NOVA Desktop，遠端操作。'], ['google', 'Google 與代理', '系統代理、雲端備份與 Canvas CORS 代理。'], ['tg', 'Telegram', '接收排程推播與提醒。'], ['cal', '行事曆', '行事曆提醒與同步。'], ['tools', '工具與 MCP', 'Function Calling、遠端 MCP、Context Caching。']] },
         { id: 'voice', icon: 'ph-microphone', name: '語音與錄音', desc: '朗讀、語音辨識與錄音。', secs: [['voice', '語音與朗讀', '人聲、AWS Polly 與語音設定。'], ['rec', '錄音', '錄音與口譯設定。']] }
     ];
     var secOf = {};   // tab-xxx → cat id
@@ -28,7 +29,7 @@
         var modal = $('settings-modal'); if (!modal || built) return; built = true;
         var card = modal.firstElementChild, scroller = card.querySelector('.overflow-y-auto.flex-1');
         var pillBar = card.querySelector('.mb-4.shrink-0.overflow-x-auto'); if (pillBar) pillBar.style.display = 'none';
-        var tabs = {}; ['main', 'voice', 'tg', 'ui', 'rec', 'cal', 'models', 'memory', 'tools', 'autotask', 'skills', 'jev'].forEach(function (k) { tabs[k] = $('tab-' + k); });
+        var tabs = {}; ['main', 'voice', 'tg', 'ui', 'rec', 'cal', 'models', 'memory', 'tools', 'autotask', 'skills', 'jev', 'remote'].forEach(function (k) { tabs[k] = $('tab-' + k); });
         // 拆 tab-main
         var main = tabs.main, parts = { google: null, keys: null, data: null };
         if (main) {
@@ -36,7 +37,7 @@
                 if (el.querySelector('#key-doc-url')) parts.google = el; else if (el.querySelector('#key-gemini')) parts.keys = el; else if (!parts.data) parts.data = el; else parts.data.appendChild(el);
             });
         }
-        var content = { ui: tabs.ui, models: tabs.models, autotask: tabs.autotask, skills: tabs.skills, jev: tabs.jev, memory: tabs.memory, tg: tabs.tg, cal: tabs.cal, tools: tabs.tools, voice: tabs.voice, rec: tabs.rec, google: parts.google, keys: parts.keys, data: parts.data };
+        var content = { ui: tabs.ui, models: tabs.models, autotask: tabs.autotask, skills: tabs.skills, jev: tabs.jev, remote: tabs.remote, memory: tabs.memory, tg: tabs.tg, cal: tabs.cal, tools: tabs.tools, voice: tabs.voice, rec: tabs.rec, google: parts.google, keys: parts.keys, data: parts.data };
         var wrap = document.createElement('div'); wrap.className = 'ns-nav-wrap';
         var sb = document.createElement('div'); sb.className = 'ns-search';
         sb.innerHTML = '<i class="ph-bold ph-magnifying-glass"></i><input id="ns-search-input" type="text" autocomplete="off" placeholder="搜尋設定…">';
@@ -68,6 +69,7 @@
         if (typeof orig !== 'function') return;
         var tabs = []; CATS.forEach(function (c) { if (c.id === cat) c.secs.forEach(function (s) { tabs.push('tab-' + s[0]); }); });
         tabs.forEach(function (t) { if ($(t)) { try { orig(t); } catch (e) { /* 單一分頁同步失敗不影響其他 */ } } });
+        if (cat === 'integrations' && typeof W.novaRemoteRenderSettings === 'function') { try { W.novaRemoteRenderSettings(); } catch (e) { /* 忽略 */ } }
         if (cat === 'agent' && typeof W.novaSkillRenderSettings === 'function') { try { W.novaSkillRenderSettings(); if (W.novaJevRenderSettings) W.novaJevRenderSettings(); } catch (e) { /* 技能區塊繪製失敗不影響其他 */ } }
         Array.prototype.forEach.call(document.querySelectorAll('#ns-cats [id^="tab-"]'), function (el) { el.classList.remove('hidden'); });
     }

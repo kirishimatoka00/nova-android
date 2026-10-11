@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1226,6 +1226,7 @@
                         <!-- 分頁：技能（v2.6.30） -->
                         <div id="tab-skills" class="space-y-3 hidden"></div>
                         <div id="tab-jev" class="space-y-3 hidden"></div>
+                        <div id="tab-remote" class="space-y-3 hidden"></div>
 
                         <!-- 分頁：AI 自主任務 -->
                         <div id="tab-autotask" class="space-y-3 hidden">
@@ -1618,6 +1619,10 @@
                             <!-- v2.6.23：多專家協作／會議／並行作業開關 -->
                             <button id="experts-mode-toggle-btn" onclick="toggleNovaExpertsMode();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-fuchsia-500/50 hover:bg-slate-700 text-fuchsia-400 transition-colors active:scale-95">
                                 <i class="ph-bold ph-users-three text-xl"></i><span class="text-[10px] font-bold">多專家</span>
+                            </button>
+
+                            <button onclick="openRemoteDesktop();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-sky-500/50 hover:bg-slate-700 text-sky-400 transition-colors">
+                                <i class="ph-bold ph-desktop text-xl"></i><span class="text-[10px] font-bold">電腦遙控</span>
                             </button>
 
                             <button onclick="openSkillManager();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-emerald-500/50 hover:bg-slate-700 text-emerald-400 transition-colors">
@@ -2031,8 +2036,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.31';
+        const NOVA_APP_VERSION = '2.6.32';
         const NOVA_CHANGELOG = [
+            { v: '2.6.32', date: '2026-10-11', notes: [
+                '新增「電腦遙控」（+ 選單／設定 → 整合）：全螢幕內嵌電腦端 NOVA Desktop 的 /app 網頁殼，輸入電腦位址（Tailscale 或同網段 IP，預設埠 8000）即可連線，配對碼流程在內嵌頁面完成，API 金鑰仍留在電腦。可存多組位址、記住上次連線並自動連上。',
+            ] },
             { v: '2.6.31', date: '2026-10-11', notes: [
                 '導入 Jev（TypeSafe AI System One 小決策模型，移植自桌面版 nova-jev.js v1.4.0）：設定 → Agent 與自主任務 → ⚡ Jev 快速判斷。預設關閉，填 API Key 並開總開關後才會動，任何失敗都退回原本流程。',
                 '已接上 4 個用途：自主任務宣告完成前複查（最多退回 2 次）、/ap 前技能比對、技能參數「⚡ Jev 建議」、存半成品時建議取消冗餘步驟。其餘用途（模型分級、記憶、檔案、注入篩查、Workflow、路由）手機版還沒有對應的呼叫點。',
@@ -19821,7 +19829,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
-<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.2.0"></script><!-- v2.6.28：單一展開式模型選單 -->
+<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
