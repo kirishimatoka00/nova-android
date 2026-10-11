@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - 批次 4：新增「多專家／會議／並行作業」手機排版（第 8 節）：管理視窗全螢幕＋可橫向滑動分頁、派工確認／成員命名視窗全螢幕、
+            進度面板與任務看板貼底（避開輸入列）、輸入框上方狀態列滿版、發言者（msg.speaker）頭像與名稱樣式。純 CSS，不改功能。
    v1.0.0 - 初版。仿照 NOVA Desktop 的 nova-ui.css（v1.0.13）「手機寬度」版本的設計語言，只移植手機用得到的部分：
             ① 設計 token（--nv-*）：黑夜／白晝兩套（白晝跟著 html.theme-light），之後要微調配色只改最上面兩個區塊。
             ② 設定頁分頁列：橫向滑動的「膠囊」分頁（.nv-pill 風格套在 #settings-modal 的 stab-* 按鈕上）。
@@ -113,3 +115,34 @@ html:root body .nv-branch-btn:active { color: var(--nv-accent-text) !important; 
 @media (max-width: 640px) {
   .nv-btn, .nova-em-btn { min-height: 38px; }
 }
+
+/* ───────────── 8. 多專家協作／會議／並行作業（手機排版；元件由 nova-experts-glue.js 以 inline style 建立，所以這裡一律 !important 覆寫） ───────────── */
+html:root body #nova-experts-modal, html:root body #nova-dispatch-modal, html:root body #nova-roster-modal { padding: 0 !important; align-items: stretch !important; }
+html:root body #nova-experts-modal > div, html:root body #nova-dispatch-modal > div, html:root body #nova-roster-modal > div {
+  width: 100% !important; max-width: 100% !important; max-height: 100% !important; height: 100%; border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+html:root body #nova-experts-modal > div > div:first-child { flex-wrap: wrap; row-gap: 6px; }
+html:root body #nova-experts-modal .nova-exp-tabs { order: 3; flex: 0 0 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+html:root body #nova-experts-modal .nova-exp-tabs::-webkit-scrollbar { display: none; }
+html:root body #nova-experts-modal .nova-exp-tabs button { flex: none; white-space: nowrap; min-height: 36px; border-radius: 999px !important; padding: 4px 14px !important; }
+html:root body #nova-experts-modal .nova-exp-close { min-width: 40px; min-height: 40px; font-size: 20px !important; }
+html:root body #nova-experts-modal input, html:root body #nova-experts-modal select, html:root body #nova-experts-modal textarea,
+html:root body #nova-dispatch-modal input:not([type=checkbox]), html:root body #nova-dispatch-modal select, html:root body #nova-dispatch-modal textarea,
+html:root body #nova-roster-modal input:not([type=checkbox]), html:root body #nova-roster-modal select { font-size: 16px !important; min-height: 40px; }   /* 16px 避免 iOS／Android WebView 聚焦時自動放大 */
+html:root body #nova-experts-modal input[type=checkbox], html:root body #nova-dispatch-modal input[type=checkbox] { width: 20px; height: 20px; }
+html:root body #nova-experts-modal button:not(.nova-exp-close), html:root body #nova-dispatch-modal button, html:root body #nova-roster-modal button { min-height: 38px; }
+html:root body #nova-experts-modal [style*="grid-template-columns"], html:root body #nova-dispatch-modal [style*="grid-template-columns"] { grid-template-columns: minmax(0, 1fr) !important; }
+html:root body #nova-dispatch-modal > div > div:last-child { position: sticky; bottom: 0; background: var(--nv-card, #0f172a); }
+html:root body #nova-experts-bar { width: calc(100% - 16px) !important; max-width: none !important; margin: 0 8px 4px 8px !important; padding: 6px 8px !important; }
+html:root body #nova-experts-bar button { min-height: 32px; }
+html:root body #nova-experts-bar .nova-exp-seg { max-width: 100%; overflow-x: auto; }
+html:root body #nova-exp-panel, html:root body #nova-tasks-board { left: 8px !important; right: 8px !important; width: auto !important; top: calc(58px + env(safe-area-inset-top, 0px)) !important; bottom: auto !important; max-height: 44vh !important;   /* 貼在頂部，避免蓋住輸入列與狀態列 */
+  overflow-y: auto; }
+html:root body #nova-exp-panel button, html:root body #nova-tasks-board button { min-height: 32px; }
+/* 發言者頭像（會議／並行作業的 msg.speaker） */
+.nv-speaker-av { width: 32px; height: 32px; border-radius: 999px; display: flex; align-items: center; justify-content: center; flex: none; margin-top: 4px; font-size: 16px; line-height: 1; }
+.nv-speaker-name { font-size: 11px; font-weight: 700; display: block; margin-bottom: 6px; line-height: 1.3; filter: brightness(1.5); }
+html.theme-light .nv-speaker-name { filter: none; }
+/* 「＋」選單裡的多專家按鈕（開啟時紫色光暈） */
+#experts-mode-toggle-btn.nova-exp-on { background: linear-gradient(135deg, rgba(168,85,247,.45), rgba(99,102,241,.2)) !important; color: #e9d5ff !important; border-color: rgba(168,85,247,.8) !important; }
+html.theme-light #experts-mode-toggle-btn.nova-exp-on { color: #581c87 !important; }

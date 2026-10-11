@@ -482,10 +482,11 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.0.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.1.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
+    <script src="./nova-llm.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -1640,6 +1641,11 @@
                         <!-- 附加功能展開選單 (+) -->
                         <div id="plus-menu" class="hidden absolute bottom-full left-0 mb-1 w-full bg-slate-900 border-t border-slate-800 p-4 grid grid-cols-5 gap-2 z-40 rounded-t-2xl shadow-[0_-10px_20px_rgba(0,0,0,0.5)] transition-all">
                             
+                            <!-- v2.6.23：多專家協作／會議／並行作業開關 -->
+                            <button id="experts-mode-toggle-btn" onclick="toggleNovaExpertsMode();togglePlusMenu()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-fuchsia-500/50 hover:bg-slate-700 text-fuchsia-400 transition-colors active:scale-95">
+                                <i class="ph-bold ph-users-three text-xl"></i><span class="text-[10px] font-bold">多專家</span>
+                            </button>
+
                             <button onclick="openAgentModal()" class="flex flex-col items-center justify-center gap-2 p-2 rounded-xl bg-slate-800 border border-purple-500/50 hover:bg-slate-700 text-purple-400 transition-colors active:scale-95 shadow-lg shadow-purple-500/10">
                                 <i class="ph-bold ph-brain text-xl"></i><span class="text-[10px] font-bold">深度研究</span>
                             </button>
@@ -1681,7 +1687,7 @@
                             <select id="trans-lang-b" class="bg-slate-800 text-white p-1.5 rounded outline-none border border-slate-700"><option value="zh-TW">翻譯為中文</option><option value="en">翻譯為英文</option><option value="ja">翻譯為日文</option><option value="ko">翻譯為韓文</option></select>
                         </div>
 
-                        <div class="flex items-end gap-2 w-full relative z-50 p-2">
+                        <div id="nova-composer" class="flex items-end gap-2 w-full relative z-50 p-2">
                             <button onclick="togglePlusMenu()" class="p-2 mb-1 rounded-full bg-slate-800 text-slate-300 hover:text-white shrink-0 transition-transform flex items-center justify-center active:scale-90 h-[40px] w-[40px]">
                                 <i class="ph-bold ph-plus text-xl transition-transform" id="plus-icon"></i>
                             </button>
@@ -1969,8 +1975,15 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.22';
+        const NOVA_APP_VERSION = '2.6.23';
         const NOVA_CHANGELOG = [
+            { v: '2.6.23', date: '2026-10-11', notes: [
+                '批次 4（對標桌面版多專家）：新增 nova-experts.js／nova-meeting.js／nova-tasks.js（引擎，自桌面版原樣移植）、nova-llm.js（模型呼叫輔助層，批次 6 深度研究也會共用）、nova-experts-glue.js（手機版接線層）。',
+                '三種模式：🧑‍🔬 協作報告（多位專家分工＋交叉審閱＋獨立審查→一份完整報告）、🗣️ 多專家會議（專家在對話裡輪流發言，說「請總結」收尾）、⚡ 並行作業（@專家 交辦，多位專家同時開工，成品貼回對話）。',
+                '入口：輸入框左邊「＋」選單 →「多專家」；開啟後輸入框上方出現狀態列（切模式、管理專家、設定、任務看板）。管理視窗為手機全螢幕、分頁可橫向滑動。',
+                '對話訊息新增發言者（msg.speaker）頭像與名稱顯示；addMessage 新增第 7 個參數 sessionId（背景任務貼回指定對話）；備份匯出／還原納入專家與各模式設定（expertsConfig）。',
+                '誠實說明：只用模擬模型測過流程與介面，沒有用真實 API 實測；專家各自的模型設定可選 Gemini／OpenAI／Grok 文字模型。',
+            ]},
             { v: '2.6.22', date: '2026-10-11', notes: [
                 '批次 3（對標桌面版原生 Function Calling）：新增 nova-fc.js（工具註冊表＋Gemini／Grok 前端迴圈＋Context Caching）與 nova-mcp-remote.js（遠端 MCP 客戶端：Streamable HTTP 為主、舊版 SSE 備援，支援 JSON／SSE 回應、Mcp-Session-Id、session 過期自動重連、tools/list 分頁）。手機沒有 sidecar，所以只支援遠端（HTTP）MCP。',
                 '工具來源三種：內建（get_current_datetime、kb_search 搜尋向量資料庫，可限定文件類型）、本地技能（NovaSkills，函式名 skill__<名稱>）、遠端 MCP（函式名 mcp__<伺服器>__<工具>）。同一輪的多個 functionCall 並行執行；非唯讀的 MCP 工具預設每次呼叫前先問使用者（可關）。回填模型輪時保留 thoughtSignature（Gemini 3 系列需要）。',
@@ -3270,6 +3283,7 @@ async function encodeMp3(audioBuffer) {
                     grokModel: appState.grokModel,
                     gptModel: appState.gptModel,
                     disabledModels: (window.novaDisabledModels ? window.novaDisabledModels() : []),   // v2.6.22：啟用的模型（批次 1 漏掉的備份欄位）
+                    expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
                     toolConfig: { mcpServers: (window.novaFcCfg ? window.novaFcCfg.servers() : []), disabledTools: (window.novaFcCfg ? window.novaFcCfg.disabled() : []), auto: _fcLs('nova_fc_auto', '0'), cache: _fcLs('nova_fc_cache', '1'), cacheRound: _fcLs('nova_fc_cache_round', '3') },   // v2.6.22
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
                     calSyncTodos: localStorage.getItem('cal_sync_todos') === 'true',
@@ -3423,6 +3437,9 @@ async function encodeMp3(audioBuffer) {
                 if (data.geminiModel)  appState.geminiModel  = window._novaMigrateGeminiId(data.geminiModel);   // v2.6.19：舊型號自動轉換
                 if (data.gptModel)     { appState.gptModel = data.gptModel; try { localStorage.setItem('nova_gpt_model', data.gptModel); } catch (e) {} }
                 if (Array.isArray(data.disabledModels)) { try { localStorage.setItem('nova_disabled_models', JSON.stringify(data.disabledModels)); if (window.novaApplyModelFilter) window.novaApplyModelFilter(); } catch (e) {} }   // v2.6.22
+                if (data.expertsConfig && typeof data.expertsConfig === 'object') {   // v2.6.23
+                    try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
+                }
                 if (data.toolConfig && typeof data.toolConfig === 'object') {   // v2.6.22
                     try {
                         const tc = data.toolConfig;
@@ -7018,17 +7035,17 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
             setTimeout(function() { handleSendMessage(); }, 50);
         };
 
-        window.addMessage = function(text, sender, model = null, sources = [], files = null, actionData = null) {
-            if (!appState.currentSessionId) {
+        window.addMessage = function(text, sender, model = null, sources = [], files = null, actionData = null, sessionId = null) {   // v2.6.23：第 7 個參數 sessionId（多專家／並行作業背景任務要貼回指定對話）
+            if (!sessionId && !appState.currentSessionId) {
                 appState.currentSessionId = Date.now().toString();
 localStorage.setItem('nova_current_session', appState.currentSessionId);
             }
             const filesArr = Array.isArray(files) ? files : (files ? [files] : []);
-            const msg = { id: genMsgId(), sessionId: appState.currentSessionId, text, sender, model: model ||
+            const msg = { id: genMsgId(), sessionId: sessionId || appState.currentSessionId, text, sender, model: model ||
 appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             if(filesArr.length === 1 && !Array.isArray(files)) msg.file = files; // legacy support for DB
             appState.messages.push(msg); saveToDB('messages', msg); scheduleEmergencyBackup();
-            renderMessages();
+            if (!sessionId || String(sessionId) === String(appState.currentSessionId)) renderMessages();   // v2.6.23
             if (typeof renderChatHistoryList === 'function') renderChatHistoryList();
 
             // 💡 修正 1：開放「系統訊息 (system)」也能推播，解決排程提示看不到的問題
@@ -11697,9 +11714,9 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 let isPlayingMsg = appState.isTTSPlaying && appState.playingMsgId === String(msg.id);
 
                 return `<div class="group flex ${isUser ? 'justify-end' : 'justify-start items-start space-x-3'} fade-in relative mb-4">
-                    ${!isUser ? `<div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${modelInfo?.bg||'bg-slate-700'}"><i class="ph-fill ${modelInfo?.icon||'ph-robot'} text-white text-sm"></i></div>` : ''}
+                    ${!isUser ? (msg.speaker ? `<div class="nv-speaker-av" style="background:${escapeHtml(msg.speaker.color||'#6d28d9')};">${escapeHtml(msg.speaker.icon||'🧑')}</div>` : `<div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${modelInfo?.bg||'bg-slate-700'}"><i class="ph-fill ${modelInfo?.icon||'ph-robot'} text-white text-sm"></i></div>`) : ''}
                     <div class="msg-group relative max-w-[90%] md:max-w-[80%] rounded-2xl p-4 shadow-sm ${isUser ? 'bg-slate-800 text-white rounded-br-none' : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none'}">
-                        ${!isUser ? `<span class="text-[10px] font-bold uppercase mb-2 block ${modelInfo?.color||'text-slate-400'} opacity-80 pr-24 leading-tight">${modelInfo?.name||'System'}</span>` : ''}
+                        ${!isUser ? (msg.speaker ? `<span class="nv-speaker-name" style="color:${escapeHtml(msg.speaker.color||'#c4b5fd')};">${escapeHtml(msg.speaker.name||'專家')}${msg.speaker.role ? `<span style="font-weight:400;opacity:.7;"> · ${escapeHtml(msg.speaker.role)}</span>` : ''}</span>` : `<span class="text-[10px] font-bold uppercase mb-2 block ${modelInfo?.color||'text-slate-400'} opacity-80 pr-24 leading-tight">${modelInfo?.name||'System'}</span>`) : ''}
                         ${mediaHTML} <div class="msg-content text-sm leading-relaxed">${formatMessage(msg.text)}</div> ${actionCardHtml} ${sourcesHTML}
                         <p class="text-[10px] mt-2 text-right text-slate-500 opacity-60">${msg.time}</p>
                         <div class="msg-actions absolute top-1.5 right-1.5 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -15427,6 +15444,13 @@ window.startMultiAgentResearch = async function() {
 
             const input = document.getElementById('user-input'); 
             let text = input.value.trim();
+            // ★ v2.6.23（批次 4）：多專家模式開啟時，一般提問交給專家協作／會議／並行作業（斜線指令、即時／翻譯模式不攔截）
+            if (window.NovaExpertsGlue && NovaExpertsGlue.isOn() && text && text.charAt(0) !== '/'
+                && !appState.isLiveMode && (!appState.translateMode || appState.translateMode === 'off') && !appState.pendingAnalyzeContextId) {
+                input.value = ''; try { autoResizeInput(input); } catch (e) {} try { chatInitialInput = ''; } catch (e) {}
+                NovaExpertsGlue.send(text);
+                return;
+            }
             const hasChatFile = appState.chatFiles && appState.chatFiles.length > 0;
 
             // 💡 修復 3：只要使用者傳送的文字不是預設的 AI 任務 Prompt，代表已轉向一般對話，強制清除幽靈分析任務
@@ -19669,5 +19693,6 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
+<script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>
