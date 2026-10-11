@@ -482,7 +482,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.6.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.7.1">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -1589,13 +1589,15 @@
                             <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div> LIVE AI VISION
                         </div>
                         <video id="live-video-preview" autoplay playsinline muted class="w-full h-full object-contain aspect-[3/4] md:aspect-video mx-auto"></video>
+                        <!-- v2.6.38：Gemini Live 風格——影像縮成右上小視窗／放回全螢幕 -->
+                        <button id="live-pip-btn" onclick="toggleLivePip()" title="影像縮小／放大" class="absolute top-10 left-2 z-40 bg-slate-900/80 text-white text-xs rounded-lg px-3 py-1.5 border border-red-500/50 backdrop-blur-md shadow-lg flex items-center gap-1" style="min-height:36px"><i class="ph-bold ph-picture-in-picture"></i><span id="live-pip-label">縮小影像</span></button>
                     </div>
 
                     <!-- 聊天對話顯示層 (分層：下半部對話) -->
                     <div id="chat-container" class="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-slate-700 relative"></div>
                     
                     <!-- Line 風格底部輸入區塊 -->
-                    <div class="bg-slate-900 shrink-0 z-20 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex flex-col relative w-full">
+                    <div id="nova-composer-wrap" class="bg-slate-900 shrink-0 z-20 pb-[calc(0.5rem+env(safe-area-inset-bottom))] flex flex-col relative w-full">
                          
                         <div id="chat-file-preview-container" class="hidden relative flex-wrap gap-2 bg-slate-900 p-2 m-2 rounded-lg self-start">
                             </div>
@@ -2022,8 +2024,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.37';
+        const NOVA_APP_VERSION = '2.6.38';
         const NOVA_CHANGELOG = [
+            { v: '2.6.38', date: '2026-10-11', notes: [
+                'LIVE 影像模式改成 Gemini Live 風格：影像滿版當背景，AI 回覆與對話貼在輸入區上方（半透明、最高 38% 螢幕），輸入區半透明貼底，打字區與 AI 回覆區都看得到；左上「縮小影像」可把影像縮成右上小視窗、對話區拉高。',
+                '「/」命令提示改貼在輸入卡片正上方（依輸入卡片實際位置計算，鍵盤彈出也跟著），不再蓋住打字區；改成輕點才選取，可以上下滑動瀏覽整份清單，碰到或捲動選單不會被收掉。',
+            ] },
             { v: '2.6.37', date: '2026-10-11', notes: [
                 '即時口譯新增「按鍵收音」模式（對標桌面版 v3.31.55）：口譯設定列的輸入模式多一個「按鍵收音」；按一下輸入列麥克風開始收音、再按一次立刻送出翻譯，不帶聊天歷史；上方紅燈顯示收音秒數，點紅燈也能送出；短於 0.5 秒視為誤觸、單次上限 3 分鐘；記住上次選的輸入模式。',
                 '＋選單：移除 Canvas 按鈕與舊的「深度研究」（經典代理）按鈕；原「Pro研究」改名「深度研究」（抽屜選單同步改名）。',
@@ -9217,7 +9223,8 @@ msg.files : (msg.file ? [msg.file] : []);
             { c: '/coh',  d: '切換：Cohere' }
         ];
         (function () {
-            let menu = null, ta = null;
+            // v2.6.38：提示貼在輸入卡片「上方」（不蓋打字區）；可上下滑動，手指滑動不會選到項目，輕點才選；碰到選單不會被 blur 收掉。
+            let menu = null, ta = null, touching = false;
             function ensure() {
                 if (menu) return true;
                 ta = document.getElementById('user-input');
@@ -9225,10 +9232,34 @@ msg.files : (msg.file ? [msg.file] : []);
                 menu = document.createElement('div'); menu.id = 'nv-slash-menu'; menu.className = 'hidden';
                 document.body.appendChild(menu);
                 ta.addEventListener('input', refresh);
-                ta.addEventListener('blur', function () { setTimeout(hide, 180); });
+                ta.addEventListener('blur', function () { setTimeout(function () { if (!touching) hide(); }, 350); });
+                // 碰選單時不要讓輸入框失焦（滑動、點選期間選單一直留著）
+                menu.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+                menu.addEventListener('touchstart', function () { touching = true; }, { passive: true });
+                const endTouch = function () { setTimeout(function () { touching = false; }, 400); };
+                menu.addEventListener('touchend', endTouch, { passive: true });
+                menu.addEventListener('touchcancel', endTouch, { passive: true });
+                window.addEventListener('resize', place);
+                if (window.visualViewport) { window.visualViewport.addEventListener('resize', place); window.visualViewport.addEventListener('scroll', place); }
                 return true;
             }
             function hide() { if (menu) menu.classList.add('hidden'); }
+            // 位置：貼在輸入卡片（#nova-composer）正上方，高度不超過上方可用空間
+            function place() {
+                if (!menu || menu.classList.contains('hidden')) return;
+                const card = document.getElementById('nova-composer');
+                const vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, off = vv ? vv.offsetTop : 0;
+                const top = card ? card.getBoundingClientRect().top : vh - 80;
+                const bottomGap = Math.max(8, (vh + off) - top + 6);
+                menu.style.bottom = bottomGap + 'px';
+                menu.style.maxHeight = Math.max(120, Math.min(vh * 0.42, top - off - 70)) + 'px';
+            }
+            function pick(x) {
+                ta.value = x.c + (x.arg ? ' ' : '');
+                if (typeof autoResizeInput === 'function') autoResizeInput(ta);
+                hide();
+                if (x.arg) { ta.focus(); } else if (typeof handleSendMessage === 'function') { handleSendMessage(); }
+            }
             function refresh() {
                 if (!ensure()) return;
                 const v = (ta.value || '').toLowerCase();
@@ -9241,17 +9272,13 @@ msg.files : (msg.file ? [msg.file] : []);
                     const b = document.createElement('b'); b.textContent = x.c;
                     const s = document.createElement('span'); s.textContent = x.d;
                     it.appendChild(b); it.appendChild(s);
-                    // 用 pointerdown 避免 textarea blur 先把選單收掉
-                    it.addEventListener('pointerdown', function (ev) {
-                        ev.preventDefault();
-                        ta.value = x.c + (x.arg ? ' ' : '');
-                        if (typeof autoResizeInput === 'function') autoResizeInput(ta);
-                        hide();
-                        if (x.arg) { ta.focus(); } else if (typeof handleSendMessage === 'function') { handleSendMessage(); }
-                    });
+                    // 用 click（手指滑動捲動不會觸發 click），不再用 pointerdown，才能上下滑動後再點選
+                    it.addEventListener('click', function (ev) { ev.preventDefault(); pick(x); });
                     menu.appendChild(it);
                 });
                 menu.classList.remove('hidden');
+                menu.scrollTop = 0;
+                place();
             }
             window.novaSlashMenuRefresh = refresh;
             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensure); else ensure();
@@ -12937,6 +12964,11 @@ function closePlusMenuOnOutsideClick(e) {
         };
 
 
+        window.toggleLivePip = function () {
+            const on = document.body.classList.toggle('nv-live-pip');
+            const l = document.getElementById('live-pip-label'); if (l) l.textContent = on ? '放大影像' : '縮小影像';
+        };
+
         async function toggleLiveMode(forceMode = null) {
             const btn = document.getElementById('live-btn');
             const icon = document.getElementById('live-icon');
@@ -12964,6 +12996,7 @@ function closePlusMenuOnOutsideClick(e) {
                     _novaUpdateCameraButtonsUI();
                     containerEl.classList.remove('hidden');
                     containerEl.classList.add('flex');
+                    document.body.classList.add('nv-live');   // v2.6.38：Gemini Live 風格全螢幕影像＋底部對話
                     
                     btn.classList.add('text-red-400');
                     btn.classList.remove('text-slate-300');
@@ -12979,6 +13012,7 @@ function closePlusMenuOnOutsideClick(e) {
                 } catch (e) {
                     showToast("無法存取相機或權限被拒絕：" + e.message);
                     appState.isLiveMode = false;
+                    document.body.classList.remove('nv-live', 'nv-live-pip');
                     btn.classList.remove('text-red-400');
                     btn.classList.add('text-slate-300');
                     icon.classList.remove('animate-pulse', 'text-red-400');
@@ -12990,6 +13024,7 @@ function closePlusMenuOnOutsideClick(e) {
                 }
                 containerEl.classList.add('hidden');
                 containerEl.classList.remove('flex');
+                document.body.classList.remove('nv-live', 'nv-live-pip');
                 
                 btn.classList.remove('text-red-400');
                 btn.classList.add('text-slate-300');

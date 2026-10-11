@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.6.0
+   版本：v1.7.1
    版本紀錄：
+   v1.7.1 - v2.6.38：斜線指令選單貼在輸入卡片上方（預設 bottom 170px，實際位置由 JS 依輸入卡片計算）、touch-action: pan-y 可上下滑動。
+   v1.7.0 - v2.6.38：第 14 節——LIVE 影像模式改成 Gemini Live 風格（影像滿版背景、對話貼在輸入區上方、輸入區半透明、可縮成右上小視窗）。
    v1.6.0 - v2.6.37：第 13 節——深度研究控制台的勾選式下拉（.nova-ms*）與智能分配（.nova-assign-*）樣式。
    v1.5.0 - v2.6.35：第 12 節——輸入區改單一卡片（對標桌面版手機殼：無框輸入、圖示列、無框模型下拉、多專家快捷鈕）；設定頁手機左右 8px、頂端 8px，內容更寬。
    v1.4.1 - v2.6.34：移除單一合併模型選單的規則，模型選單回到桌面版手機遠端的雙下拉（子模型＋供應商）；新增隱藏 #web-search-badge（對標桌面版）。
@@ -101,7 +103,7 @@ html:root body .nova-em-btn:active { border-color: var(--nv-accent) !important; 
 @media (min-width: 641px) { .nova-em-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* ───────────── 5. 斜線指令選單（輸入框上方浮出） ───────────── */
-#nv-slash-menu { position: fixed; left: 8px; right: 8px; bottom: 76px; max-height: 42vh; overflow-y: auto; z-index: 60;
+#nv-slash-menu { position: fixed; left: 8px; right: 8px; bottom: 170px; max-height: 42vh; overflow-y: auto; z-index: 60; touch-action: pan-y; overscroll-behavior: contain;
   background: var(--nv-card); border: 1px solid var(--nv-line-strong); border-radius: var(--nv-radius-lg); box-shadow: var(--nv-shadow);
   padding: 4px; -webkit-overflow-scrolling: touch; }
 #nv-slash-menu.hidden { display: none; }
@@ -330,3 +332,23 @@ html:root body .nova-assign-btn:disabled { opacity: .6; cursor: default; }
 
 .nova-ms-item { min-height: 40px; }
 .nova-ms-tag { max-width: 46%; text-align: right; }
+
+
+/* ═══ §14（v1.7.0）LIVE 影像模式——Gemini Live 風格：影像滿版當背景，對話貼在輸入區上方、輸入區半透明，打字區與 AI 回覆區永遠看得到 ═══ */
+body.nv-live #live-video-container { position: absolute !important; inset: 0; height: auto !important; max-height: none !important; z-index: 1 !important; border: 0 !important; background: #000; }
+body.nv-live #live-video-preview { width: 100%; height: 100%; aspect-ratio: auto !important; object-fit: cover; }
+body.nv-live #nova-chat-topbar { position: relative; z-index: 12; background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent); }
+body.nv-live #chat-container { flex: 0 0 auto !important; margin-top: auto; max-height: 38vh; min-height: 0; position: relative; z-index: 5;
+  padding-top: 28px; background: linear-gradient(to top, rgba(2,6,23,.82), rgba(2,6,23,.5) 72%, transparent); overscroll-behavior: contain; }
+body.nv-live #chat-container .msg-group { background: rgba(15,23,42,.74) !important; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border-color: rgba(148,163,184,.25) !important; color: #f1f5f9; }
+body.nv-live #nova-composer-wrap { background: rgba(2,6,23,.62) !important; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); position: relative; z-index: 20; }
+body.nv-live #nova-composer { padding-bottom: 6px; }
+/* 影像縮成右上小視窗：對話區拉高 */
+body.nv-live.nv-live-pip #live-video-container { inset: auto; top: 54px; right: 10px; left: auto; width: 36vw; height: 26vh !important; border-radius: 14px; border: 1px solid rgba(239,68,68,.65) !important; z-index: 15 !important; overflow: hidden; }
+body.nv-live.nv-live-pip #live-video-preview { object-fit: cover; }
+body.nv-live.nv-live-pip #live-video-container > div:first-of-type { right: 4px !important; top: 4px !important; }
+body.nv-live.nv-live-pip #live-video-container .cam-fb-label, body.nv-live.nv-live-pip #live-video-container .cam-wide-label { display: none; }
+body.nv-live.nv-live-pip #live-pip-btn { top: auto; bottom: 4px; left: 4px; padding: 4px 8px; }
+body.nv-live.nv-live-pip #live-pip-label { display: none; }
+body.nv-live.nv-live-pip #chat-container { flex: 1 1 auto !important; max-height: none; background: var(--nv-canvas, #020617); padding-top: 8px; }
+body.nv-live.nv-live-pip #nova-composer-wrap { background: var(--nv-canvas, #020617) !important; }
