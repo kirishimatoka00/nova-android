@@ -2,6 +2,7 @@
 <!--
   ═══ knowledgebank.html（NOVA Android 向量資料庫）v2（2026-10-11）═══
   版本紀錄：
+  v4 - 2026-10-11：刪除文件／資料夾／清空向量庫時記墓碑（nova_deleted_ids），配合 Drive 同步（nova-google.js v1.1.0）不讓已刪項目從另一台復活
   v3 - 批次 6b：匯入檔案成功後，背景呼叫 NovaMemory.ingestDocument() 抽取「跟使用者本人／專案有關的穩定事實」併入 AI 記憶（nova-memory.js，IndexedDB nova_memory_db；與 index.html v2.6.25 同一份）。
   v2 - 批次 2（對標桌面版 knowledgebank v1.1.0／v1.1.1）：表格感知與文件類型，共用邏輯放新檔 nova-kb-tables.js（與 index.html v2.6.21 同一份）。
        ① PDF 表格處理四模式（localStorage nova_kb_pdf_table_mode，預設 local）：off＝舊行為；local＝pdf.js 文字座標分群成 Markdown 表格（免費）；
@@ -859,16 +860,22 @@ async function renderDocList() {
     }).join('');
 }
 
+// v2.6.42：刪除時留墓碑（localStorage nova_deleted_ids，與主程式／桌面版同格式），Drive 同步才不會讓已刪的文件／資料夾從另一台復活
+function kbTomb(ids) {
+    try { const del = JSON.parse(localStorage.getItem('nova_deleted_ids') || '{}'); const t = Date.now(); (ids || []).forEach(i => { del[String(i)] = t; }); localStorage.setItem('nova_deleted_ids', JSON.stringify(del)); } catch (e) {}
+}
 async function deleteKbDoc(docId) {
     const ok = await kbConfirm('確定要刪除這份文件的所有向量索引嗎？');
     if (!ok) return;
     await dbDeleteByDocId(docId);
+    kbTomb([docId]);
     renderDocList();
 }
 
 async function clearAllKb() {
     const ok = await kbConfirm('確定要清空整個向量資料庫嗎？此動作無法復原（資料夾本身會保留，僅清空文件與向量）。');
     if (!ok) return;
+    try { kbTomb((await dbGetAll('documents')).map(d => d.id)); } catch (e) {}
     await dbClearAll();
     renderDocList();
 }
@@ -938,6 +945,7 @@ async function handleDeleteFolder(folderId, name) {
     const ok = await kbConfirm(`確定要刪除資料夾「${name}」嗎？\n（資料夾內的文件會自動移至「未分類」，不會被刪除）`);
     if (!ok) return;
     await deleteFolder(folderId);
+    kbTomb([folderId]);
     renderFolderList();
     renderDocList();
 }

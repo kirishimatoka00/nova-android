@@ -1,4 +1,4 @@
-/* nova-google.js — v1.0.1 (2026-10-11)
+/* nova-google.js — v1.1.0 (2026-10-11)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,8 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.1.0 2026-10-11  Drive 同步新增：知識庫（documents／folders／chunks，向量不上傳、收到端用 Gemini 補算）、AI 記憶（呼叫 nova-memsync.js，與桌面版共用 NOVA_Memory_Sync.json）；合併知識庫頁記下的刪除墓碑
+ *   v1.0.2 2026-10-11  Docs：筆記匯出／文件轉筆記改走 Drive 轉檔與 export（只需 Drive 權限，不需啟用 Docs API）；錯誤提示不再被視窗蓋住（toast 層級提高）
  *   v1.0.1 2026-10-11  修正介面顯示：專案 Tailwind 為預編譯，新類別不生效，導致視窗背景透明、按鈕無樣式；改為自帶 <style>（#nova-google-modal 範圍）＋實心背景，並修正設定頁按鈕樣式
  *   v1.0.0 2026-10-11  首版。誠實聲明：OAuth 與 Google API 全程只在沙盒用模擬回應驗證流程，沒有連過真實 Google，需真機實測。
  */
@@ -114,20 +116,95 @@
     try { if (typeof db !== 'undefined' && db) { await new Promise(function (res) { var tx = db.transaction(store, 'readwrite'); tx.objectStore(store).put(item); tx.oncomplete = res; tx.onerror = res; }); return; } } catch (e) {}
     W.saveToDB(store, item);
   }
+  /* v1.1.0：通用 Drive 檔案存取（給 nova-memsync.js 用；NOVA_Memory_Sync.json 與桌面版同名同格式） */
+  async function findByName(name) {
+    var q = "name='" + name + "' and trashed=false";
+    var j = await apiJson('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) + '&fields=files(id,name,modifiedTime)&pageSize=10&orderBy=modifiedTime');
+    return j.files || [];
+  }
+  async function readJsonFile(id, soft) {
+    var r = await api('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media'); var tx = await r.text();
+    if (!r.ok) { if (soft && r.status === 404) return null; throw new Error('讀取 Drive 檔案失敗 HTTP ' + r.status); }
+    if (!tx.trim()) return null;
+    try { return JSON.parse(tx); } catch (e) { throw new Error('Drive 上的同步檔不是合法 JSON（可能上次寫到一半），為避免覆蓋，這次中止'); }
+  }
+  async function writeNamed(id, name, obj) {
+    var body = JSON.stringify(obj);
+    if (id) { var r = await api('https://www.googleapis.com/upload/drive/v3/files/' + id + '?uploadType=media', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: body }); if (!r.ok) throw new Error('寫入 Drive 檔案失敗 HTTP ' + r.status); return id; }
+    var bd = 'nova' + rand(8), meta = JSON.stringify({ name: name, mimeType: 'application/json' });
+    var multi = '--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta + '\r\n--' + bd + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + bd + '--';
+    var r2 = await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + bd }, body: multi });
+    var j = await r2.json(); if (!r2.ok) throw new Error('建立 Drive 檔案失敗 HTTP ' + r2.status); return j.id;
+  }
+  async function trashFile(id) { await api('https://www.googleapis.com/drive/v3/files/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); }
+
+  /* v1.1.0：知識庫（向量資料庫）同步 — 與桌面版同格式：documents／folders 以 _syncTs（沒有就用 addedAt／createdAt）last-write-wins，
+   * chunks 只帶文字（不含向量），本機沒有的 chunk 收進來後標 pendingEmbed，由手機用 Gemini 嵌入補算向量 */
+  function kbOn() { return g('nova_gsync_kb', '1') !== '0' && typeof W.novaKbGetAllDocs === 'function' && typeof W.novaKbPut === 'function'; }
+  function memOn() { return !!(W.NovaMemSync && W.NovaMemSync.isEnabled()); }
+  function stripChunk(c) { return { id: c.id, docId: c.docId, docName: c.docName, text: c.text, folderId: c.folderId }; }
+  async function kbDelete(store, key) { var d = await W.novaKbOpenDb(); await new Promise(function (res) { var tx = d.transaction(store, 'readwrite'); tx.objectStore(store).delete(key); tx.oncomplete = res; tx.onerror = res; }); }
+  async function kbCollect() {
+    var docs = (await W.novaKbGetAllDocs()).map(function (d) { return Object.assign({}, d, { _syncTs: d._syncTs || d.addedAt || 0 }); });
+    var folders = (await W.novaKbGetAllFolders()).map(function (f) { return Object.assign({}, f, { _syncTs: f._syncTs || f.createdAt || 0 }); });
+    var chunks = await W.novaKbGetAllChunks();
+    return { docs: docs, folders: folders, chunks: chunks };
+  }
+  function kbMerge(kb, remote, del) {
+    var mdocs = mergeById(kb.docs, remote.documents, '_syncTs', del), mfold = mergeById(kb.folders, remote.folders, '_syncTs', del);
+    var docIds = {}; mdocs.forEach(function (d) { docIds[String(d.id)] = 1; });
+    var dead = function (c) { var k = String(c.docId); return !!(del[k] && !docIds[k]); };
+    var rc = {}; (remote.chunks || []).forEach(function (c) { rc[String(c.id)] = 1; });
+    var out = (remote.chunks || []).filter(function (c) { return !dead(c); });
+    kb.chunks.forEach(function (c) { if (!rc[String(c.id)] && !dead(c)) out.push(stripChunk(c)); });
+    return { docs: mdocs, folders: mfold, chunks: out };
+  }
+  async function kbApply(kb, m) {
+    var r = { docs: 0, chunks: 0, removed: 0 };
+    var ld = {}, lf = {}, lc = {}; kb.docs.forEach(function (d) { ld[String(d.id)] = d; }); kb.folders.forEach(function (f) { lf[String(f.id)] = f; }); kb.chunks.forEach(function (c) { lc[String(c.id)] = c; });
+    var keepD = {}, keepF = {};
+    for (var i = 0; i < m.folders.length; i++) { var f = m.folders[i]; keepF[String(f.id)] = 1; var l = lf[String(f.id)]; if (!l || (f._syncTs || 0) > (l._syncTs || 0)) await W.novaKbPut('folders', f); }
+    for (var j = 0; j < m.docs.length; j++) { var d = m.docs[j]; keepD[String(d.id)] = 1; var l2 = ld[String(d.id)]; if (!l2 || (d._syncTs || 0) > (l2._syncTs || 0)) { await W.novaKbPut('documents', d); r.docs++; } }
+    for (var k = 0; k < m.chunks.length; k++) { var c = m.chunks[k]; if (!lc[String(c.id)]) { await W.novaKbPut('chunks', Object.assign({}, c, { pendingEmbed: true })); r.chunks++; } }
+    for (var q = 0; q < kb.docs.length; q++) { var od = kb.docs[q]; if (!keepD[String(od.id)]) { try { if (typeof W.novaKbDeleteChunksByDocId === 'function') await W.novaKbDeleteChunksByDocId(od.id); } catch (e) {} await kbDelete('documents', od.id); r.removed++; } }
+    for (var w = 0; w < kb.folders.length; w++) { var of = kb.folders[w]; if (!keepF[String(of.id)] && String(of.id) !== 'uncat' && !of._protected) await kbDelete('folders', of.id); }
+    return r;
+  }
+  async function kbEmbedPending(max) {
+    if (typeof W.novaKbEmbedDocumentBatch !== 'function' || !(appState.keys && appState.keys.gemini)) return { done: 0, left: -1 };
+    var all = await W.novaKbGetAllChunks(), pend = all.filter(function (c) { return !c.vector || !c.vector.length; }), done = 0;
+    for (var i = 0; i < pend.length && done < max; i += 20) {
+      var batch = pend.slice(i, i + 20);
+      try { var vs = await W.novaKbEmbedDocumentBatch(batch.map(function (c) { return 'title: ' + (c.docName || 'none') + ' | text: ' + (c.text || ''); })); }
+      catch (e) { break; }
+      for (var j = 0; j < batch.length; j++) { if (!vs[j]) continue; var u = Object.assign({}, batch[j], { vector: vs[j] }); delete u.pendingEmbed; await W.novaKbPut('chunks', u); done++; }
+    }
+    return { done: done, left: pend.length - done };
+  }
+
   async function syncNow(manual) {
     if (syncing) return; if (!connected() || !has('drive')) { if (manual) toast('⚠️ 請先連接 Google 並勾選 Drive'); return; }
     syncing = true; setStatus('同步中…');
     try {
       var todos = (await W.loadStoreFromDB('todos')).map(function (t) { return Object.assign({}, t, { _syncTs: t._syncTs || t.id || 0 }); });
       var notes = (await W.loadStoreFromDB('notes')).map(function (n) { return Object.assign({}, n, { _syncTs: n._syncTs || n.id || 0 }); });
-      var localDel = appState.deletedIds || {};
+      var localDel = Object.assign({}, (function () { try { return JSON.parse(g('nova_deleted_ids', '{}')); } catch (e) { return {}; } })(), appState.deletedIds || {});   // 含知識庫頁（另一頁）記下的墓碑
       var files = await findFiles(), id = files.length ? files[0].id : null, remote = {};
       if (files.length > 1) { /* 多份同名：依修改時間由舊到新合併，保留最舊那份當正本 */
-        for (var i = 0; i < files.length; i++) { try { var r = await readFile(files[i].id); remote = remote.todos ? Object.assign(remote, { todos: mergeById(remote.todos, r.todos, '_syncTs', {}), notes: mergeById(remote.notes, r.notes, '_syncTs', {}), deletedIds: mergeDel(remote.deletedIds, r.deletedIds) }) : r; } catch (e) {} }
+        for (var i = 0; i < files.length; i++) { try { var r = await readFile(files[i].id); remote = remote.todos ? Object.assign(remote, { todos: mergeById(remote.todos, r.todos, '_syncTs', {}), notes: mergeById(remote.notes, r.notes, '_syncTs', {}), documents: mergeById(remote.documents, r.documents, '_syncTs', {}), folders: mergeById(remote.folders, r.folders, '_syncTs', {}), chunks: (remote.chunks || []).concat((r.chunks || []).filter(function (c) { return !(remote.chunks || []).some(function (x) { return String(x.id) === String(c.id); }); })), deletedIds: mergeDel(remote.deletedIds, r.deletedIds) }) : r; } catch (e) { throw new Error('偵測到重複的同步檔，但其中一份讀不到，為避免遺失資料先中止，請到 Google Drive 檢查 ' + SYNC_NAME); } }
       } else if (id) remote = await readFile(id);
       var del = mergeDel(localDel, remote.deletedIds);
       var mt = mergeById(todos, remote.todos, '_syncTs', del), mn = mergeById(notes, remote.notes, '_syncTs', del);
-      var out = Object.assign({}, remote, { todos: mt, notes: mn, deletedIds: del });   // 其他欄位（documents／folders／chunks…）原封保留
+      var out = Object.assign({}, remote, { todos: mt, notes: mn, deletedIds: del });
+      var kbInfo = '';
+      if (kbOn()) {
+        try {
+          var kb = await kbCollect(), km = kbMerge(kb, remote, del);
+          out.documents = km.docs; out.folders = km.folders; out.chunks = km.chunks;
+          var ar = await kbApply(kb, km);
+          kbInfo = '／文件 ' + km.docs.length + '・片段 ' + km.chunks.length + (ar.docs || ar.chunks ? '（↓ 新收 文件 ' + ar.docs + '・片段 ' + ar.chunks + '）' : '');
+        } catch (e) { kbInfo = '／知識庫略過：' + (e.message || e); }
+      }
       for (var a = 0; a < mt.length; a++) await putLocal('todos', mt[a]);
       for (var b = 0; b < mn.length; b++) await putLocal('notes', mn[b]);
       var keepT = {}, keepN = {}; mt.forEach(function (x) { keepT[String(x.id)] = 1; }); mn.forEach(function (x) { keepN[String(x.id)] = 1; });
@@ -136,7 +213,13 @@
       appState.deletedIds = del; s('nova_deleted_ids', JSON.stringify(del));
       try { W.renderTodos(); W.renderNotes(); } catch (e) {}
       var fid = await writeFile(id, out); s('nova_drive_sync_file_id', fid);
-      var now = new Date().toLocaleString('zh-TW'); s('nova_gsync_last', now); setStatus('✅ 已同步 ' + now + '（任務 ' + mt.length + '／筆記 ' + mn.length + '）');
+      var now = new Date().toLocaleString('zh-TW'); s('nova_gsync_last', now); setStatus('✅ 已同步 ' + now + '（任務 ' + mt.length + '／筆記 ' + mn.length + kbInfo + '）');
+      if (kbOn()) { try { var ep = await kbEmbedPending(200); if (ep.done || ep.left > 0) { var st0 = g('nova_gsync_status', ''); setStatus(st0 + (ep.done ? '；補算向量 ' + ep.done + ' 段' : '') + (ep.left > 0 ? '；尚有 ' + ep.left + ' 段待補向量' + (ep.left === -1 ? '' : '（下次同步繼續）') : '')); } } catch (e) {} }
+      if (memOn()) {
+        try { var mr = await W.NovaMemSync.sync({ interactive: !!manual }); if (!mr.skipped) { var d = W.NovaMemSync.describe(mr); s('nova_gmem_status', '🧠 記憶：✅ ' + now + (d ? '（' + d + '）' : '')); if (manual && d && d !== '沒有變動') toast('🧠 記憶同步：' + d, 6000); } }
+        catch (e) { s('nova_gmem_status', '🧠 記憶：❌ ' + (e.message || e)); if (manual) toast('❌ 記憶同步失敗（筆記已同步）：' + (e.message || e), 6000); }
+        var me = D.getElementById('ng-mem-status'); if (me) me.textContent = g('nova_gmem_status', '');
+      }
       if (manual) toast('☁️ 同步完成');
     } catch (e) { setStatus('❌ 同步失敗：' + (e.message || e)); if (manual) toast('❌ 同步失敗：' + (e.message || e), 5000); }
     finally { syncing = false; }
@@ -167,16 +250,36 @@
   /* ───────── ③ Docs ───────── */
   function docText(doc) { var out = ''; ((doc.body && doc.body.content) || []).forEach(function (el) { if (el.paragraph) (el.paragraph.elements || []).forEach(function (e) { if (e.textRun) out += e.textRun.content; }); else if (el.table) (el.table.tableRows || []).forEach(function (r) { var cells = []; (r.tableCells || []).forEach(function (c) { var t = ''; (c.content || []).forEach(function (cc) { if (cc.paragraph) (cc.paragraph.elements || []).forEach(function (e) { if (e.textRun) t += e.textRun.content.replace(/\n/g, ' '); }); }); cells.push(t.trim()); }); out += cells.join(' | ') + '\n'; }); }); return out; }
   function noteText(n) { var t = n.isHtml ? (function () { var d = D.createElement('div'); d.innerHTML = String(n.content || '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h\d)>/gi, '\n'); return d.textContent; })() : String(n.content || ''); return t; }
+  function escH(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
   async function noteToDoc(id) {
-    var n = appState.notes.find(function (x) { return String(x.id) === String(id); }); if (!n) return;
-    var doc = await apiJson('https://docs.googleapis.com/v1/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: n.title || '未命名筆記' }) });
-    var text = noteText(n); if (text) await apiJson('https://docs.googleapis.com/v1/documents/' + doc.documentId + ':batchUpdate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: text } }] }) });
-    n.driveUrl = 'https://docs.google.com/document/d/' + doc.documentId + '/edit'; W.saveToDB('notes', n); try { W.renderNotes(); } catch (e) {}
+    var n = appState.notes.find(function (x) { return String(x.id) === String(id); }); if (!n) throw new Error('找不到筆記');
+    var title = n.title || '未命名筆記', docId;
+    if (has('drive')) {
+      /* v1.0.2：優先走 Drive 轉檔（text/html → Google 文件），只需 Drive 權限，不需在 Google Cloud 另外啟用 Docs API */
+      var html = '<html><head><meta charset="utf-8"></head><body>' + (n.isHtml ? String(n.content || '') : '<p>' + escH(noteText(n)).replace(/\n/g, '<br>') + '</p>') + '</body></html>';
+      var bd = 'novaB' + Date.now();
+      var body = '--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify({ name: title, mimeType: 'application/vnd.google-apps.document' }) + '\r\n--' + bd + '\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n' + html + '\r\n--' + bd + '--';
+      var j = await apiJson('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + bd }, body: body });
+      docId = j.id;
+    } else {
+      var doc = await apiJson('https://docs.googleapis.com/v1/documents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: title }) });
+      var text = noteText(n); if (text) await apiJson('https://docs.googleapis.com/v1/documents/' + doc.documentId + ':batchUpdate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: [{ insertText: { location: { index: 1 }, text: text } }] }) });
+      docId = doc.documentId;
+    }
+    n.driveUrl = 'https://docs.google.com/document/d/' + docId + '/edit'; W.saveToDB('notes', n); try { W.renderNotes(); } catch (e) {}
     return n.driveUrl;
   }
   async function docsList() { var j = await apiJson('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent("mimeType='application/vnd.google-apps.document' and trashed=false") + '&orderBy=modifiedTime desc&pageSize=20&fields=files(id,name,modifiedTime)'); return j.files || []; }
   async function docToNote(id, name) {
-    var doc = await apiJson('https://docs.googleapis.com/v1/documents/' + id); var text = docText(doc).trim();
+    var title = name, text;
+    if (has('drive')) {
+      /* v1.0.2：走 Drive export（text/plain），不需 Docs API */
+      var r = await api('https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=' + encodeURIComponent('text/plain')); var tx = await r.text();
+      if (!r.ok) { var jj = {}; try { jj = JSON.parse(tx); } catch (e) {} throw new Error((jj.error && jj.error.message) || ('HTTP ' + r.status)); }
+      text = tx.replace(/^\uFEFF/, '').trim();
+      if (!title) { try { title = (await apiJson('https://www.googleapis.com/drive/v3/files/' + id + '?fields=name')).name; } catch (e) {} }
+    } else { var doc = await apiJson('https://docs.googleapis.com/v1/documents/' + id); text = docText(doc).trim(); title = doc.title; }
+    var doc = { title: title };
     var note = { id: Date.now(), title: doc.title || name || 'Google 文件', content: text, isHtml: false, date: new Date().toLocaleString(), type: 'text', images: [], folder: '未分類', driveUrl: 'https://docs.google.com/document/d/' + id + '/edit' };
     appState.notes.unshift(note); W.saveToDB('notes', note); try { W.renderNotes(); } catch (e) {}
     return note;
@@ -245,7 +348,10 @@
       b.innerHTML = (has('drive') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Drive，請到「連接」勾選 Drive 後重新連接。</p>') +
         '<p class="text-xs text-slate-400">與桌面版共用 Drive 內的 <b>' + SYNC_NAME + '</b>：任務與筆記雙向合併（較新者為準，含刪除）。桌面版的知識庫文件、資料夾、向量片段會原封保留，不會被手機覆蓋。</p>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" id="ng-auto" ' + (syncOn() ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_enabled\',this.checked?\'1\':\'0\')"> 變更後自動同步（約 4 秒後）</label>' +
+        '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_gsync_kb', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_kb\',this.checked?\'1\':\'0\')"> 同步知識庫（向量資料庫：文件／資料夾／片段；向量由收到端重算）</label>' +
+        '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_mem_sync_enabled', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_mem_sync_enabled\',this.checked?\'1\':\'0\')"> 同步 AI 記憶（長期事實／對話摘要，檔案 NOVA_Memory_Sync.json，與桌面版共用）</label>' +
         '<button class="' + BTN + 'ng-green" onclick="NovaGoogle.sync(true)">立即同步</button>' +
+        '<div id="ng-mem-status" class="text-xs text-slate-400">' + esc(g('nova_gmem_status', '')) + '</div>' +
         '<div id="ng-sync-status" class="text-xs text-slate-400">' + esc(g('nova_gsync_status', g('nova_gsync_last', '尚未同步'))) + '</div>';
     } else if (tab === 'gmail') {
       b.innerHTML = (has('gmail') ? '' : '<p class="text-amber-400 text-xs">目前授權不含 Gmail。</p>') +
@@ -288,7 +394,7 @@
   function _paste() { var e = D.getElementById('ng-paste'); if (!e || !e.value.trim()) return; var v = e.value.trim(); handleRedirect(/^https?:|^nova120:|\?/.test(v) ? v : ('?code=' + encodeURIComponent(v))); }
   function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.style.display = 'flex'; render(); }
   function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
-  W.NovaGoogle = { open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
+  W.NovaGoogle = { _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
     gmailList: gmailList, gmailRead: gmailRead, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
     _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
 

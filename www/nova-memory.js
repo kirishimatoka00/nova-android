@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - 配合 nova-memsync.js（與桌面版記憶互通的 Drive 同步）：匯出 _getOne／_del；刪除長期事實／對話摘要、清空全部記憶時記墓碑（markCoreDeleted／markEpisodicDeleted／markClearedAll）。其餘不變
    v1.0.0 - 初版（批次 6b）。移植 NOVA Desktop 的三層記憶設計（桌面版把資料放在 sidecar 的 SQLite，手機沒有 sidecar，所以改放獨立的 IndexedDB「nova_memory_db」，
             不動知識庫的資料庫）。刻意不做 Google Drive 同步。
             ① 短期：就是 appState.messages（不落地）。
@@ -291,7 +292,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         if (d.mode) setOn(d.mode !== 'off');
         return n;
     }
-    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); changed(); }
+    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
 
     // ───────── 設定頁 ─────────
     var ui = { root: null };
@@ -319,11 +320,11 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         $('nm-clear').onclick = async function () { var ok = W.showConfirm ? await W.showConfirm('確定清空全部 AI 記憶（長期事實、對話摘要、實體統計）？此操作無法復原。') : true; if (ok) { await clearAll(); toast('已清空'); renderSettings(); } };
         $('nm-schema-save').onclick = async function () { await writeSchema($('nm-schema').value); toast('✅ 已儲存維護守則'); };
         $('nm-schema-reset').onclick = async function () { await resetSchema(); $('nm-schema').value = DEFAULT_SCHEMA_MD; toast('已還原預設'); };
-        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-core'), function (b) { b.onclick = async function () { await del('core', b.getAttribute('data-k')); changed(); renderSettings(); }; });
-        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-epi'), function (b) { b.onclick = async function () { await del('episodic', b.getAttribute('data-k')); changed(); renderSettings(); }; });
+        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-core'), function (b) { b.onclick = async function () { await del('core', b.getAttribute('data-k')); try { W.NovaMemSync && W.NovaMemSync.markCoreDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
+        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-epi'), function (b) { b.onclick = async function () { await del('episodic', b.getAttribute('data-k')); try { W.NovaMemSync && W.NovaMemSync.markEpisodicDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
     }
 
     W.NovaMemory = { isOn: isOn, setOn: setOn, getProfile: getProfile, setProfile: setProfile, maybeCompress: maybeCompress, compressSession: compressSession, retrieveContext: retrieveContext,
         ingestDocument: ingestDocument, extractFacts: extractFacts, consolidateCore: consolidateCore, updateEntityFreq: updateEntityFreq, stats: stats, exportAll: exportAll, importAll: importAll, clearAll: clearAll,
-        renderSettings: renderSettings, readSchema: readSchema, DEFAULT_SCHEMA_MD: DEFAULT_SCHEMA_MD, _open: open, _getAll: getAll, _put: put, _cosine: cosine };
+        renderSettings: renderSettings, readSchema: readSchema, DEFAULT_SCHEMA_MD: DEFAULT_SCHEMA_MD, _open: open, _getAll: getAll, _getOne: getOne, _put: put, _del: del, _cosine: cosine };
 })();
