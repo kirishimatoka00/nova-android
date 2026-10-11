@@ -2,7 +2,7 @@ package com.kirishimatoka00.nova120;
 
 /*
  * NovaAccessibilityPlugin.java
- * 版本：v1.0.0
+ * 版本：v1.0.1
  * 版本紀錄：
  * v1.0.1 - 修正編譯錯誤：Build.SDK_INT → Build.VERSION.SDK_INT（CI 回報）。
  * v1.0.0 - 批次 5b 新增。Capacitor 外掛 "NovaAccessibility"，把 NovaAccessibilityService 的能力開給 JS（nova-acc-bridge.js 使用）：
