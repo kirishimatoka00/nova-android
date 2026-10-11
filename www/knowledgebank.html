@@ -2,6 +2,7 @@
 <!--
   ═══ knowledgebank.html（NOVA Android 向量資料庫）v2（2026-10-11）═══
   版本紀錄：
+  v3 - 批次 6b：匯入檔案成功後，背景呼叫 NovaMemory.ingestDocument() 抽取「跟使用者本人／專案有關的穩定事實」併入 AI 記憶（nova-memory.js，IndexedDB nova_memory_db；與 index.html v2.6.25 同一份）。
   v2 - 批次 2（對標桌面版 knowledgebank v1.1.0／v1.1.1）：表格感知與文件類型，共用邏輯放新檔 nova-kb-tables.js（與 index.html v2.6.21 同一份）。
        ① PDF 表格處理四模式（localStorage nova_kb_pdf_table_mode，預設 local）：off＝舊行為；local＝pdf.js 文字座標分群成 Markdown 表格（免費）；
           auto＝本機偵測，有表格／疑似有表格／沒有文字層的頁面才送 Gemini 視覺；vision＝每頁送 Gemini 視覺（單份最多 80 頁，會先提醒耗 Token）。
@@ -29,6 +30,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- ★ v2：表格感知／文件類型共用模組（與 index.html 同一份） -->
 <script src="./nova-kb-tables.js"></script>
+<script src="./nova-memory.js?v=1.0.0"></script><!-- v3：匯入文件後背景抽取長期事實（AI 記憶） -->
 <style>
   body{font-family:'Inter','Noto Sans TC',sans-serif;background:#0f172a;}
   ::-webkit-scrollbar{width:6px;height:6px;}
@@ -780,6 +782,7 @@ async function handleKbFiles(fileList) {
             }
 
             await dbPut('documents', docMeta);
+            try { if (typeof window.novaKbEmbedDocumentBatch !== 'function') window.novaKbEmbedDocumentBatch = function (t) { return embedBatch(t); };   /* 讓 NovaMemory 在知識庫頁也能算長期事實的向量 */ if (window.NovaMemory) NovaMemory.ingestDocument({ title: file.name, text: rawText, sourceRef: 'doc:' + docId }); } catch (e) {}   // v3：fire-and-forget
             const tblNote = docMeta.tableChunks ? `，含 ${docMeta.tableChunks} 個表格段` : '';
             const visNote = (lastPdfStats && lastPdfStats.visionPages) ? `，視覺轉錄 ${lastPdfStats.visionPages} 頁${lastPdfStats.visionFailed ? `（${lastPdfStats.visionFailed} 頁失敗已退回本機結果）` : ''}` : '';
             setProgress(`✅ 「${file.name}」已完成索引 (${pieces.length} 段${tblNote}${visNote})，類型：${kbDocTypeLabel(docMeta.docType)}`, 100);

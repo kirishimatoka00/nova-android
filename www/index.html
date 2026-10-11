@@ -486,7 +486,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.0.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
@@ -843,6 +843,7 @@
                             <button onclick="switchSettingsTab('tab-rec')" id="stab-rec" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">⏺️ 錄音</button>
                             <button onclick="switchSettingsTab('tab-cal')" id="stab-cal" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">📅 行事曆</button>
                             <button onclick="switchSettingsTab('tab-models')" id="stab-models" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🧩 模型</button>
+                            <button onclick="switchSettingsTab('tab-memory')" id="stab-memory" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🧠 記憶</button>
                             <button onclick="switchSettingsTab('tab-tools')" id="stab-tools" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🔌 工具</button>
                             <button onclick="switchSettingsTab('tab-autotask')" id="stab-autotask" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🤖 AI自主任務</button>
                         </div>
@@ -1190,6 +1191,9 @@
                         </div>
 
                         <!-- 分頁：工具（Function Calling／遠端 MCP／Context Caching，v2.6.22） -->
+                        <!-- 分頁：AI 記憶（v2.6.25，批次 6b） -->
+                        <div id="tab-memory" class="space-y-3 hidden"><div id="nova-memory-settings"></div></div>
+
                         <div id="tab-tools" class="space-y-3 hidden">
                             <div class="nv-card">
                                 <h4>工具呼叫（Function Calling）</h4>
@@ -2010,8 +2014,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.24';
+        const NOVA_APP_VERSION = '2.6.25';
         const NOVA_CHANGELOG = [
+            { v: '2.6.25', date: '2026-10-11', notes: [
+                '批次 6b（對標桌面版 AI 記憶，不含 Drive 同步）：新增 nova-memory.js——IndexedDB 版三層記憶。中期：每 10 則 AI 回覆背景摘要成 {主題、實體、摘要}＋向量；長期（LLM Wiki）：實體 30 天內出現 ≥3 次固化，LLM 依維護守則判斷併入／取代（矛盾→新事實勝出，舊的留刪除線）；檢索：長期事實取前 5＋對話摘要依「相似度×0.8^(天數/30)」衰減取前 5，自動帶入 Gemini／Grok／GPT 的提問。',
+                '文件／筆記匯入向量資料庫後，背景抽取「跟你本人／專案有關的穩定事實」（最多 5 筆，可在設定頁填 Profile 當判斷依據）併入長期事實；知識庫頁匯入檔案同樣會觸發。',
+                '設定頁新增「🧠 記憶」分頁：開關、Profile、記憶量、立即整理目前對話、長期事實與對話摘要清單（可刪）、維護守則（可編輯／還原）、操作紀錄、清空；備份匯出／還原納入 memoryData。資料只存在手機本機。',
+                '誠實說明：只用模擬 Gemini 回應與假向量測過，沒有用真實 API 實測；桌面版的跨裝置記憶同步（Drive）依指示未移植。',
+            ]},
             { v: '2.6.24', date: '2026-10-11', notes: [
                 '批次 5a：自主任務新增「Gemini Computer Use」判斷器（nova-autotask-cu.js；Interactions API、mobile 環境、previous_interaction_id 維持對話、0–999 座標轉相對比例、type 拆成「點→貼上→Enter」、open_app 名稱解析、safety_decision 確認）。設定頁可切換，預設仍是原本的提示詞判斷器；Computer Use 失敗可自動退回（預設開）。',
                 '批次 5b：新增原生無障礙服務（NovaAccessibilityService／NovaAccessibilityPlugin，Java）＋ nova-acc-bridge.js：不用 Termux／atx-agent 也能讀取畫面元件、點擊、滑動、截圖（Android 11+）、貼上文字、開 App／網址。引擎的 fetch(baseUrl()+path) 一律改走 atxFetch，兩種執行器共用同一套邏輯。',
@@ -3324,6 +3334,7 @@ async function encodeMp3(audioBuffer) {
                     grokModel: appState.grokModel,
                     gptModel: appState.gptModel,
                     disabledModels: (window.novaDisabledModels ? window.novaDisabledModels() : []),   // v2.6.22：啟用的模型（批次 1 漏掉的備份欄位）
+                    memoryData: (window.NovaMemory ? await NovaMemory.exportAll().catch(() => null) : null),   // v2.6.25：AI 記憶（IndexedDB）
                     expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
                     toolConfig: { mcpServers: (window.novaFcCfg ? window.novaFcCfg.servers() : []), disabledTools: (window.novaFcCfg ? window.novaFcCfg.disabled() : []), auto: _fcLs('nova_fc_auto', '0'), cache: _fcLs('nova_fc_cache', '1'), cacheRound: _fcLs('nova_fc_cache_round', '3') },   // v2.6.22
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
@@ -3478,6 +3489,7 @@ async function encodeMp3(audioBuffer) {
                 if (data.geminiModel)  appState.geminiModel  = window._novaMigrateGeminiId(data.geminiModel);   // v2.6.19：舊型號自動轉換
                 if (data.gptModel)     { appState.gptModel = data.gptModel; try { localStorage.setItem('nova_gpt_model', data.gptModel); } catch (e) {} }
                 if (Array.isArray(data.disabledModels)) { try { localStorage.setItem('nova_disabled_models', JSON.stringify(data.disabledModels)); if (window.novaApplyModelFilter) window.novaApplyModelFilter(); } catch (e) {} }   // v2.6.22
+                if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }   // v2.6.25
                 if (data.expertsConfig && typeof data.expertsConfig === 'object') {   // v2.6.23
                     try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
                 }
@@ -6051,11 +6063,11 @@ return html;
         window.closeSettings = function() { document.getElementById('settings-modal').classList.add('hidden'); };
 
         window.switchSettingsTab = function(tabId) {
-            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal', 'tab-models', 'tab-tools', 'tab-autotask'].forEach(id => {
+            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal', 'tab-models', 'tab-tools', 'tab-memory', 'tab-autotask'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(tabId).classList.remove('hidden');
-            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal', 'stab-models', 'stab-tools', 'stab-autotask'].forEach(id => {
+            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal', 'stab-models', 'stab-tools', 'stab-memory', 'stab-autotask'].forEach(id => {
                 const btn = document.getElementById(id);
                 btn.classList.remove('bg-blue-600', 'text-white');
                 btn.classList.add('text-slate-400');
@@ -6067,6 +6079,7 @@ return html;
             if (tabId === 'tab-models' && typeof novaRenderEnabledModels === 'function') novaRenderEnabledModels();
             // 切換到「工具」分頁時重畫（v2.6.22）
             if (tabId === 'tab-tools' && typeof novaFcRenderSettings === 'function') novaFcRenderSettings();
+            if (tabId === 'tab-memory' && window.NovaMemory) NovaMemory.renderSettings(document.getElementById('nova-memory-settings'));   // v2.6.25
             // 切換到語音分頁時重新填充人聲選單
             if (tabId === 'tab-voice' && typeof populateVoices === 'function') {
                 populateVoices();
@@ -7099,6 +7112,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             if(filesArr.length === 1 && !Array.isArray(files)) msg.file = files; // legacy support for DB
             appState.messages.push(msg); saveToDB('messages', msg); scheduleEmergencyBackup();
             if (!sessionId || String(sessionId) === String(appState.currentSessionId)) renderMessages();   // v2.6.23
+            if (sender === 'ai' && !actionData && window.NovaMemory) { const _ms = msg.sessionId; setTimeout(function () { try { NovaMemory.maybeCompress(_ms); } catch (e) {} }, 4000); }   // v2.6.25：背景記憶摘要
             if (typeof renderChatHistoryList === 'function') renderChatHistoryList();
 
             // 💡 修正 1：開放「系統訊息 (system)」也能推播，解決排程提示看不到的問題
@@ -15428,6 +15442,7 @@ window.startMultiAgentResearch = async function() {
                     sourceNoteId: n.id
                 });
 
+                try { if (window.NovaMemory) NovaMemory.ingestDocument({ title: n.title || '未命名筆記', text: plainText, sourceRef: 'note:' + n.id }); } catch (e) {}   // v2.6.25：fire-and-forget 抽取長期事實
                 showToast(`✅ 筆記已匯入向量資料庫（${pieces.length} 段），可在「向量資料庫→來自筆記」資料夾中查看`);
                 _setBtnState('<i class="ph-bold ph-check-circle"></i> 已匯入（點擊更新）', false);
             } catch (err) {
@@ -17095,6 +17110,11 @@ if (appState.pendingAnalyzeContextId) {
                         }
                         return m;
                     });
+                }
+
+                // v2.6.25（批次 6b）：AI 記憶——自動帶入相關的長期事實與過去對話摘要（NovaMemory，IndexedDB）
+                if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window.NovaMemory && NovaMemory.isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt')) {
+                    try { const _mc = await NovaMemory.retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
                 }
 
                 let finalPrompt = userText;
