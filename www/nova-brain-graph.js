@@ -1,4 +1,4 @@
-/* nova-brain-graph.js — v1.0.0 (2026-10-11)
+/* nova-brain-graph.js — v1.1.0 (2026-10-11)
  * 手機版「AI 大腦圖譜」：把筆記、向量庫文件、長期記憶實體、技能放在同一張 2D 力導向圖裡（Canvas，單指拖曳、雙指縮放、點節點看詳情）。
  * 對標桌面 v3.34.0 的規格自行實作（桌面的 nova-brain-graph.js 原始碼不在可讀來源內，所以這是依規格重寫，不是逐行移植）。
  *   節點：筆記 / 向量庫文件 / 記憶實體（core）/ 技能。（桌面的「檔案卡」手機版沒有這個功能，所以沒有；episodic 預設不畫。）
@@ -6,6 +6,7 @@
  *   亮度：近 30 天被開啟/使用的次數（localStorage nova_brain_hits），越常用越亮。
  *   外圈：紅圈＝孤立（沒有任何連線）；黃圈＝筆記還沒匯入向量庫（AI 檢索不到）。
  * 版本紀錄
+ *   v1.1.0 2026-10-11  新增 3D 模式（預設 3D，可切回 2D；無 WebGL 時自動 2D），共用 vendor/nova-graph3d.js
  *   v1.0.0 2026-10-11  首版。
  */
 (function () {
@@ -236,6 +237,34 @@
     }, { passive: false });
   }
 
+
+  /* v1.1.0：3D 模式（vendor/nova-graph3d.js；預設 3D，可切回 2D；無 WebGL 時自動用 2D） */
+  function use3D() { try { return localStorage.getItem('nova_brain_3d') !== '0'; } catch (e) { return true; } }
+  function webglOk() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
+  async function ensure3D() {
+    if (W.NovaGraph3D) return true;
+    await new Promise(function (res, rej) { var sc = document.createElement('script'); sc.src = './vendor/nova-graph3d.js?v=1'; sc.onload = res; sc.onerror = function () { rej(new Error('3D 模組載入失敗')); }; document.head.appendChild(sc); });
+    return !!W.NovaGraph3D;
+  }
+  var G3 = null;
+  function render3D(box, g) {
+    box.innerHTML = '';
+    var FG = W.NovaGraph3D.ForceGraph3D, ST = W.NovaGraph3D.SpriteText;
+    var byId = {}; g.nodes.forEach(function (n) { byId[n.id] = n; });
+    var gw = function () { return box.clientWidth || W.innerWidth; }, gh = function () { return box.clientHeight || Math.max(300, W.innerHeight - 170); };
+    var links = g.edges.filter(function (e) { return byId[e.a] && byId[e.b]; }).map(function (e) { return { source: e.a, target: e.b, kind: e.kind }; });
+    var nodes = g.nodes.map(function (n) { return { id: n.id, name: n.label, kind: n.kind, val: 1 + (n.deg || 0) * 0.8 + (n.heat || 0) * 3, color: KIND[n.kind].c, ref: n }; });
+    if (G3 && G3._destructor) { try { G3._destructor(); } catch (e) {} }
+    G3 = FG()(box).width(gw()).height(gh()).backgroundColor('#020617').graphData({ nodes: nodes, links: links })
+      .nodeLabel(function (n) { return KIND[n.kind].t + '：' + n.name; }).nodeColor('color').nodeVal('val')
+      .linkColor(function (l) { return l.kind === 'sim' ? 'rgba(148,163,184,0.35)' : 'rgba(226,232,240,0.7)'; }).linkWidth(function (l) { return l.kind === 'sim' ? 0.4 : 1.1; })
+      .nodeThreeObjectExtend(true).nodeThreeObject(function (n) { if (typeof ST !== 'function') return false; var t = new ST(String(n.name).slice(0, 14)); t.textHeight = 2; t.color = '#e2e8f0'; t.backgroundColor = 'rgba(2,6,23,0.6)'; t.padding = 0.8; t.position.y = 7; return t; })
+      .onNodeClick(function (n) { S = S || {}; info(n.ref); });
+    try { if (W.ResizeObserver) { if (W._bgRO) W._bgRO.disconnect(); W._bgRO = new ResizeObserver(function () { try { G3.width(gw()).height(gh()); } catch (e) {} }); W._bgRO.observe(box); } } catch (e) {}
+    setTimeout(function () { try { G3.width(gw()).height(gh()); } catch (e) {} }, 300);
+  }
+  W.novaBrainToggle3D = function () { try { localStorage.setItem('nova_brain_3d', use3D() ? '0' : '1'); } catch (e) {} W.openBrainGraph(); };
+
   W.openBrainGraph = async function () {
     var m = document.getElementById('brain-graph-modal'), box = document.getElementById('brain-graph-container');
     if (!m || !box) return;
@@ -244,12 +273,15 @@
     var g;
     try { g = await collect(); } catch (e) { box.innerHTML = '<div style="color:#f87171;padding:16px;">圖譜資料讀取失敗：' + (e.message || e) + '</div>'; return; }
     if (!g.nodes.length) { box.innerHTML = '<div style="color:#94a3b8;padding:24px;text-align:center;">還沒有任何筆記、向量庫文件、記憶或技能可以畫成圖。</div>'; return; }
-    renderInto(box, g);
+    var want3D = use3D() && webglOk(), ok3D = false;
+    if (want3D) { try { if (await ensure3D()) { render3D(box, g); ok3D = true; } } catch (e) { console.warn('[NOVA] 腦圖 3D 失敗，改 2D：', e); } }
+    if (!ok3D) renderInto(box, g);
     var cnt = {}; g.nodes.forEach(function (n) { cnt[n.kind] = (cnt[n.kind] || 0) + 1; });
     var lg = document.getElementById('brain-graph-legend');
     if (lg) lg.innerHTML = Object.keys(KIND).map(function (k) { return '<span style="display:inline-flex;align-items:center;gap:4px;"><i style="width:9px;height:9px;border-radius:50%;background:' + KIND[k].c + ';display:inline-block"></i>' + KIND[k].t + ' ' + (cnt[k] || 0) + '</span>'; }).join('') +
-      '<span style="color:#facc15">◯ 筆記未匯入向量庫</span><span style="color:#f87171">◯ 孤立</span><span style="color:#94a3b8">虛線＝語意相似</span>';
-    info(null); draw();
+      '<span style="color:#facc15">◯ 筆記未匯入向量庫</span><span style="color:#f87171">◯ 孤立</span><span style="color:#94a3b8">' + (ok3D ? '淡線＝語意相似' : '虛線＝語意相似') + '</span>' +
+      '<button onclick="novaBrainToggle3D()" style="margin-left:auto;padding:2px 10px;border-radius:8px;background:#334155;color:#e2e8f0;">' + (ok3D ? '切到 2D' : (webglOk() ? '切到 3D' : '（此裝置無 3D）')) + '</button>';
+    info(null); if (!ok3D) draw();
   };
   function renderInto(box, g, onPick) {
     box.innerHTML = '';

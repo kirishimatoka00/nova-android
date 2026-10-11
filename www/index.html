@@ -2238,8 +2238,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.43';
+        const NOVA_APP_VERSION = '2.6.44';
         const NOVA_CHANGELOG = [
+            { v: '2.6.44', date: '2026-10-11', notes: [
+                '修正向量搜尋失敗（Cannot read properties of undefined (reading \'0\')）：桌面同步來的區塊只有文字、沒有向量，測試搜尋現在會略過並自動補算向量（顯示待補數量）',
+                '修正切到 OpenAI/Grok 並關閉網際網路搜尋後仍跑「代理連網」：搜尋開關關閉時不再自動搜尋；並補上缺少的 searchViaGas（先前會顯示 searchViaGas is not defined）',
+                '修正筆記圖譜空白（程式變數未宣告導致錯誤）；筆記圖譜與 AI 大腦圖譜改為 3D（可旋轉、縮放，內建本機 3D 函式庫不需連網；無 WebGL 時自動退回 2D；大腦圖譜可一鍵切 2D/3D）'
+            ] },
             { v: '2.6.43', date: '2026-10-11', notes: [
                 '錄音／筆記音訊：已連接 Google 且授權含 Drive 時，直接走 Drive 可續傳上傳（分段，不受 10MB 限制），放在雲端硬碟「NOVA 錄音」資料夾；未連接時維持 Apps Script',
                 'Google 整合「Docs」分頁改為「📁 雲端硬碟」：瀏覽／搜尋、開啟編輯文字檔與 Google 文件（純文字）、上傳、新增資料夾與文字檔、匯出筆記、重新命名、移到垃圾桶、下載到手機',
@@ -15274,6 +15279,18 @@ try {
             try { const res = await fetch(appState.docMonitorUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ type: 'scrape_and_log', url: url }) }); const text = await res.text(); return (text && !text.startsWith("Error")) ? text : null; } catch (e) { return null; }
         }
         
+        // ★ v2.6.44：補上 searchViaGas（原本被呼叫卻從未定義，SerpApi 沒金鑰或失敗又設了 GAS 網址時會丟「searchViaGas is not defined」）。
+        //   做法同桌面版 v2.7.0：用 GAS 代理抓 Google 搜尋結果頁文字當摘要，只作 SerpApi 的最後備援。
+        async function searchViaGas(query) {
+            try {
+                if (!appState.docMonitorUrl || typeof fetchUrlViaGas !== 'function') return null;
+                const html = await fetchUrlViaGas(`https://www.google.com/search?q=${encodeURIComponent(query)}&hl=zh-TW&gl=tw&num=8`);
+                if (!html) return null;
+                window._novaLastSearchSource = 'gas';
+                return `【GAS 代理搜尋結果（Google 搜尋頁純文字摘要，非結構化）】\n${String(html).slice(0, 4000)}`;
+            } catch (e) { console.warn('[NOVA] searchViaGas 失敗', e); return null; }
+        }
+
         async function searchViaSerpApi(query, lat = null, lon = null) {
             if (!appState.keys.serpapi) return null;
             // ✅ 若有 GPS 座標，加入 ll 參數（SerpAPI 支援此精確定位格式）
@@ -16882,7 +16899,9 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                 }
 
                 // 🌟 擴充關鍵字：把「位置」、「座標」、「定位」加進去（保留技術排除邏輯）
-                let enableSearchTool = !_isPPTIntent && (appState.isSearchEnabled || appState.deepDiveMode || /附近|最近|在哪|地點|地址|導航|怎麼走|距離|離我|幫我找/.test(text) || _isGeoIntent(text) || _intentHints.isLocationQuery);
+                // v2.6.44：使用者把「網際網路搜尋」關掉時，不可再因為問題裡有「地點／附近」等字就自動連網（以前會無視開關）
+                const _searchToggleOff = !appState.isSearchEnabled && !appState.deepDiveMode;
+                let enableSearchTool = !_isPPTIntent && (appState.isSearchEnabled || appState.deepDiveMode);
                 // ★ 轉Canvas 改寫模式：完全不需要連網，強制關閉搜尋
                 if (_isTsxConvertMode) { enableSearchTool = false; }
                 
@@ -17200,6 +17219,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                         }
                     }
 
+                    if (_searchToggleOff && !searchMatch) enableSearchTool = false;   // v2.6.44：搜尋開關關閉時，後面的地點／連結分支也不得重新打開
                     if (enableSearchTool && modelToUse !== 'gemini' && !searchMatch) {
                         addMessage(`🌐 (代理連網) 正在透過網路搜尋相關資訊...`, 'system'); let searchResultText = "";
                         const isNearbyQuery = text.includes('附近') || text.includes('最近的') || text.includes('周邊');
@@ -17228,7 +17248,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                         enableSearchTool = false;
                     } else {
                         systemPromptAddon += `\n【知識庫問答模式 - 最高優先】：使用者已啟動向量資料庫問答模式，但向量資料庫中找不到與此問題相關的資料。請先用一句話明確回覆使用者「向量資料庫無相關資料」，接著立即使用網路搜尋工具查詢最新資訊來回答問題，不要省略搜尋這一步。\n`;
-                        enableSearchTool = true;
+                        enableSearchTool = !_searchToggleOff;
                     }
                 }
 
@@ -20516,7 +20536,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
-<script src="./nova-notes-pro.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
-<script src="./nova-brain-graph.js?v=1.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
+<script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
+<script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>

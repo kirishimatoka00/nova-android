@@ -2,6 +2,7 @@
 <!--
   ═══ knowledgebank.html（NOVA Android 向量資料庫）v2（2026-10-11）═══
   版本紀錄：
+  v4.1 - 2026-10-11：測試搜尋略過沒有向量的片段（修正「Cannot read properties of undefined (reading '0')」）；新增 processPendingEmbeds()，開啟本頁／搜尋時自動補算從其他裝置同步來的片段向量
   v4 - 2026-10-11：刪除文件／資料夾／清空向量庫時記墓碑（nova_deleted_ids），配合 Drive 同步（nova-google.js v1.1.0）不讓已刪項目從另一台復活
   v3 - 批次 6b：匯入檔案成功後，背景呼叫 NovaMemory.ingestDocument() 抽取「跟使用者本人／專案有關的穩定事實」併入 AI 記憶（nova-memory.js，IndexedDB nova_memory_db；與 index.html v2.6.25 同一份）。
   v2 - 批次 2（對標桌面版 knowledgebank v1.1.0／v1.1.1）：表格感知與文件類型，共用邏輯放新檔 nova-kb-tables.js（與 index.html v2.6.21 同一份）。
@@ -991,10 +992,19 @@ async function testKbSearch() {
             resultEl.innerHTML = '<div class="text-xs text-amber-400">目前沒有任何「啟用中」的資料夾，請先在上方點擊資料夾以啟用。</div>';
             return;
         }
+        // v4.1：略過沒有向量的片段（從桌面版同步來、還沒補算的），否則 cosineSim 讀到 undefined 會報「Cannot read properties of undefined」
+        const vecChunks = activeChunks.filter(c => Array.isArray(c.vector) && c.vector.length);
+        const pendingCnt = activeChunks.length - vecChunks.length;
+        if (vecChunks.length === 0) {
+            resultEl.innerHTML = '<div class="text-xs text-amber-400">啟用中的資料夾裡有 ' + pendingCnt + ' 段還沒有向量（從其他裝置同步來的，等待補算）。請確認已設定 Gemini API Key，稍候或重新開啟本頁會自動補算。</div>';
+            processPendingEmbeds();
+            return;
+        }
         const qVec = await embedSingle(formatQueryText(q));
-        const scored = activeChunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
+        const scored = vecChunks.map(c => ({ ...c, score: cosineSim(qVec, c.vector) }))
             .sort((a, b) => b.score - a.score)
             .slice(0, 5);
+        if (pendingCnt > 0) { try { showKbToast('有 ' + pendingCnt + ' 段尚未建立向量，已略過（背景補算中）'); } catch (e) {} processPendingEmbeds(); }
         if (scored.length === 0 || scored[0].score < 0.55) {
             resultEl.innerHTML = '<div class="text-xs text-amber-400">向量資料庫無相關資料</div>';
             return;
@@ -1023,6 +1033,22 @@ function applyKbTheme(theme) {
 }
 
 // ---------- 初始化 ----------
+// v4.1：補算向量（從其他裝置同步來的片段只有文字、沒有向量；同桌面版 processPendingEmbeds）
+let _kbPendingBusy = false;
+async function processPendingEmbeds() {
+    if (_kbPendingBusy) return; _kbPendingBusy = true;
+    try {
+        const pending = (await dbGetAll('chunks')).filter(c => !c.vector || !c.vector.length);
+        if (!pending.length || !GEMINI_KEY()) return;
+        let done = 0;
+        for (let i = 0; i < pending.length; i += EMBED_BATCH) {
+            const batch = pending.slice(i, i + EMBED_BATCH);
+            let vecs; try { vecs = await embedBatch(batch.map(c => formatDocumentText(c.text || '', c.docName || ''))); } catch (e) { console.warn('[NOVA][KB] 補算向量失敗，下次再試：', e); break; }
+            for (let j = 0; j < batch.length; j++) { if (!vecs[j]) continue; const u = Object.assign({}, batch[j], { vector: vecs[j] }); delete u.pendingEmbed; await dbPut('chunks', u); done++; }
+        }
+        if (done) { try { showKbToast('已補算 ' + done + ' 段向量'); renderDocList(); } catch (e) {} }
+    } catch (e) { console.warn('[NOVA][KB] processPendingEmbeds', e); } finally { _kbPendingBusy = false; }
+}
 window.addEventListener('DOMContentLoaded', async () => {
     applyKbTheme(localStorage.getItem('nova_theme') || 'dark');
     refreshKbModeUI();
@@ -1030,6 +1056,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     refreshKeyStatus();
     await renderFolderList(); // 需先確保「未分類」資料夾存在，再渲染文件清單
     renderDocList();
+    processPendingEmbeds();
 });
 // 若使用者在主程式頁面切換主題後返回本頁，重新整理時會自動套用最新設定；
 // 若瀏覽器分頁未關閉也切換主題，透過 storage 事件即時同步

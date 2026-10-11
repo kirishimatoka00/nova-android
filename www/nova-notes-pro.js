@@ -1,4 +1,4 @@
-/* nova-notes-pro.js — v1.0.0 (2026-10-11)
+/* nova-notes-pro.js — v1.1.0 (2026-10-11)
  * 手機版筆記本對標桌面版：富文本編輯器（字體大小/文字色/螢光筆/表格儲存格色/框線色/字型統一）、
  * 標籤、雙向連結、AI 建議相關筆記（向量相似度）、貼圖 OCR（文字/表格，可選 Gemini/Grok 模型）、
  * 筆記關聯圖譜、標籤篩選、單篇/跨筆記 AI 分析模式（含 ###TAGS###/###RELATED### 解析）。
@@ -6,6 +6,7 @@
  * 載入位置：index.html 主腳本之後（同名函式以本檔為準）。
  *
  * 版本紀錄
+ *   v1.1.0 2026-10-11  筆記 3D 圖譜：函式庫改本地打包（vendor/nova-graph3d.js，單一 three 實例，不需網路）、明確指定尺寸＋ResizeObserver、無 WebGL 或建立失敗改 2D 備援、顯示筆記／連結數；修正移植時漏宣告 _novaGraphInstance 造成的 ReferenceError（手機上整片空白的真正原因）
  *   v1.0.0 2026-10-11  首版：自桌面版移植編輯器/標籤/連結/OCR/圖譜/分析；補 4 個輔助函式（代理 fetch 直通、Gemini genCfg 直通）。
  */
 (function () {
@@ -1130,36 +1131,15 @@
             renderFolderTabs();
             renderNotes();
         }
+        // v1.1.0：3D 圖譜函式庫改用本地打包檔 vendor/nova-graph3d.js（three.js＋3d-force-graph＋three-spritetext 以 esbuild 打成同一包，
+        //         只有一份 three.js——原本分開載入 CDN 會有兩份 three 實例，文字標籤與球體混用會讓渲染迴圈出錯、畫面空白；也不再需要網路）
+        let _novaGraphInstance = null;   // v1.1.0：移植時漏宣告 → openNoteGraph 在建圖前就丟 ReferenceError，畫面整片空白（真正的空白原因）
         async function _novaLoadGraphLib() {
-            // ★ v3.30.135：使用者回報上一輪加了節點標題功能之後，圖譜完全
-            // 顯示不出來（整個畫面空白）。查證後找到原因：three-spritetext
-            // 的 UMD 版本刻意不內建 three.js（把它宣告成外部依賴，見它
-            // 官方 rollup 設定的 external:['three']、globals:{three:'THREE'}
-            // ），執行時直接讀取全域變數 window.THREE 來用；但 3d-force-
-            // graph 的 UMD 版本是把 three.js 整個打包進自己內部、不會對外
-            // 暴露 window.THREE。原本的載入順序只有這兩個函式庫，從頭到尾
-            // 都沒有任何地方建立過 window.THREE，three-spritetext 的程式
-            // 碼一執行就會因為讀不到 THREE 直接拋錯，導致 window.SpriteText
-            // 這個建構函式根本沒有被成功定義；後面 nodeThreeObject() 裡
-            // `new SpriteText(...)` 就會是「呼叫一個不存在的東西」，讓
-            // 3d-force-graph 每畫一個節點就出錯一次，整個渲染迴圈失敗，
-            // 才會表現成「畫面整個空白」。
-            // 修法：改成先載入獨立的 three.js UMD 版本（建立
-            // window.THREE），再依序載入 3d-force-graph／three-spritetext
-            // ——後兩者各自要嘛內建、要嘛讀取全域 THREE，先後順序都能
-            //正確運作，不會互相打架（3d-force-graph 用自己內部那份，
-            // three-spritetext 用這裡另外載入的全域那份，兩者是各自獨立
-            // 的 three.js 執行個體，只是剛好都能動，不會衝突)。
-            if (!window.THREE) {
-                await _novaLoadScriptOnce('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js');
-            }
-            if (!window.ForceGraph3D) {
-                await _novaLoadScriptOnce('https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.3/dist/3d-force-graph.min.js');
-            }
-            if (!window.SpriteText) {
-                await _novaLoadScriptOnce('https://cdn.jsdelivr.net/npm/three-spritetext@1.8.2/dist/three-spritetext.min.js');
-            }
+            if (window.NovaGraph3D) return;
+            await _novaLoadScriptOnce('./vendor/nova-graph3d.js?v=1');
+            if (!window.NovaGraph3D) throw new Error('函式庫載入失敗：3D 圖譜模組沒有成功載入');
         }
+        function _novaWebglOk() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
 
         window.openNoteGraph = async function () {
             const modal = document.getElementById('note-graph-modal');
@@ -1176,6 +1156,8 @@
                 return;
             }
             container.innerHTML = '';
+            const ForceGraph3D = window.NovaGraph3D.ForceGraph3D, SpriteText = window.NovaGraph3D.SpriteText;
+            if (!_novaWebglOk()) { try { await window.novaRenderNoteGraph2D(container); } catch (e) { container.innerHTML = '<div style="color:#f87171;padding:24px;text-align:center;">這台裝置不支援 3D（WebGL），且 2D 備援也失敗：' + escapeHtml(e.message) + '</div>'; } return; }
 
             // ★ v3.30.134：使用者要求① 連線顏色在深色背景下要更容易辨識、
             // ② 節點上直接顯示筆記標題、③ 也要有白晝模式（淺色背景/深色
@@ -1210,7 +1192,11 @@
             nodes.forEach(function (n) { n.val = 1 + (degree[n.id] || 0); });
 
             if (_novaGraphInstance) { try { _novaGraphInstance._destructor && _novaGraphInstance._destructor(); } catch (e) {} }
+            // 明確指定尺寸（容器剛顯示時高度可能還是 0，3d-force-graph 預設用視窗大小會被裁掉或畫面空白）
+            const _gw = function () { return container.clientWidth || window.innerWidth; }, _gh = function () { return container.clientHeight || Math.max(300, window.innerHeight - 70); };
+            try {
             _novaGraphInstance = ForceGraph3D()(container)
+                .width(_gw()).height(_gh())
                 .graphData({ nodes: nodes, links: links })
                 .nodeLabel('name')
                 .nodeAutoColorBy('folder')
@@ -1246,6 +1232,14 @@
                     closeNoteGraph();
                     openNoteEdit(node.id);
                 });
+            } catch (e) {
+                console.warn('[NOVA] 3D 圖譜建立失敗，改用 2D：', e);
+                try { await window.novaRenderNoteGraph2D(container); } catch (e2) { container.innerHTML = '<div style="color:#f87171;padding:24px;text-align:center;">圖譜建立失敗：' + escapeHtml(String(e.message || e)) + '</div>'; }
+                return;
+            }
+            try { if (window.ResizeObserver) { if (window._novaGraphRO) window._novaGraphRO.disconnect(); window._novaGraphRO = new ResizeObserver(function () { try { _novaGraphInstance.width(_gw()).height(_gh()); } catch (e) {} }); window._novaGraphRO.observe(container); } } catch (e) {}
+            setTimeout(function () { try { _novaGraphInstance.width(_gw()).height(_gh()); } catch (e) {} }, 300);
+            container.insertAdjacentHTML('beforeend', '<div style="position:absolute;left:8px;bottom:8px;font-size:11px;color:#94a3b8;background:rgba(2,6,23,.65);padding:3px 8px;border-radius:8px;pointer-events:none;">3D・' + nodes.length + ' 則筆記・' + links.length + ' 條連結｜單指旋轉、雙指縮放、點節點開啟筆記</div>');
 
             if (!nodes.length) {
                 container.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-slate-500 text-sm">目前還沒有任何筆記，建立筆記後再回來看圖譜。</div>';
