@@ -482,6 +482,15 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.0.0">
+    <link rel="stylesheet" href="./vendor/katex/katex.min.css">
+    <script src="./vendor/katex/katex.min.js"></script>
+    <script>
+    /* ★ v2.6.20：集中管理「背景小工具」用的 Gemini 模型（原本散落 12 處寫死 gemini-2.5-flash）。要換模型只改這兩行。 */
+    window.NOVA_GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash';
+    window.NOVA_GEMINI_MODEL_LITE = 'gemini-3.5-flash-lite';
+    var NOVA_GEMINI_MODEL_DEFAULT = window.NOVA_GEMINI_MODEL_DEFAULT, NOVA_GEMINI_MODEL_LITE = window.NOVA_GEMINI_MODEL_LITE;
+    </script>
     <script src="./vendor/phosphor-loader.js"></script>
     <script src="./vendor/pptxgen.bundle.js"></script>
     <script src="./vendor/fix-webm-duration.js"></script>
@@ -830,6 +839,7 @@
                             <button onclick="switchSettingsTab('tab-ui')" id="stab-ui" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🎨 外觀</button>
                             <button onclick="switchSettingsTab('tab-rec')" id="stab-rec" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">⏺️ 錄音</button>
                             <button onclick="switchSettingsTab('tab-cal')" id="stab-cal" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">📅 行事曆</button>
+                            <button onclick="switchSettingsTab('tab-models')" id="stab-models" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🧩 模型</button>
                             <button onclick="switchSettingsTab('tab-autotask')" id="stab-autotask" class="px-3 py-1.5 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all whitespace-nowrap">🤖 AI自主任務</button>
                         </div>
                     </div>
@@ -1160,6 +1170,19 @@
                                 </div>
                             </div>
                             <p class="text-[10px] text-slate-500 pt-1">⚠️ 首次使用需同意行事曆與通知權限。若未出現授權視窗，請至 Android 設定 → 應用程式 → NOVA 120 SSP → 權限 手動開啟。</p>
+                        </div>
+
+                        <!-- 分頁：啟用的模型（v2.6.20，移植自桌面版） -->
+                        <div id="tab-models" class="space-y-3 hidden">
+                            <div class="nv-card">
+                                <h4>啟用的模型</h4>
+                                <p class="nv-muted">取消勾選的模型，不會出現在主畫面的模型下拉選單，也不會被智慧切換挑到。每一組至少要保留一個。已存的設定若剛好是被停用的模型，會自動改用同組第一個已啟用的。</p>
+                            </div>
+                            <div id="nova-em-box"></div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <button type="button" class="nova-em-btn" onclick="novaEnableAllModels()">全部啟用</button>
+                                <span id="nova-em-hint" class="nv-muted"></span>
+                            </div>
                         </div>
 
                         <!-- 分頁：AI 自主任務 -->
@@ -1914,8 +1937,17 @@
         // ══════════════════════════════════════════════════════════════
         // NOVA 版本號與更新紀錄（每次修改前請先核對版本號，避免覆蓋他人/其他分支的變更）
         // ══════════════════════════════════════════════════════════════
-        const NOVA_APP_VERSION = '2.6.19';
+        const NOVA_APP_VERSION = '2.6.20';
         const NOVA_CHANGELOG = [
+            { v: '2.6.20', date: '2026-10-11', notes: [
+                '批次 1（對標桌面版 v3.60.0）：新增設定頁「🧩 模型」分頁（啟用的模型）——可取消勾選不想用的 Gemini／Grok／OpenAI 模型，主畫面三個子模型下拉會跟著過濾；目前使用的模型被停用時自動改用同供應商同類型第一個已啟用的；每組至少保留一個。停用清單存 localStorage nova_disabled_models。',
+                '新增 nova-ui.css v1.0.0：仿桌面版 nova-ui.css 的「手機寬度」設計語言（--nv-* 黑夜／白晝色票、設定頁橫向膠囊分頁、觸控目標 ≥ 40px 的勾選清單、通用卡片／按鈕／輸入框元件，斷點 640／760px），後續批次的專家、會議、並行作業介面共用。',
+                '集中模型常數：新增 NOVA_GEMINI_MODEL_DEFAULT（gemini-3.6-flash）與 NOVA_GEMINI_MODEL_LITE（gemini-3.5-flash-lite），取代原本散落 12 處寫死的 gemini-2.5-flash（語音輸入、摘要、背景小工具等）與意圖分類器的 gemini-2.5-flash-lite；意圖分類器的 Grok 備援由已退役的 grok-4-fast-reasoning 改為 grok-4.3。',
+                '新增斜線指令（與桌面版一致）：/ns 新增對話、/re 開啟新增任務並預填標題、/img 強制圖片生成、/sc 把剛才的對話與成果封裝成技能、/ppt 簡報精靈；快速切換模型 /gat /g3.8f /g3.6f /g3f /g2.5f /g3.1p /g2.5p /gk /gpt /gpt6sol /coh。輸入「/」會在輸入框上方浮出指令選單（手機觸控友善）。',
+                '新增對話分支：對話清單每列多一顆分支鈕，複製目前所有訊息到新對話（標題加「（分支）」），原對話不動。',
+                '新增 KaTeX 數學式渲染（離線版 vendor/katex，僅 woff2 字型）：$$…$$ 區塊與 $…$ 行內（需含 \\ ^ _ { } 其一，避免誤判金額），渲染失敗退回顯示原始碼。',
+                '未做：Groq／Cohere 子模型選單（桌面版本身沒有，維持現狀）。',
+            ]},
             { v: '2.6.19', date: '2026-10-11', notes: [
                 '模型列表第二階段（與桌面版 desktop-patch v3.60.0 對齊）：Gemini 子模型選單改為「文字／圖像生成」兩組並移除 gemini-3.5-flash、gemini-3.7-flash（官方已自動轉址至 3.6／3.8）與 gemini-3.1-flash-image（官方轉址至 gemini-nano-banana-2.1）；圖像組新增 Gemini Nano Banana 2.1（選單最上面）。所有寫死處（智慧切換圖像意圖首選、pro-image 失敗降級目標、排程圖片／簡報配圖備援清單）一併改用 gemini-nano-banana-2.1，圖片判斷、v1alpha 判斷、解析度＋比例選擇器與 imageConfig 皆認得 nano-banana（沿用桌面版已驗證的 generateContent 路徑）',
                 '舊設定自動轉換：下拉選單、傳送前、備份還原三處會把舊的 gemini-3.5-flash／3.7-flash／3.1-flash-image 換成現行型號，避免下拉選單找不到對應選項而顯示空白',
@@ -3600,6 +3632,12 @@ const _tempText2fix = tempText;
                 console.log('[NOVA Canvas] 自動補上缺失的結尾 ```，open=' + _openCount + ' close=' + _closeCount);
             }
         }
+        // ★ v2.6.20：LaTeX 數學式（KaTeX，離線版 vendor/katex）。須在 escapeHtml 之前抽出 $$...$$ 與 $...$（行內限同一行且含 \ ^ _ { } 其一，避免誤判金額），
+        //   換成佔位符，最後才呼叫 katex.renderToString；渲染失敗退回顯示跳脫後的原始碼。
+        const _novaMathBlocks = [];
+        tempText = tempText.replace(/\$\$([\s\S]+?)\$\$/g, function (match, latex) { const idx = _novaMathBlocks.length; _novaMathBlocks.push({ latex: latex.trim(), display: true }); return '\u0000NOVA_MATH_' + idx + '\u0000'; });
+        tempText = tempText.replace(/\$([^\$\n]*[\\^_{}][^\$\n]*)\$/g, function (match, latex) { const idx = _novaMathBlocks.length; _novaMathBlocks.push({ latex: latex.trim(), display: false }); return '\u0000NOVA_MATH_' + idx + '\u0000'; });
+
         let safe = tempText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
             safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>'); 
@@ -3682,6 +3720,15 @@ return html;
         });
 
         let finalHtml = safe.replace(/\n/g, '<br>');
+        if (_novaMathBlocks.length > 0) {
+            finalHtml = finalHtml.replace(/\u0000NOVA_MATH_(\d+)\u0000/g, function (match, idxStr) {
+                const m = _novaMathBlocks[parseInt(idxStr, 10)];
+                if (!m) return '';
+                try { if (window.katex) return window.katex.renderToString(m.latex, { throwOnError: false, displayMode: m.display }); }
+                catch (e) { console.warn('[NOVA] KaTeX 渲染失敗，退回顯示原始語法：', e); }
+                return escapeHtml((m.display ? '$$' : '$') + m.latex + (m.display ? '$$' : '$'));
+            });
+        }
 
         // ★ NOVA: 還原 sendPrompt 佔位符為真實可點擊按鈕
         if (_sendPromptBtns.length > 0) {
@@ -5883,11 +5930,11 @@ return html;
         window.closeSettings = function() { document.getElementById('settings-modal').classList.add('hidden'); };
 
         window.switchSettingsTab = function(tabId) {
-            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal', 'tab-autotask'].forEach(id => {
+            ['tab-main', 'tab-voice', 'tab-tg', 'tab-ui', 'tab-rec', 'tab-cal', 'tab-models', 'tab-autotask'].forEach(id => {
                 document.getElementById(id).classList.add('hidden');
             });
             document.getElementById(tabId).classList.remove('hidden');
-            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal', 'stab-autotask'].forEach(id => {
+            ['stab-main', 'stab-voice', 'stab-tg', 'stab-ui', 'stab-rec', 'stab-cal', 'stab-models', 'stab-autotask'].forEach(id => {
                 const btn = document.getElementById(id);
                 btn.classList.remove('bg-blue-600', 'text-white');
                 btn.classList.add('text-slate-400');
@@ -5895,6 +5942,8 @@ return html;
             const activeBtn = document.getElementById(tabId.replace('tab-', 'stab-'));
             activeBtn.classList.add('bg-blue-600', 'text-white');
             activeBtn.classList.remove('text-slate-400');
+            // 切換到「模型」分頁時重畫勾選清單（v2.6.20）
+            if (tabId === 'tab-models' && typeof novaRenderEnabledModels === 'function') novaRenderEnabledModels();
             // 切換到語音分頁時重新填充人聲選單
             if (tabId === 'tab-voice' && typeof populateVoices === 'function') {
                 populateVoices();
@@ -7631,7 +7680,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 畫面元件列表（優先從這裡找目標，用 tap_element 的 index 指定）：
 ${elementsText}`;
 
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -7673,7 +7722,7 @@ ${elementsText}`;
                 const key = appState.keys.gemini;
                 if (!key) return ''; // 沒有 key 的話交給後面 decideNextAction 去丟出真正的錯誤，這裡先安靜跳過
                 try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -7699,7 +7748,7 @@ ${elementsText}`;
                 if (!key) return '';
                 try {
                     const historyDesc = recentHistory.slice(-5).map(h => `第${h.round}回合：${JSON.stringify(h.action)} → ${h.result}`).join('\n');
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -8720,7 +8769,7 @@ msg.files : (msg.file ? [msg.file] : []);
 
 請依序輸出以上三個區塊，若音檔為純聲音（音樂/環境音）請說明音檔內容性質。`;
 
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`;
                 const payload = {
                     contents: [{ role: 'user', parts: [
                         { text: prompt },
@@ -8785,6 +8834,237 @@ msg.files : (msg.file ? [msg.file] : []);
         window.setGeminiModel = function(val) { appState.geminiModel = window._novaMigrateGeminiId(val); };
         window.setGrokModel = function(val) { appState.grokModel = val; };
         window.setGptModel = function(val) { appState.gptModel = val; try { localStorage.setItem('nova_gpt_model', val); } catch (e) {} };
+        // ════════════════════════════════════════════════════════════
+        // ★ v2.6.20（批次 1）：啟用的模型（設定頁「🧩 模型」分頁）——移植自桌面版 v3.60.0。
+        //   停用清單存 localStorage nova_disabled_models（JSON 陣列；預設空＝全部啟用）。
+        //   novaFilterSelect 會以「原始靜態清單」為母版重建三個子模型下拉（Gemini／Grok／OpenAI）；
+        //   目前使用的模型被停用時自動改用同供應商同類型（文字／圖像）的第一個已啟用模型；每一組至少保留一個。
+        // ════════════════════════════════════════════════════════════
+        (function () {
+            if (window.novaModelEnabled) return;
+            function dis() { try { var a = JSON.parse(localStorage.getItem('nova_disabled_models') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+            window.novaDisabledModels = dis;
+            window.novaModelEnabled = function (v) { v = String(v || ''); if (v === 'auto' || v === 'gemini-multi' || v === 'grok-multi') return true; return dis().indexOf(v) === -1; };
+            window.novaModelGroup = function (v) {
+                v = String(v || '');
+                if (v === 'gemini-multi' || v === 'grok-multi') return '';
+                var p = /^gemini-/.test(v) ? 'gemini' : (/^grok-/.test(v) ? 'grok' : (/^gpt-/.test(v) ? 'gpt' : ''));
+                if (!p) return '';
+                return p + ':' + (/image|imagen|imagine|nano-banana/i.test(v) ? 'image' : 'text');
+            };
+            window.novaPickEnabled = function (v, list) {
+                if (!v || window.novaModelEnabled(v)) return v;
+                var g = window.novaModelGroup(v);
+                if (!g) return v;
+                for (var i = 0; i < (list || []).length; i++) { if (window.novaModelGroup(list[i]) === g && window.novaModelEnabled(list[i])) return list[i]; }
+                return v;
+            };
+            window.novaFilterSelect = function (sel) {
+                if (!sel) return;
+                if (sel._novaMaster == null) sel._novaMaster = sel.innerHTML;
+                var prev = sel.value;
+                var t = document.createElement('select');
+                t.innerHTML = sel._novaMaster;
+                Array.prototype.slice.call(t.querySelectorAll('option')).forEach(function (o) { if (!window.novaModelEnabled(o.value)) o.parentNode.removeChild(o); });
+                Array.prototype.slice.call(t.querySelectorAll('optgroup')).forEach(function (g) { if (!g.querySelector('option')) g.parentNode.removeChild(g); });
+                if (!t.querySelector('option')) { sel.innerHTML = sel._novaMaster; return; }
+                sel.innerHTML = t.innerHTML;
+                if (prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
+            };
+        })();
+        window._NOVA_EM_SELECTS = ['gemini-sub-model-select', 'grok-sub-model-select', 'gpt-sub-model-select'];
+        window.novaModelMasterList = function () {
+            const out = [], seen = {};
+            window._NOVA_EM_SELECTS.forEach(function (id) {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                const t = document.createElement('select');
+                t.innerHTML = sel._novaMaster != null ? sel._novaMaster : sel.innerHTML;
+                Array.from(t.querySelectorAll('option')).forEach(function (o) {
+                    const g = window.novaModelGroup(o.value);
+                    if (!g || seen[o.value]) return;
+                    seen[o.value] = 1;
+                    out.push({ value: o.value, label: o.textContent.trim(), group: g });
+                });
+            });
+            return out;
+        };
+        window.novaResolveActiveModels = function () {
+            if (typeof appState === 'undefined' || !appState) return;
+            const vals = window.novaModelMasterList().map(function (m) { return m.value; });
+            [['geminiModel', 'Gemini'], ['grokModel', 'Grok'], ['gptModel', 'OpenAI']].forEach(function (p) {
+                const v = appState[p[0]];
+                if (!v) return;
+                const n = window.novaPickEnabled(v, vals);
+                if (n !== v) {
+                    appState[p[0]] = n;
+                    if (p[0] === 'gptModel') { try { localStorage.setItem('nova_gpt_model', n); } catch (e) {} }
+                    if (typeof showToast === 'function') showToast('「' + v + '」已在設定停用，改用 ' + n, 4500);
+                }
+            });
+        };
+        window.novaApplyModelFilter = function () {
+            window._NOVA_EM_SELECTS.forEach(function (id) { window.novaFilterSelect(document.getElementById(id)); });
+            window.novaResolveActiveModels();
+            try { if (typeof updateModelUI === 'function') updateModelUI(); } catch (e) {}
+            window.novaRenderEnabledModels();
+        };
+        window.novaToggleModel = function (value, on) {
+            let dis = window.novaDisabledModels().slice();
+            if (!on) {
+                const g = window.novaModelGroup(value);
+                const left = window.novaModelMasterList().filter(function (m) { return m.group === g && m.value !== value && dis.indexOf(m.value) === -1; });
+                if (!left.length) { if (typeof showToast === 'function') showToast('這一組至少要保留一個已啟用的模型', 3500); window.novaRenderEnabledModels(); return; }
+                if (dis.indexOf(value) === -1) dis.push(value);
+            } else dis = dis.filter(function (x) { return x !== value; });
+            try { localStorage.setItem('nova_disabled_models', JSON.stringify(dis)); } catch (e) {}
+            window.novaApplyModelFilter();
+        };
+        window.novaEnableAllModels = function (group) {
+            let dis = window.novaDisabledModels().slice();
+            if (group) { const vs = window.novaModelMasterList().filter(function (m) { return m.group === group; }).map(function (m) { return m.value; }); dis = dis.filter(function (x) { return vs.indexOf(x) === -1; }); }
+            else dis = [];
+            try { localStorage.setItem('nova_disabled_models', JSON.stringify(dis)); } catch (e) {}
+            window.novaApplyModelFilter();
+        };
+        window.novaRenderEnabledModels = function () {
+            const box = document.getElementById('nova-em-box');
+            if (!box) return;
+            const dis = window.novaDisabledModels();
+            const list = window.novaModelMasterList();
+            const groups = [['gemini:text', 'Gemini・文字模型'], ['gemini:image', 'Gemini・圖像模型'], ['grok:text', 'Grok・文字模型'], ['grok:image', 'Grok・圖像模型'], ['gpt:text', 'OpenAI・文字模型']];
+            box.textContent = '';
+            groups.forEach(function (g) {
+                const items = list.filter(function (m) { return m.group === g[0]; });
+                if (!items.length) return;
+                const on = items.filter(function (m) { return dis.indexOf(m.value) === -1; });
+                const wrap = document.createElement('div'); wrap.className = 'nova-em-group';
+                const head = document.createElement('div'); head.className = 'nova-em-gh';
+                const b = document.createElement('b'); b.textContent = g[1];
+                const cnt = document.createElement('span'); cnt.className = 'nova-em-cnt'; cnt.textContent = '啟用 ' + on.length + '／' + items.length;
+                head.appendChild(b); head.appendChild(cnt);
+                if (on.length < items.length) { const a = document.createElement('button'); a.type = 'button'; a.className = 'nova-em-btn'; a.textContent = '全選'; a.onclick = function () { window.novaEnableAllModels(g[0]); }; head.appendChild(a); }
+                wrap.appendChild(head);
+                const grid = document.createElement('div'); grid.className = 'nova-em-grid';
+                items.forEach(function (m) {
+                    const lab = document.createElement('label'); lab.className = 'nova-em-item';
+                    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = dis.indexOf(m.value) === -1; cb.style.accentColor = '#a855f7';
+                    cb.onchange = function () { window.novaToggleModel(m.value, cb.checked); };
+                    const t = document.createElement('span'); t.textContent = m.label;
+                    lab.appendChild(cb); lab.appendChild(t); grid.appendChild(lab);
+                });
+                wrap.appendChild(grid); box.appendChild(wrap);
+            });
+            const hint = document.getElementById('nova-em-hint');
+            if (hint) hint.textContent = dis.length ? ('目前停用 ' + dis.length + ' 個模型') : '目前全部啟用';
+        };
+        try { window.novaApplyModelFilter(); } catch (e) { console.warn('novaApplyModelFilter', e); }
+
+        // ════════════════════════════════════════════════════════════
+        // ★ v2.6.20（批次 1）：快速切換模型指令表（與桌面版 NOVA_MODEL_SWITCH_COMMANDS 對齊）＋斜線指令選單＋對話分支
+        // ════════════════════════════════════════════════════════════
+        window.NOVA_MODEL_SWITCH_COMMANDS = {
+            '/gat':   { model: 'gemini', geminiModel: 'gemini-multi',           label: 'Gemini 智慧切換 (Auto)' },
+            '/g2.5f': { model: 'gemini', geminiModel: 'gemini-2.5-flash',       label: 'Gemini 2.5 Flash' },
+            '/g3f':   { model: 'gemini', geminiModel: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+            '/g3.8f': { model: 'gemini', geminiModel: 'gemini-3.8-flash',       label: 'Gemini 3.8 Flash' },
+            '/g3.6f': { model: 'gemini', geminiModel: 'gemini-3.6-flash',       label: 'Gemini 3.6 Flash' },
+            '/g3.5f': { model: 'gemini', geminiModel: 'gemini-3.6-flash',       label: 'Gemini 3.6 Flash（3.5 Flash 已移除，改用 3.6）' },
+            '/g2.5p': { model: 'gemini', geminiModel: 'gemini-2.5-pro',         label: 'Gemini 2.5 Pro' },
+            '/g3.1p': { model: 'gemini', geminiModel: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+            '/gk':    { model: 'grok',   grokModel: 'grok-multi',               label: 'Grok 智慧切換 (Auto)' },
+            '/gpt':   { model: 'gpt',    gptModel: 'gpt-6-luna',                label: 'OpenAI GPT-6 Luna' },
+            '/gpt6sol': { model: 'gpt',  gptModel: 'gpt-6.1-sol',               label: 'OpenAI GPT-6.1 Sol' },
+            '/coh':   { model: 'cohere',                                       label: 'Cohere' }
+        };
+        // 選單用的指令清單：arg=true 代表後面要接內容（點選後只填入輸入框）；否則點選即執行
+        window.NOVA_SLASH_MENU = [
+            { c: '/img',  d: '強制當作「圖片生成」需求', arg: true },
+            { c: '/sc',   d: '把剛才的對話與成果封裝成可重複使用的技能', arg: true },
+            { c: '/ppt',  d: '用簡報精靈製作投影片（可接主題）', arg: true },
+            { c: '/re',   d: '開啟「新增任務」（可接標題）', arg: true },
+            { c: '/ns',   d: '新增對話' },
+            { c: '/ap',   d: 'AI 自主任務（接要完成的事）', arg: true },
+            { c: '/pa',   d: '觸發 Power Automate 流程', arg: true },
+            { c: '/gat',  d: '切換：Gemini 智慧切換' },
+            { c: '/g3.8f', d: '切換：Gemini 3.8 Flash' },
+            { c: '/g3.6f', d: '切換：Gemini 3.6 Flash' },
+            { c: '/g3f',  d: '切換：Gemini 3 Flash Preview' },
+            { c: '/g2.5f', d: '切換：Gemini 2.5 Flash' },
+            { c: '/g3.1p', d: '切換：Gemini 3.1 Pro Preview' },
+            { c: '/g2.5p', d: '切換：Gemini 2.5 Pro' },
+            { c: '/gk',   d: '切換：Grok 智慧切換' },
+            { c: '/gpt',  d: '切換：OpenAI GPT-6 Luna' },
+            { c: '/gpt6sol', d: '切換：OpenAI GPT-6.1 Sol' },
+            { c: '/coh',  d: '切換：Cohere' }
+        ];
+        (function () {
+            let menu = null, ta = null;
+            function ensure() {
+                if (menu) return true;
+                ta = document.getElementById('user-input');
+                if (!ta) return false;
+                menu = document.createElement('div'); menu.id = 'nv-slash-menu'; menu.className = 'hidden';
+                document.body.appendChild(menu);
+                ta.addEventListener('input', refresh);
+                ta.addEventListener('blur', function () { setTimeout(hide, 180); });
+                return true;
+            }
+            function hide() { if (menu) menu.classList.add('hidden'); }
+            function refresh() {
+                if (!ensure()) return;
+                const v = (ta.value || '').toLowerCase();
+                if (!/^\/[^\s]*$/.test(v)) { hide(); return; }
+                const hit = window.NOVA_SLASH_MENU.filter(function (x) { return x.c.indexOf(v) === 0; });
+                if (!hit.length || (hit.length === 1 && hit[0].c === v)) { hide(); return; }
+                menu.textContent = '';
+                hit.forEach(function (x) {
+                    const it = document.createElement('div'); it.className = 'nv-slash-item';
+                    const b = document.createElement('b'); b.textContent = x.c;
+                    const s = document.createElement('span'); s.textContent = x.d;
+                    it.appendChild(b); it.appendChild(s);
+                    // 用 pointerdown 避免 textarea blur 先把選單收掉
+                    it.addEventListener('pointerdown', function (ev) {
+                        ev.preventDefault();
+                        ta.value = x.c + (x.arg ? ' ' : '');
+                        if (typeof autoResizeInput === 'function') autoResizeInput(ta);
+                        hide();
+                        if (x.arg) { ta.focus(); } else if (typeof handleSendMessage === 'function') { handleSendMessage(); }
+                    });
+                    menu.appendChild(it);
+                });
+                menu.classList.remove('hidden');
+            }
+            window.novaSlashMenuRefresh = refresh;
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensure); else ensure();
+        })();
+
+        // ★ 對話分支：複製來源對話目前所有訊息到新的 sessionId（附件／來源欄位淺拷貝共用，原對話不動），標題加「（分支）」後切換過去。
+        window.branchChatSession = function (sid, e) {
+            if (e && e.stopPropagation) e.stopPropagation();
+            const sourceMsgs = appState.messages.filter(function (m) {
+                return String(m.sessionId) === String(sid) || (!m.sessionId && sid === 'legacy');
+            });
+            if (!sourceMsgs.length) { if (typeof showToast === 'function') showToast('⚠️ 這個對話還沒有任何訊息，無法建立分支'); return; }
+            const newSid = Date.now().toString();
+            sourceMsgs.forEach(function (m) {
+                const copy = Object.assign({}, m, { id: genMsgId(), sessionId: newSid });
+                appState.messages.push(copy);
+                saveToDB('messages', copy);
+            });
+            const originalTitle = (appState.chatTitles && appState.chatTitles[sid])
+                ? appState.chatTitles[sid]
+                : (function () {
+                    const f = sourceMsgs.find(function (m) { return m.sender === 'user'; });
+                    return f ? String(f.text || '').substring(0, 40) : '對話';
+                })();
+            if (!appState.chatTitles) appState.chatTitles = {};
+            appState.chatTitles[newSid] = originalTitle + '（分支）';
+            try { localStorage.setItem('nova_chat_titles', JSON.stringify(appState.chatTitles)); } catch (err) {}
+            if (typeof showToast === 'function') showToast('🔀 已建立分支對話，原對話不受影響');
+            loadChatSession(newSid);
+        };
+
         // ★ v2.6.19：修正既有缺陷——選 OpenAI 時 fetchAIResponse 以 appState.keys['gpt'] 讀金鑰，但金鑰實際存在 keys.openai，
         //   導致一律回報「未填寫 OpenAI API Key」。加不可列舉的別名 gpt ⇄ openai（不影響金鑰匯出／儲存迴圈）。
         try { if (!Object.prototype.hasOwnProperty.call(appState.keys, 'gpt')) Object.defineProperty(appState.keys, 'gpt', { get: function () { return this.openai; }, set: function (v) { this.openai = v; }, enumerable: false, configurable: true }); } catch (e) {}
@@ -10191,7 +10471,7 @@ return; }
                         const gKey = appState.keys.gemini;
                         if (!gKey) return `Professional business illustration about: ${query}`;
                         try {
-                            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${gKey}`, {
+                            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${gKey}`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text:
@@ -11239,9 +11519,10 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     <i class="ph-bold ph-chat-circle text-base" style="flex-shrink:0;color:${isActive ? '#475569' : '#94a3b8'};"></i>
                     <span style="font-size:0.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${isActive ? '600' : '400'};color:${isActive ? '#e2e8f0' : '#94a3b8'};">${escapeHtml(title)}</span>
                 </div>
-                <div style="display:flex;align-items:center;flex-shrink:0;width:108px;background:transparent;">
+                <div style="display:flex;align-items:center;flex-shrink:0;width:144px;background:transparent;">
                     <button onclick="renameChatSession('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="重新命名"><i class="ph-bold ph-pencil-simple" style="font-size:1.1rem;"></i></button>
                     <button onclick="openMoveFolderModal('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="移至資料夾"><i class="ph-fill ph-folder-open" style="font-size:1.1rem;"></i></button>
+                    <button onclick="branchChatSession('${sid}', event)" style="padding:8px;color:#64748b;flex:1;background:transparent;" title="建立分支對話"><i class="ph-bold ph-git-fork" style="font-size:1.1rem;"></i></button>
                     <button onclick="deleteChatSession('${sid}', event)" style="padding:8px;color:${isActive ? '#64748b' : '#64748b'};flex:1;background:transparent;" title="刪除"><i class="ph-bold ph-trash" style="font-size:1.1rem;"></i></button>
                 </div>
             </div>`;
@@ -12525,7 +12806,7 @@ document.getElementById('translate-settings').classList.add('hidden');
 ***極度重要防幻覺指令：如果音檔中只有背景雜音、電流聲、聽不清楚，請務必在 original 與 translated 皆直接輸出「nospeech」(不要加任何括號)。嚴禁自行腦補「Thank you」、「謝謝」等字詞！***`;
 
                     const origGeminiModel = appState.geminiModel;
-appState.geminiModel = 'gemini-2.5-flash'; // 預設 LLM 模型
+appState.geminiModel = NOVA_GEMINI_MODEL_DEFAULT; // 預設 LLM 模型（v2.6.20：集中常數）
 let res = await fetchAIResponse(prompt, 'gemini', { files: [{ category: 'media', data: base64dataWithPrefix, mime: mediaRecorder?.mimeType || 'audio/webm', name: 'Voice_Input.weba' }] });
                     
                     appState.geminiModel = origGeminiModel; // 恢復設定
@@ -13270,7 +13551,7 @@ try {
                 const chunkPrompt = `你是專業逐字稿員。請將這段音訊內容完整逐字轉錄成繁體中文，保留所有說話者的每一句話，不要摘要、不要省略、不要添加任何評論，直接輸出逐字稿文字即可。若整段音訊為靜音或無法辨識，請回覆「[本段無語音]」。`;
 
                 try {
-                    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+                    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`;
                     const payload = {
                         contents: [{ role: 'user', parts: [
                             { text: chunkPrompt },
@@ -13414,7 +13695,7 @@ try {
                         const chunkPrompt = `你是專業逐字稿員。請將這段音訊內容完整逐字轉錄成繁體中文，保留所有說話者的每一句話，不要摘要、不要省略、不要添加任何評論，直接輸出逐字稿文字即可。若整段音訊為靜音或無法辨識，請回覆「[本段無語音]」。`;
 
                         try {
-                            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+                            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`;
                             const res = await fetch(endpoint, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -13617,7 +13898,7 @@ try {
                         const chunkPrompt = `你是專業逐字稿員。請將這段音訊內容完整逐字轉錄成繁體中文，保留所有說話者的每一句話，不要摘要、不要省略、不要添加任何評論，直接輸出逐字稿文字即可。若整段音訊為靜音或無法辨識，請回覆「[本段無語音]」。`;
 
                         try {
-                            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+                            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`;
                             const res = await fetch(endpoint, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -14047,7 +14328,7 @@ try {
             const timeoutId = setTimeout(() => controller.abort(), 10000);
 
             try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: controller.signal
                 });
                 clearTimeout(timeoutId);
@@ -14135,7 +14416,7 @@ try {
                 generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
             };
             try {
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                 });
                 const data = await res.json();
@@ -14800,6 +15081,57 @@ window.startMultiAgentResearch = async function() {
                 appState.pendingAnalyzeType = '';
             }
 
+// ====== ★ v2.6.20（批次 1）新增：斜線指令攔截器（與桌面版對齊：/img /sc /ppt /re /ns 與快速切換模型）======
+            appState._novaForceImgIntent = false; appState._novaForceSkillCreate = false;
+            {
+                const _lc = text.toLowerCase();
+                // /ns：直接新增對話
+                if (_lc === '/ns' || _lc.startsWith('/ns ')) {
+                    input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                    if (typeof createNewChat === 'function') createNewChat();
+                    return;
+                }
+                // /re：開啟「新增任務」並預填標題
+                if (_lc === '/re' || _lc.startsWith('/re ')) {
+                    const _reText = text.length > 3 ? text.slice(3).trim() : '';
+                    input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                    if (typeof window.addTodoManually === 'function') {
+                        window.addTodoManually();
+                        if (_reText) {
+                            const _t1 = document.getElementById('add-todo-text'); if (_t1) _t1.value = _reText;
+                            const _t2 = document.getElementById('add-todo-ai-prompt'); if (_t2) _t2.value = _reText;
+                        }
+                    } else { addMessage('⚠️ 找不到新增任務的介面，請改用選單中的「新增」按鈕', 'system'); }
+                    return;
+                }
+                // 快速切換模型（整句完全比對）
+                const _mc = window.NOVA_MODEL_SWITCH_COMMANDS && window.NOVA_MODEL_SWITCH_COMMANDS[_lc.trim()];
+                if (_mc) {
+                    input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                    if (typeof MODEL_CONFIG !== 'undefined' && !MODEL_CONFIG[_mc.model]) { showToast('⚠️ 此版本沒有 ' + _mc.label); return; }
+                    appState.currentModel = _mc.model;
+                    if (_mc.geminiModel) appState.geminiModel = _mc.geminiModel;
+                    if (_mc.grokModel) appState.grokModel = _mc.grokModel;
+                    if (_mc.gptModel) { appState.gptModel = _mc.gptModel; try { localStorage.setItem('nova_gpt_model', _mc.gptModel); } catch (e) {} }
+                    updateModelUI();
+                    showToast('✅ 已切換至 ' + _mc.label);
+                    return;
+                }
+                // /img：強制當作圖片生成需求（旗標由 fetchAIResponse 讀取後清除）
+                if (_lc.startsWith('/img ')) { text = text.substring(5).trim(); appState._novaForceImgIntent = true; }
+                // /sc：把剛才的對話與成果封裝成技能（不 return，繼續走一般對話流程，下方技能建立判斷式會被強制啟用）
+                if (_lc === '/sc' || _lc.startsWith('/sc ')) {
+                    const _scFocus = text.length > 3 ? text.slice(3).trim() : '';
+                    text = '請分析我們剛剛的對話內容以及剛完成的任務或產出的結果，' + (_scFocus ? ('特別聚焦於：' + _scFocus + '，') : '') + '將其設計、封裝成一個可重複使用的 NOVA 技能。';
+                    appState._novaForceSkillCreate = true;
+                }
+                // /ppt：拿掉前綴，改寫成「幫我製作一份簡報」，走既有簡報意圖判斷
+                if (_lc === '/ppt' || _lc.startsWith('/ppt ')) {
+                    const _pptTopic = text.length > 4 ? text.slice(4).trim() : '';
+                    text = _pptTopic ? ('幫我製作一份簡報，主題：' + _pptTopic) : '幫我製作一份簡報。';
+                }
+            }
+
 // ====== 新增：AI 自主任務（uiautomator2）指令攔截器 ======
             // 這是 AI 自主任務的唯一識別旗標：只有明確以 /ap 開頭才會啟動免逐步確認的自主操控迴圈。
             if (text.toLowerCase() === "/ap stop" || text.toLowerCase() === "/ap cancel") {
@@ -15142,7 +15474,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                     try {
                         let _result = null;
                         if (appState.keys.gemini) {
-                            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${appState.keys.gemini}`;
+                            const url = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_LITE}:generateContent?key=${appState.keys.gemini}`;
                             const payload = {
                                 contents: [{ role: "user", parts: [{ text: _userMsg }] }],
                                 systemInstruction: { parts: [{ text: _sysPrompt }] },
@@ -15155,7 +15487,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                         } else if (appState.keys.grok) {
                             const url = 'https://api.x.ai/v1/chat/completions';
                             const payload = {
-                                model: 'grok-4-fast-reasoning',
+                                model: 'grok-4.3',
                                 messages: [
                                     { role: "system", content: _sysPrompt + ' 只回傳 JSON 物件，格式：{"isImageGen":bool,"refinedImagePrompt":"string","isLocationQuery":bool,"isCodeRequest":bool,"codeLanguage":"react|python|html|","isCanvasConvert":bool}' },
                                     { role: "user", content: _userMsg }
@@ -15236,7 +15568,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
             // 偵測使用者是否要求「建立/新增一個新技能」，
             // 若是，要求 AI 設計技能並輸出 skill_create JSON，
             // 前端攔截後寫入 .js + 更新 skills.json
-            const _isSkillCreationIntent = /(建立|新增|新建|做|寫|生成|創建|加入)\s*(一個|一份)?\s*(新)?\s*(本地)?技能|新增.*skill|create.*skill/i.test(text.trim());
+            const _isSkillCreationIntent = !!appState._novaForceSkillCreate || /(建立|新增|新建|做|寫|生成|創建|加入)\s*(一個|一份)?\s*(新)?\s*(本地)?技能|新增.*skill|create.*skill/i.test(text.trim());
             if (_isSkillCreationIntent && typeof window.NovaSkills === 'object') {
                 const _skillCreatePrompt = [
                     "【🛠️ 建立本地技能模式 - 最高優先】",
@@ -16339,7 +16671,8 @@ if (appState.pendingAnalyzeContextId) {
             // ★ 「製作簡報/生成PPT/產生投影片」等措辭含「生成/製作」動詞，
             //   可能被 _imgTestF 或輕量分類器誤判為圖片生成意圖，
             //   導致跳出解析度/比例選擇器。PPT 意圖具最高優先權，強制排除。
-            let isImageIntent = !_intentHints.isPPTIntent && (_isImageModelSelected || _imgTestF(finalPrompt.trim()) || _intentHints.isImageGen);
+            const _forceImg = !!appState._novaForceImgIntent; appState._novaForceImgIntent = false;   // v2.6.20：/img 指令
+            let isImageIntent = !_intentHints.isPPTIntent && (_forceImg || _isImageModelSelected || _imgTestF(finalPrompt.trim()) || _intentHints.isImageGen);
 
             if (!_isImageModelSelected && _intentHints.isImageGen && _intentHints.refinedImagePrompt && _intentHints.refinedImagePrompt.trim()) {
                 finalPrompt = _intentHints.refinedImagePrompt.trim();

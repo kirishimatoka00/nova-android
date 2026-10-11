@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!--
+  ═══ presentation_generator v39（Android；2026-10-11）═══
+  v39：套用主程式 index.html v2.6.20 設定頁「🧩 模型」的「啟用的模型」過濾——讀同源 localStorage nova_disabled_models，
+       五個模型下拉（首選文字／配圖／背景圖 LLM／排版 LLM／審查）載入後以原始清單為母版重建，停用的模型不再出現；
+       目前選的值若被停用，改用同供應商同類型第一個已啟用的。清單全被濾光時不動。
   ═══ presentation_generator v38（Android；2026-10-11）═══
   對齊桌面版 presentation_generator v47（模型清單與 OpenAI 接入）。本輪只做模型相關，其餘功能（v38–v46 桌面版新增項目）尚未移植：
   1. 模型清單：首選文字模型／配圖／背景圖 LLM／排版 LLM／審查模型全部改為與主程式 index.html v2.6.19 一致。Gemini 移除 gemini-3.5-flash
@@ -18,7 +22,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI HTML 簡報生成器 v38 · NOVA 120 Pro</title>
+    <title>AI HTML 簡報生成器 v39 · NOVA 120 Pro</title>
 
     <!-- Tailwind：CDN 為主（有網路），vendor/tailwind.css 為離線備援 -->
     <link rel="stylesheet" href="./vendor/tailwind.css">
@@ -7231,5 +7235,30 @@ async function saveOrDownload(content, filename, mimeType) {
     </div>
 </div>
 
+<script>
+/* ★ v39：啟用的模型過濾（與主程式 index.html v2.6.20 同一份停用清單 nova_disabled_models） */
+(function () {
+  function dis() { try { var a = JSON.parse(localStorage.getItem('nova_disabled_models') || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function ok(v) { v = String(v || ''); if (v === 'auto' || v === 'gemini-multi' || v === 'grok-multi') return true; return dis().indexOf(v) === -1; }
+  function grp(v) { v = String(v || ''); if (v === 'gemini-multi' || v === 'grok-multi') return ''; var p = /^gemini-/.test(v) ? 'gemini' : (/^grok-/.test(v) ? 'grok' : (/^gpt-/.test(v) ? 'gpt' : '')); return p ? p + ':' + (/image|imagen|imagine|nano-banana/i.test(v) ? 'image' : 'text') : ''; }
+  function apply() {
+    if (!dis().length) return;
+    ['sel-text-model', 'sel-img-model', 'sel-bg-gen-model', 'sel-layout-model', 'sel-review-model'].forEach(function (id) {
+      var sel = document.getElementById(id); if (!sel) return;
+      var master = sel.innerHTML, prev = sel.value, all = Array.prototype.map.call(sel.options, function (o) { return o.value; });
+      var t = document.createElement('select'); t.innerHTML = master;
+      Array.prototype.slice.call(t.querySelectorAll('option')).forEach(function (o) { if (!ok(o.value)) o.parentNode.removeChild(o); });
+      Array.prototype.slice.call(t.querySelectorAll('optgroup')).forEach(function (g) { if (!g.querySelector('option')) g.parentNode.removeChild(g); });
+      if (!t.querySelector('option')) return;
+      sel.innerHTML = t.innerHTML;
+      var want = prev;
+      if (!ok(prev)) { var g = grp(prev); for (var i = 0; i < all.length; i++) { if (grp(all[i]) === g && ok(all[i])) { want = all[i]; break; } } }
+      if (Array.prototype.some.call(sel.options, function (o) { return o.value === want; })) sel.value = want;
+    });
+    try { if (typeof updateHeaderBadge === 'function') updateHeaderBadge(); } catch (e) {}
+  }
+  window.addEventListener('load', function () { setTimeout(apply, 50); });
+})();
+</script>
 </body>
 </html>

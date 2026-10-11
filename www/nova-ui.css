@@ -1,0 +1,115 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
+   版本：v1.0.0
+   版本紀錄：
+   v1.0.0 - 初版。仿照 NOVA Desktop 的 nova-ui.css（v1.0.13）「手機寬度」版本的設計語言，只移植手機用得到的部分：
+            ① 設計 token（--nv-*）：黑夜／白晝兩套（白晝跟著 html.theme-light），之後要微調配色只改最上面兩個區塊。
+            ② 設定頁分頁列：橫向滑動的「膠囊」分頁（.nv-pill 風格套在 #settings-modal 的 stab-* 按鈕上）。
+            ③ 設定頁「啟用的模型」（.nova-em-*）：分組勾選清單，單欄排列、觸控目標 ≥ 40px。
+            ④ 斜線指令選單（.nv-slash-*）、對話分支按鈕（.nv-branch-btn）、通用卡片／按鈕／輸入框（.nv-card／.nv-btn／.nv-input），
+               後續批次（專家／會議／並行作業）的管理介面共用這些元件。
+            ⑤ 手機斷點沿用桌面版：640px（一般）、760px（設定頁）。
+   這份檔案只用 class／id 選擇器疊加樣式，不改任何功能；刪掉這份檔案＋index.html 的 <link> 就會回到舊外觀。
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ───────────── 1. Design tokens ───────────── */
+:root {
+  --nv-font: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  --nv-radius: 10px;
+  --nv-radius-lg: 14px;
+  --nv-chrome: #0f172a;
+  --nv-canvas: #020617;
+  --nv-card: #0f172a;
+  --nv-card-2: #1e293b;
+  --nv-line: #1e293b;
+  --nv-line-strong: #334155;
+  --nv-text: #f1f5f9;
+  --nv-text-2: #cbd5e1;
+  --nv-muted: #94a3b8;
+  --nv-faint: #7c8aa0;
+  --nv-hover: rgba(148,163,184,.10);
+  --nv-active: rgba(148,163,184,.17);
+  --nv-accent: #3b82f6;
+  --nv-accent-text: #60a5fa;
+  --nv-accent-soft: rgba(59,130,246,.14);
+  --nv-on-accent: #ffffff;
+  --nv-danger: #ef4444;
+  --nv-shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
+  --nv-shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+}
+html.theme-light {
+  --nv-chrome: #faf9f5;
+  --nv-canvas: #faf9f5;
+  --nv-card: #fdfcfa;
+  --nv-card-2: #f3f1ea;
+  --nv-line: #e8e5dc;
+  --nv-line-strong: #d9d5c9;
+  --nv-text: #141413;
+  --nv-text-2: #3d3929;
+  --nv-muted: #6b6860;
+  --nv-faint: #8a8679;
+  --nv-hover: rgba(20,20,19,.055);
+  --nv-active: rgba(20,20,19,.085);
+  --nv-accent: #c15f3c;
+  --nv-accent-text: #b5502d;
+  --nv-accent-soft: rgba(193,95,60,.12);
+  --nv-on-accent: #ffffff;
+  --nv-danger: #c0392b;
+  --nv-shadow: 0 1px 2px rgba(60,50,30,.08), 0 8px 24px rgba(60,50,30,.10);
+  --nv-shadow-sm: 0 1px 2px rgba(60,50,30,.08);
+}
+
+/* ───────────── 2. 通用元件（後續批次共用） ───────────── */
+.nv-card { background: var(--nv-card-2); border: 1px solid var(--nv-line-strong); border-radius: var(--nv-radius); padding: 10px 12px; color: var(--nv-text-2); }
+.nv-card h4 { color: var(--nv-text); font-size: 13px; font-weight: 700; margin: 0 0 6px; }
+html:root body .nv-btn { cursor: pointer; font-size: 12px; min-height: 36px; padding: 6px 12px; border-radius: 9px;
+  background: var(--nv-card) !important; color: var(--nv-text) !important; border: 1px solid var(--nv-line-strong) !important; }
+html:root body .nv-btn:active { border-color: var(--nv-accent) !important; }
+html:root body .nv-btn.nv-primary { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; border-color: var(--nv-accent) !important; }
+html:root body .nv-btn.nv-danger { color: var(--nv-danger) !important; }
+.nv-input { width: 100%; box-sizing: border-box; background: var(--nv-canvas); color: var(--nv-text); border: 1px solid var(--nv-line-strong);
+  border-radius: 9px; padding: 8px 10px; font-size: 14px; outline: none; }
+.nv-input:focus { border-color: var(--nv-accent); }
+.nv-muted { color: var(--nv-muted); font-size: 12px; }
+
+/* ───────────── 3. 設定頁：膠囊分頁（橫向滑動） ───────────── */
+#settings-modal [id^="stab-"] { min-height: 34px; padding: 6px 12px !important; border-radius: 999px !important; font-size: 12px; scroll-snap-align: start; }
+#settings-modal [id^="stab-"].bg-blue-600 { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; }
+#settings-modal [id^="stab-"].text-slate-400 { color: var(--nv-muted) !important; }
+#settings-modal [id^="stab-"].text-slate-400:active { background: var(--nv-hover); }
+
+/* ───────────── 4. 設定頁「啟用的模型」 ───────────── */
+.nova-em-group { margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--nv-line-strong); border-radius: 10px; background: var(--nv-card-2); }
+.nova-em-gh { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; color: var(--nv-text); font-size: 13px; }
+.nova-em-cnt { color: var(--nv-muted); font-size: 12px; margin-right: auto; }
+.nova-em-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 14px; }
+.nova-em-item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--nv-text-2); }
+.nova-em-item:active { background: var(--nv-hover); }
+.nova-em-item input { width: 18px; height: 18px; flex: none; }
+html:root body .nova-em-btn { cursor: pointer; font-size: 12px; padding: 5px 12px; border-radius: 8px;
+  background: var(--nv-card) !important; color: var(--nv-text) !important; border: 1px solid var(--nv-line-strong) !important; }
+html:root body .nova-em-btn:active { border-color: var(--nv-accent) !important; }
+@media (min-width: 641px) { .nova-em-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ───────────── 5. 斜線指令選單（輸入框上方浮出） ───────────── */
+#nv-slash-menu { position: fixed; left: 8px; right: 8px; bottom: 76px; max-height: 42vh; overflow-y: auto; z-index: 60;
+  background: var(--nv-card); border: 1px solid var(--nv-line-strong); border-radius: var(--nv-radius-lg); box-shadow: var(--nv-shadow);
+  padding: 4px; -webkit-overflow-scrolling: touch; }
+#nv-slash-menu.hidden { display: none; }
+.nv-slash-item { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; min-height: 44px; border-radius: 8px; cursor: pointer; justify-content: center; }
+.nv-slash-item:active, .nv-slash-item.on { background: var(--nv-active); }
+.nv-slash-item b { color: var(--nv-accent-text); font-size: 14px; font-weight: 700; }
+.nv-slash-item span { color: var(--nv-muted); font-size: 12px; }
+
+/* ───────────── 6. 對話分支按鈕 ───────────── */
+html:root body .nv-branch-btn { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-size: 11px; min-height: 28px; padding: 2px 8px;
+  border-radius: 999px; background: transparent !important; color: var(--nv-muted) !important; border: 1px solid var(--nv-line-strong) !important; }
+html:root body .nv-branch-btn:active { color: var(--nv-accent-text) !important; border-color: var(--nv-accent) !important; }
+
+/* ───────────── 7. 手機斷點 ───────────── */
+@media (max-width: 760px) {
+  #settings-modal > div { max-width: 100% !important; }
+}
+@media (max-width: 640px) {
+  .nv-btn, .nova-em-btn { min-height: 38px; }
+}
