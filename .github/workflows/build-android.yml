@@ -35,7 +35,15 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          set -o pipefail
+          ./gradlew assembleDebug --console=plain 2>&1 | tee ../build.log
+
+      # v2.6.24：編譯失敗時，把錯誤摘要寫成「註解（annotation）」，不用下載 log 就能在 Actions 摘要頁／API 看到原因
+      - name: Report build errors
+        if: failure()
+        run: |
+          MSG=$(grep -E "error:|What went wrong|FAILED|Execution failed|AAPT|Error:" -A4 build.log | head -60 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::error title=Gradle build failed::$MSG"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
