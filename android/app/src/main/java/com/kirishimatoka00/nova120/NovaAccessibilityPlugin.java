@@ -4,6 +4,7 @@ package com.kirishimatoka00.nova120;
  * NovaAccessibilityPlugin.java
  * 版本：v1.0.0
  * 版本紀錄：
+ * v1.0.1 - 修正編譯錯誤：Build.SDK_INT → Build.VERSION.SDK_INT（CI 回報）。
  * v1.0.0 - 批次 5b 新增。Capacitor 外掛 "NovaAccessibility"，把 NovaAccessibilityService 的能力開給 JS（nova-acc-bridge.js 使用）：
  *          status／openSettings／tap／swipe／globalAction／dump／screenshot／setText／paste／imeEnter／launchApp／openUrl／listPackages。
  *          服務尚未在系統「無障礙」設定開啟時，需要服務的方法一律回 reject("ACC_NOT_ENABLED")。
@@ -59,8 +60,8 @@ public class NovaAccessibilityPlugin extends Plugin {
         NovaAccessibilityService s = NovaAccessibilityService.getInstance();
         o.put("enabled", isEnabledInSettings());
         o.put("connected", s != null);
-        o.put("sdk", android.os.Build.SDK_INT);
-        o.put("canScreenshot", android.os.Build.SDK_INT >= 30);
+        o.put("sdk", android.os.Build.VERSION.SDK_INT);
+        o.put("canScreenshot", android.os.Build.VERSION.SDK_INT >= 30);
         o.put("model", android.os.Build.MODEL);
         if (s != null) {
             int[] sz = s.realSize();
