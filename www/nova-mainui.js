@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════
    nova-mainui.js — NOVA Android 主畫面（頂列＋抽屜選單）重新設計（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.0.1
    版本紀錄：
+   v1.0.1 - v2.6.34：頂列拿掉「電腦遙控」鈕（對標桌面版手機殼只有 logo／天氣／設定／選單；遙控入口在抽屜與「+」選單）。
    v1.0.0 - 批次 9（App v2.6.33）。對標桌面版在手機寬度（遠端 /app 網頁殼）的主畫面：頂列＝logo／天氣／（新）電腦遙控／設定／選單；抽屜選單＝新增對話、
             最近的對話（含資料夾）、工具與紀錄、設定。手機版在這基礎上補：
             ① 頂列「🖥️ 電腦遙控」鈕（對應桌面版手機殼的 🖥️ 浮動鈕）② 自主任務執行中，頂列出現紅色「⏹ 中止」膠囊（對標桌面版的緊急中止鈕；呼叫 novaAutoTask.cancel）
@@ -23,13 +24,11 @@
     }
 
     function buildTopbar() {
-        var top = D.querySelector('main > .md\\:hidden.flex.items-center.justify-between'); if (!top || $('nova-top-remote')) return;
+        var top = D.querySelector('main > .md\\:hidden.flex.items-center.justify-between'); if (!top || $('nova-task-stop')) return;
         top.id = top.id || 'nova-mobile-topbar';
         var right = top.querySelector('.ml-auto'); if (!right) return;
         var stop = mk('button', 'nv-stop-pill hidden', '<i class="ph-bold ph-stop-circle"></i><span>中止</span>'); stop.id = 'nova-task-stop'; stop.type = 'button'; stop.setAttribute('aria-label', '中止自主任務');
         stop.onclick = function () { try { if (W.novaAutoTask && W.novaAutoTask.cancel) W.novaAutoTask.cancel(); } catch (e) {} };
-        var rem = mk('button', 'nv-top-btn', '<i class="ph ph-desktop"></i>'); rem.id = 'nova-top-remote'; rem.type = 'button'; rem.setAttribute('aria-label', '電腦遙控'); rem.onclick = function () { call('openRemoteDesktop'); };
-        right.insertBefore(rem, right.querySelector('button[onclick^="openSettings"]'));
         top.insertBefore(stop, right);
         Array.prototype.forEach.call(right.querySelectorAll('button'), function (b) { b.classList.add('nv-top-btn'); });
     }

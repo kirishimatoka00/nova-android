@@ -482,7 +482,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.4.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.4.1">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -1707,8 +1707,7 @@
 
                             <!-- v2.6.27：模型選單搬到輸入區（比照桌面版；元素 id 與 onchange 不變） -->
 <div id="nova-model-picker" class="flex shrink-0">
-                             <select id="nova-unified-model-select" onchange="novaUnifiedModelChange(this.value)" aria-label="選擇模型"></select>
-                             <!-- Grok 子模型選擇 -->
+                                                          <!-- Grok 子模型選擇 -->
                              <select id="grok-sub-model-select" onchange="setGrokModel(this.value)" class="hidden bg-slate-800 border border-slate-600 text-slate-100 text-xs rounded-lg px-2 py-1 outline-none focus:border-slate-400 font-medium max-w-[140px] md:max-w-none">
                                  <option value="grok-multi">⚡ 智慧切換 (Auto)</option>
                                  <optgroup label="Grok 文字模型">
@@ -2036,8 +2035,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.33';
+        const NOVA_APP_VERSION = '2.6.34';
         const NOVA_CHANGELOG = [
+            { v: '2.6.34', date: '2026-10-11', notes: [
+                '修正無障礙連線測試：自 v2.6.28 起設定頁重新分類後，原本切換分頁時的同步程式（含自主任務「執行器」下拉的存檔）因找不到舊分頁外殼而整個丟錯，造成選了「無障礙服務」卻沒存進設定、測試連線仍走 atx-agent 而失敗。已補回；同時修復同一原因造成的模型勾選清單／記憶／語音選單沒更新。',
+                '模型選單改回桌面版手機遠端的雙下拉設計（左：子模型含「文字／圖像生成」分組；右：供應商 Gemini／Grok／Groq／Cohere／OpenAI／Local API）；頂列拿掉「連網搜尋」小標籤與遙控鈕（遙控入口在選單與「+」選單）。',
+            ] },
             { v: '2.6.33', date: '2026-10-11', notes: [
                 '主畫面重新設計（對標桌面版手機殼）：頂列新增「電腦遙控」鈕；自主任務執行中頂列出現紅色「中止」膠囊；抽屜選單項目加大成 48px 觸控高度、新增「技能」「電腦遙控」「Pro 研究」「Jev 與自主任務設定」入口，並在抽屜頂部顯示自主任務／Jev／遙控／技能狀態。',
             ] },
@@ -19832,7 +19835,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     <!-- 由 JS 動態插入到 chat-container -->
 
 
-<script src="./nova-model-picker.js?v=1.0.0"></script><script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
+<script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.0.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

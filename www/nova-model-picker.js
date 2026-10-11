@@ -2,6 +2,7 @@
    nova-model-picker.js — NOVA Android 單一模型選單（跟 index.html 放同一個資料夾 www/）
    版本：v1.0.0
    版本紀錄：
+   （v2.6.34 起不再載入：模型選單改回桌面版雙下拉設計；檔案保留供日後參考。）
    v1.0.0 - 初版（v2.6.28）。把輸入區原本的「主模型＋子模型」兩層下拉，合併成一個全展開的選單：點開後 Gemini／Grok／OpenAI／Groq／Cohere／Local
             全部列出，只分「文字模型」與「生圖模型」兩組。選項值格式「供應商::型號」，選取時依序呼叫原本的 setModel() 與 setGeminiModel／setGrokModel／setGptModel()，
             所以所有舊邏輯（狀態、持久化、設定頁停用模型過濾）都不用改。原本三個子模型下拉與主模型下拉仍留在 DOM（CSS 隱藏），當作資料來源與相容用。

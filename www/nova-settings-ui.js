@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-settings-ui.js — NOVA Android 設定頁重新分類（跟 index.html 放同一個資料夾 www/）
-   版本：v1.3.0
+   版本：v1.3.1
    版本紀錄：
+   v1.3.1 - 修正嚴重 bug（自 v2.6.28 起）：build() 清空 scroller 後 tab-main 等外殼消失，原本 switchSettingsTab 對固定 id 清單做 classList 時丟錯，所有分頁同步都沒執行——自主任務「執行器」下拉選了無障礙卻沒存進 localStorage（所以測試連線仍走 atx-agent 而失敗）、模型勾選清單／記憶／語音選單也都沒更新。改為補回隱藏空殼；同步失敗改印 console.warn。
    v1.3.0 - 批次 8（v2.6.32）。「整合」分類新增「🖥️ 電腦遙控」區塊（tab-remote，內容由 nova-remote.js 繪製）。
    v1.2.0 - 批次 7b（v2.6.31）。「Agent 與自主任務」分類新增「⚡ Jev 快速判斷」區塊（tab-jev，內容由 nova-jev-ui.js 繪製）。
    v1.1.0 - 批次 7a（v2.6.30）。「Agent 與自主任務」分類新增「技能」區塊（tab-skills，內容由 nova-skill-ui.js 繪製）。
@@ -62,13 +63,22 @@
         secOf['tab-main'] = 'models';
         card.insertBefore(wrap, scroller); scroller.textContent = ''; scroller.appendChild(holder);
         $('ns-search-input').addEventListener('input', function () { search(this.value); });
+        // v1.3.1：原本的 switchSettingsTab 會對固定清單裡的每個 tab-／stab- id 做 classList 操作，任何一個找不到就整個丟錯，
+        // 導致各分頁的同步（自主任務下拉的 onchange、模型勾選清單、記憶、語音…）全部沒執行。清掉 scroller 後 tab-main 等外殼會消失，這裡補回隱藏的空殼。
+        var stash = document.createElement('div'); stash.id = 'ns-stash'; stash.style.display = 'none';
+        ['main', 'voice', 'tg', 'ui', 'rec', 'cal', 'models', 'tools', 'memory', 'autotask'].forEach(function (k) {
+            if (!$('tab-' + k)) { var d = document.createElement('div'); d.id = 'tab-' + k; d.className = 'hidden'; stash.appendChild(d); }
+            if (!$('stab-' + k)) { var b = document.createElement('button'); b.id = 'stab-' + k; stash.appendChild(b); }
+        });
+        card.appendChild(stash);
     }
 
     var orig = W.switchSettingsTab;
     function runHooks(cat) {   // 原本 switchSettingsTab 在切到各分頁時會做的同步（重畫清單、填值…）
-        if (typeof orig !== 'function') return;
+        if (typeof orig !== 'function') { console.warn('[settings-ui] 找不到原本的 switchSettingsTab'); return; }
         var tabs = []; CATS.forEach(function (c) { if (c.id === cat) c.secs.forEach(function (s) { tabs.push('tab-' + s[0]); }); });
-        tabs.forEach(function (t) { if ($(t)) { try { orig(t); } catch (e) { /* 單一分頁同步失敗不影響其他 */ } } });
+        var KNOWN = ['main', 'voice', 'tg', 'ui', 'rec', 'cal', 'models', 'tools', 'memory', 'autotask'];
+        tabs.forEach(function (t) { if ($(t) && KNOWN.indexOf(t.slice(4)) >= 0) { try { orig(t); } catch (e) { console.warn('[settings-ui] sync ' + t + ' 失敗：', e && e.message); } } });
         if (cat === 'integrations' && typeof W.novaRemoteRenderSettings === 'function') { try { W.novaRemoteRenderSettings(); } catch (e) { /* 忽略 */ } }
         if (cat === 'agent' && typeof W.novaSkillRenderSettings === 'function') { try { W.novaSkillRenderSettings(); if (W.novaJevRenderSettings) W.novaJevRenderSettings(); } catch (e) { /* 技能區塊繪製失敗不影響其他 */ } }
         Array.prototype.forEach.call(document.querySelectorAll('#ns-cats [id^="tab-"]'), function (el) { el.classList.remove('hidden'); });
