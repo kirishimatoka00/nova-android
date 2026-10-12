@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.3 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.4 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.3 紅色錄音提示顯示累計時長（mm:ss／h:mm:ss）
+ * 版本紀錄：v1.0.4 依副檔名決定 mime（.m4a→audio/mp4，原生端已轉封裝，播放器能顯示正確總長）
+ * v1.0.3 紅色錄音提示顯示累計時長（mm:ss／h:mm:ss）
  *           v1.0.2 修正分段讀檔時 offset 永遠是 0（Capacitor getLong 遇 Integer 回傳預設值），造成存下來的音檔是開頭片段重複；取回後比對檔案大小；原生端改為封存 3 天不直接刪除；新增原生事件記錄
  *           v1.0.1 修正大段落（約 1 小時）取回時一次傳整個 base64 造成 App 閃退；改分段讀檔，並加防閃退迴圈（同一檔案失敗 3 次先跳過）
  *           v1.0.0 初版
@@ -45,8 +46,9 @@
       parts.push(u); off += r.read;
       if (size && off >= size) break;
     }
-    return new Blob(parts, { type: 'audio/aac' });
+    return new Blob(parts, { type: mimeOf(path) });
   }
+  function mimeOf(p) { return /\.m4a$/i.test(p || '') ? 'audio/mp4' : 'audio/aac'; }
   /* 防閃退迴圈：同一個檔案嘗試處理超過 3 次仍沒成功（很可能每次都讓 App 崩潰）就先跳過，讓 App 能正常開啟 */
   function tries(path) { try { return parseInt(localStorage.getItem('nova_nr_try_' + path) || '0') || 0; } catch (e) { return 0; } }
   function setTries(path, n) { try { if (n) localStorage.setItem('nova_nr_try_' + path, String(n)); else localStorage.removeItem('nova_nr_try_' + path); } catch (e) {} }
@@ -71,7 +73,7 @@
           var cx = s.ctx === 'note' ? 'note' : 'record';
           appState.recordingContext = cx; appState.currentAudioTranscript = '';
           var isSeg = (s.segCount > 1) || !s.sessionEnded;
-          await processAndSaveAudioSegment([blob], 'audio/aac', Date.now() - (s.durationMs || 0), cx, isSeg);
+          await processAndSaveAudioSegment([blob], mimeOf(s.path), Date.now() - (s.durationMs || 0), cx, isSeg);
           await P().ackSegment({ path: s.path }); setTries(s.path, 0); saved++;
           if (s.sessionEnded && s.index >= s.segCount - 1) { appState.recGroupId = null; NR.lastSid = null; }
         } catch (e) {
