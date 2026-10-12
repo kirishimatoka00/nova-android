@@ -492,7 +492,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.0"></script>
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
     <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
@@ -1109,7 +1109,7 @@
                                 <p class="text-xs font-bold text-slate-300 flex items-center gap-2"><i class="ph-fill ph-scissors text-orange-400"></i> 錄音自動分切</p>
                                 <div class="flex items-center gap-3">
                                     <label class="text-xs text-slate-400 whitespace-nowrap">達到</label>
-                                    <input type="number" id="rec-split-mins" min="5" max="360" step="5" class="w-24 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:border-orange-400 outline-none" placeholder="60">
+                                    <input type="number" id="rec-split-mins" min="0" max="360" step="5" class="w-24 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white text-center focus:border-orange-400 outline-none" placeholder="60（0＝不分切）">
                                     <label class="text-xs text-slate-400 whitespace-nowrap">分鐘自動截斷並續接</label>
                                 </div>
                                 <p class="text-[10px] text-slate-500">超過設定時長時，系統自動停止目前錄音並立刻啟動下一段，所有分段在做 AI 分析時會自動合併處理。設為 0 代表不自動分切（預設 60 分鐘）。</p>
@@ -2238,8 +2238,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.47';
+        const NOVA_APP_VERSION = '2.6.48';
         const NOVA_CHANGELOG = [
+            { v: '2.6.48', date: '2026-10-12', notes: [
+                '修正錄音設定沒進備份／沒保存：自動分切與逐字稿分段分鐘數原本只有按下設定頁底部「儲存」才會存（沒按就不會被使用、也不會進備份），現在輸入完就存；並修正「設為 0＝不自動分切」其實會被改回 60 的問題（儲存、啟動、還原三處都會把 0 變成 60）',
+                '重新安裝後可還原舊資料：全新安裝時若沒有任何資料，會跳出「從舊備份還原」提示，可直接選 Documents/NOVA_Backups 裡的 NOVA_Live.json 或完整備份檔；並避免全新安裝一開機就用空白狀態覆蓋掉上次留下的 NOVA_Live.json（寫入前先另存為 NOVA_Live_上次安裝.json）'
+            ] },
             { v: '2.6.47', date: '2026-10-12', notes: [
                 '修正大錄音檔「自動上傳 Google Drive」失敗但手動上傳可以：自動上傳發生在錄音剛結束、螢幕可能還關著、前景服務也剛被關掉的時候，Android 會限制背景網路。現在錄音結束後會先保留前景服務直到上傳完成，上傳失敗時會記進待上傳清單，回到前景自動重試（失敗原因也會顯示在訊息裡）'
             ] },
@@ -3464,6 +3468,19 @@ async function encodeMp3(audioBuffer) {
             const CapFS = _novaWalGetCapFS();
             if (!CapFS) { if(manual) showToast('⚠️ 此功能僅限 Android App'); return; }
             if (_novaWalBusy) return;
+            // v2.6.48：全新安裝（沒有金鑰、沒有任何資料）時不寫快照，避免用空白狀態蓋掉上次安裝留下的 NOVA_Live.json；
+            //          一旦要開始寫，先把舊檔另存成 NOVA_Live_上次安裝.json
+            try {
+                const _fresh = !(appState.keys && (appState.keys.gemini || appState.keys.openai || appState.keys.grok)) && (appState.notes || []).length === 0 && (appState.todos || []).length === 0 && (appState.messages || []).length <= 1;
+                if (_fresh && !manual) return;
+                if (!localStorage.getItem('nova_wal_prev_kept')) {
+                    localStorage.setItem('nova_wal_prev_kept', '1');
+                    try {
+                        try { await CapFS.deleteFile({ path: 'NOVA_Backups/NOVA_Live_上次安裝.json', directory: _novaWalDir || _NOVA_WAL_DIR_PRIMARY }); } catch (e) {}
+                        await CapFS.copy({ from: 'NOVA_Backups/' + _NOVA_WAL_SNAPSHOT, to: 'NOVA_Backups/NOVA_Live_上次安裝.json', directory: _novaWalDir || _NOVA_WAL_DIR_PRIMARY, toDirectory: _novaWalDir || _NOVA_WAL_DIR_PRIMARY });
+                    } catch (e) { /* 舊檔不存在或無權限：略過 */ }
+                }
+            } catch (e) {}
             _novaWalBusy = true;
             try {
                 if (manual) showToast('💾 正在建立本地快照...', 4000);
@@ -3681,7 +3698,7 @@ async function encodeMp3(audioBuffer) {
                 if (typeof data.hideLiveCapture === 'boolean') { appState.hideLiveCapture = data.hideLiveCapture; localStorage.setItem('nova_hide_live_capture', data.hideLiveCapture); }
                 if (data.recSettings) {
                     if (data.recSettings.analysisChunkMins) { appState.recSettings.analysisChunkMins = data.recSettings.analysisChunkMins; localStorage.setItem('nova_rec_chunk_mins',  data.recSettings.analysisChunkMins); }
-                    if (data.recSettings.autoSplitMins)     { appState.recSettings.autoSplitMins     = data.recSettings.autoSplitMins;     localStorage.setItem('nova_rec_split_mins',  data.recSettings.autoSplitMins); }
+                    if (Number.isFinite(data.recSettings.autoSplitMins) && data.recSettings.autoSplitMins >= 0)     { appState.recSettings.autoSplitMins     = data.recSettings.autoSplitMins;     localStorage.setItem('nova_rec_split_mins',  data.recSettings.autoSplitMins); }
                     if (data.recSettings.localSaveDirName)  { appState.recSettings.localSaveDirName  = data.recSettings.localSaveDirName;  localStorage.setItem('nova_rec_dir_name',    data.recSettings.localSaveDirName); }
                     if (typeof data.recSettings.autoUploadAudio === 'boolean') { appState.recSettings.autoUploadAudio = data.recSettings.autoUploadAudio; localStorage.setItem('nova_rec_auto_upload_audio', data.recSettings.autoUploadAudio); }
                     if (typeof data.recSettings.autoUploadNotes === 'boolean') { appState.recSettings.autoUploadNotes = data.recSettings.autoUploadNotes; localStorage.setItem('nova_rec_auto_upload_notes', data.recSettings.autoUploadNotes); }
@@ -3800,7 +3817,7 @@ async function encodeMp3(audioBuffer) {
             // 錄音設定
             recSettings: {
                 analysisChunkMins: parseInt(localStorage.getItem('nova_rec_chunk_mins')) || 5,
-                autoSplitMins: parseInt(localStorage.getItem('nova_rec_split_mins')) || 60,
+                autoSplitMins: (function () { var v = parseInt(localStorage.getItem('nova_rec_split_mins')); return (isNaN(v) || v < 0) ? 60 : v; })(),   // v2.6.48：0＝不分切必須能保存（原本 || 60 會把 0 變回 60）
                 localSaveDirName: localStorage.getItem('nova_rec_dir_name') || '',
                 localDirHandle: null,  // FileSystemDirectoryHandle（不能放 localStorage）
                 autoUploadAudio: localStorage.getItem('nova_rec_auto_upload_audio') === 'true',
@@ -6402,6 +6419,12 @@ return html;
             addMessage(`🛑 使用者已強制中斷雙 AI 協作模式。`, 'system');
         };
         
+        // v2.6.48：錄音設定的兩個數字欄位改為「輸入就存」，不必再按下方儲存鍵（原本沒按儲存就不會進備份）
+        document.addEventListener('change', function (e) {
+            const t = e.target; if (!t || !t.id) return;
+            if (t.id === 'rec-split-mins') { const v = parseInt(t.value); appState.recSettings.autoSplitMins = (isNaN(v) || v < 0) ? 60 : v; localStorage.setItem('nova_rec_split_mins', appState.recSettings.autoSplitMins); t.value = appState.recSettings.autoSplitMins; }
+            else if (t.id === 'rec-chunk-mins') { const v = Math.max(1, parseInt(t.value) || 5); appState.recSettings.analysisChunkMins = v; localStorage.setItem('nova_rec_chunk_mins', v); t.value = v; }
+        });
         window.saveKeys = function() {
             const s = (id, key) => { const v = document.getElementById(id).value.trim();
 appState.keys[key] = v; localStorage.setItem('nova_key_'+key, v); };
@@ -6449,7 +6472,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
             // 錄音設定
             const splitMinsEl = document.getElementById('rec-split-mins');
             const chunkMinsEl = document.getElementById('rec-chunk-mins');
-            if (splitMinsEl) { appState.recSettings.autoSplitMins = parseInt(splitMinsEl.value) || 60; localStorage.setItem('nova_rec_split_mins', appState.recSettings.autoSplitMins); }
+            if (splitMinsEl) { { const _sv = parseInt(splitMinsEl.value); appState.recSettings.autoSplitMins = (isNaN(_sv) || _sv < 0) ? 60 : _sv; } localStorage.setItem('nova_rec_split_mins', appState.recSettings.autoSplitMins); }
             if (chunkMinsEl) { appState.recSettings.analysisChunkMins = Math.max(1, parseInt(chunkMinsEl.value) || 5); localStorage.setItem('nova_rec_chunk_mins', appState.recSettings.analysisChunkMins); }
 
             closeSettings(); showToast("✅ 設定已儲存"); updateModelUI();
@@ -20589,7 +20612,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
