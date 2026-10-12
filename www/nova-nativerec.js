@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.0 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.1 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.0 初版
+ * 版本紀錄：v1.0.1 修正大段落（約 1 小時）取回時一次傳整個 base64 造成 App 閃退；改分段讀檔，並加防閃退迴圈（同一檔案失敗 3 次先跳過）
+ *           v1.0.0 初版
  */
 (function () {
   'use strict';
@@ -31,10 +32,22 @@
     for (var o = 0; o < n; o += CH) { var l = Math.min(CH, n - o), u = new Uint8Array(l); for (var i = 0; i < l; i++) u[i] = bin.charCodeAt(o + i); parts.push(u); }
     return new Blob(parts, { type: mime });
   }
-  async function readSeg(path) {
-    try { var r = await FS().readFile({ path: 'file://' + path }); if (r && r.data) return b64ToBlob(r.data, 'audio/aac'); } catch (e) { console.warn('[NativeRec] Filesystem 讀取失敗，改用 fetch', e); }
-    var res = await fetch(W.Capacitor.convertFileSrc('file://' + path)); var b = await res.blob(); return new Blob([b], { type: 'audio/aac' });
+  // v1.0.1：分段讀檔（每次約 0.75MB）。v1.0.0 一次把整檔 base64 傳過橋接，1 小時（約 29MB）的段落會讓 App 崩潰，重開又重試 → 一進 App 就閃退
+  async function readSeg(path, size) {
+    var CH = 786432, off = 0, parts = [];
+    for (;;) {
+      var r = await P().readChunk({ path: path, offset: off, length: CH });
+      if (!r || !r.read) break;
+      var bin = atob(r.data), u = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      parts.push(u); off += r.read;
+      if (size && off >= size) break;
+    }
+    return new Blob(parts, { type: 'audio/aac' });
   }
+  /* 防閃退迴圈：同一個檔案嘗試處理超過 3 次仍沒成功（很可能每次都讓 App 崩潰）就先跳過，讓 App 能正常開啟 */
+  function tries(path) { try { return parseInt(localStorage.getItem('nova_nr_try_' + path) || '0') || 0; } catch (e) { return 0; } }
+  function setTries(path, n) { try { if (n) localStorage.setItem('nova_nr_try_' + path, String(n)); else localStorage.removeItem('nova_nr_try_' + path); } catch (e) {} }
 
   /* 把原生端已結束的段落取回，存成錄音紀錄／語音筆記 */
   async function ingest() {
@@ -45,14 +58,17 @@
       for (var i = 0; i < segs.length; i++) {
         var s = segs[i];
         try {
-          var blob = await readSeg(s.path);
+          var tn = tries(s.path);
+          if (tn >= 3) { if (!NR.warned) { NR.warned = true; msg('⚠️ 有一段錄音（' + s.path.split('/').pop() + '，' + Math.round((s.size || 0) / 1048576) + 'MB）處理失敗多次，已先跳過以免 App 閃退；檔案仍在手機的 App 資料夾內。'); } continue; }
+          setTries(s.path, tn + 1);
+          var blob = await readSeg(s.path, s.size);
           if (!blob || blob.size < 2048) { await P().ackSegment({ path: s.path }); continue; }
           if (NR.lastSid !== s.sid) { appState.recGroupId = null; NR.lastSid = s.sid; }
           var cx = s.ctx === 'note' ? 'note' : 'record';
           appState.recordingContext = cx; appState.currentAudioTranscript = '';
           var isSeg = (s.segCount > 1) || !s.sessionEnded;
           await processAndSaveAudioSegment([blob], 'audio/aac', Date.now() - (s.durationMs || 0), cx, isSeg);
-          await P().ackSegment({ path: s.path }); saved++;
+          await P().ackSegment({ path: s.path }); setTries(s.path, 0); saved++;
           if (s.sessionEnded && s.index >= s.segCount - 1) { appState.recGroupId = null; NR.lastSid = null; }
         } catch (e) {
           console.warn('[NativeRec] 段落處理失敗', e);

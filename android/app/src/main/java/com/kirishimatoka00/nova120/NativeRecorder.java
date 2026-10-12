@@ -67,7 +67,10 @@ public class NativeRecorder {
     }
 
     private final Runnable splitRun = new Runnable() {
-        @Override public void run() { doSplit(); }
+        @Override public void run() {
+            try { doSplit(); }
+            catch (Throwable t) { lastError = "分切發生例外：" + t; }
+        }
     };
 
     public synchronized void start(String ctxName, int splitMins) throws Exception {

@@ -146,4 +146,33 @@ public class RecordingServicePlugin extends Plugin {
         if (p != null) NativeRecorder.get(getContext()).ack(p);
         call.resolve();
     }
+
+    // readChunk({path, offset, length}) → {data(base64), read, size}  v2.6.50：分段讀檔，避免一次把整個大檔 base64 塞過橋接而崩潰
+    @PluginMethod
+    public void readChunk(PluginCall call) {
+        java.io.RandomAccessFile raf = null;
+        try {
+            String p = call.getString("path");
+            Long off = call.getLong("offset", 0L);
+            Integer len = call.getInt("length", 786432);
+            java.io.File f = new java.io.File(p);
+            if (!f.getParentFile().equals(NativeRecorder.get(getContext()).dir())) { call.reject("路徑不在錄音資料夾內"); return; }
+            long offset = off == null ? 0L : off.longValue();
+            int want = Math.max(1, Math.min(len == null ? 786432 : len.intValue(), 1048576));
+            raf = new java.io.RandomAccessFile(f, "r");
+            long size = raf.length();
+            int n = (int) Math.max(0L, Math.min((long) want, size - offset));
+            byte[] buf = new byte[n];
+            if (n > 0) { raf.seek(offset); raf.readFully(buf); }
+            JSObject r = new JSObject();
+            r.put("data", android.util.Base64.encodeToString(buf, android.util.Base64.NO_WRAP));
+            r.put("read", n);
+            r.put("size", size);
+            call.resolve(r);
+        } catch (Throwable e) {
+            call.reject("讀取錄音檔失敗: " + e.getMessage());
+        } finally {
+            try { if (raf != null) raf.close(); } catch (Exception ignore) {}
+        }
+    }
 }

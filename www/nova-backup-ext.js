@@ -19,7 +19,7 @@
         try {
             for (var i = 0; i < localStorage.length; i++) {
                 var k = localStorage.key(i);
-                if (!k || !/^(nova_|cal_)/.test(k) || EXCLUDE[k]) continue;
+                if (!k || !/^(nova_|cal_)/.test(k) || EXCLUDE[k] || k.indexOf('nova_nr_try_') === 0) continue;
                 var v = localStorage.getItem(k);
                 if (v != null && v.length <= MAX_VAL) out[k] = v;
             }

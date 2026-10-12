@@ -2238,8 +2238,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.49';
+        const NOVA_APP_VERSION = '2.6.50';
         const NOVA_CHANGELOG = [
+            { v: '2.6.50', date: '2026-10-12', notes: [
+                '修正原生錄音在分切點（1 小時段落）閃退、之後一開 App 就閃退：段落取回時一次把整個檔案（約 29MB）轉 base64 傳過橋接，超出 WebView 能承受的大小而崩潰，重開又自動重試所以每次開啟都崩潰。改成分段讀檔（每次約 0.75MB），並加上防閃退迴圈（同一個錄音檔處理失敗 3 次會先跳過，App 才能正常開啟）',
+                '原生分切計時的例外保護'
+            ] },
             { v: '2.6.49', date: '2026-10-12', notes: [
                 '錄音改為原生錄音（Android 前景服務裡的原生 MediaRecorder，錄成 AAC）：實測 WebView 錄音在關螢幕長時間後會閃退、整段遺失。原生錄音不經過網頁，WebView 當掉或 App 被系統回收都不影響錄音；自動分切也由原生端執行；下次開啟會自動找回遺留的段落。可在 設定→錄音 關閉（改回 WebView 錄音）',
                 '錄音格式新增 AAC（.aac）的副檔名辨識（本機下載、雲端上傳）',
@@ -20617,7 +20621,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.1"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
