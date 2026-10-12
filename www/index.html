@@ -2238,8 +2238,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.51';
+        const NOVA_APP_VERSION = '2.6.52';
         const NOVA_CHANGELOG = [
+            { v: '2.6.52', date: '2026-10-12', notes: [
+                '紅色錄音提示直接顯示累計錄音時長（例如「錄音中 12:34 (點擊停止)」，超過一小時顯示 1:02:03）；自動分切時不歸零'
+            ] },
             { v: '2.6.51', date: '2026-10-12', notes: [
                 '修正原生錄音存下來的音檔內容錯誤（錄音長度正確但實際只有開頭一小段、播放到幾分鐘就停住）：分段讀檔時 Capacitor 的 getLong 遇到整數會回傳預設值 0，每一段都讀成檔案開頭。改為直接讀 JSON 數值；取回後會比對檔案大小，不符就不存、不刪原檔',
                 '原生端處理完的音檔改為搬到封存資料夾保留 3 天，不再直接刪除（萬一內容有問題還救得回來）',
@@ -20626,7 +20629,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.2"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.3"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
