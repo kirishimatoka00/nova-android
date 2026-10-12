@@ -17,6 +17,8 @@ public class RecordingForegroundService extends Service {
     private static final String CHANNEL_NAME = "NOVA 錄音服務";
     private static final int    NOTIF_ID     = 2001;
     public  static final String ACTION_STOP  = "ACTION_STOP_RECORDING";
+    public  static final String ACTION_START_REC = "ACTION_START_NATIVE_REC";   // v2.6.49：原生錄音
+    public  static final String ACTION_STOP_REC  = "ACTION_STOP_NATIVE_REC";
 
     // ── 建立服務時先建立 Notification Channel（Android 8+ 必要）
     @Override
@@ -28,8 +30,15 @@ public class RecordingForegroundService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
 
-        // 收到 STOP 指令時關閉服務
+        // v2.6.49：停止原生錄音（服務保持前景，讓 App 之後還能在背景完成處理與上傳；之後由 ACTION_STOP 收掉）
+        if (intent != null && ACTION_STOP_REC.equals(intent.getAction())) {
+            NativeRecorder.get(this).stop();
+            return START_NOT_STICKY;
+        }
+
+        // 收到 STOP 指令時關閉服務（原生錄音進行中時一律忽略，避免其他功能呼叫 releaseMicrophone 把錄音砍掉）
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
+            if (NativeRecorder.get(this).isRecording()) return START_NOT_STICKY;
             stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
@@ -56,6 +65,15 @@ public class RecordingForegroundService extends Service {
                 .build();
 
         startForeground(NOTIF_ID, notification);
+
+        // v2.6.49：要求開始原生錄音（先 startForeground 再開麥克風，Android 12+ 才允許在背景持續使用麥克風）
+        if (intent != null && ACTION_START_REC.equals(intent.getAction())) {
+            try {
+                NativeRecorder.get(this).start(intent.getStringExtra("ctx"), intent.getIntExtra("splitMins", 0));
+            } catch (Exception e) {
+                NativeRecorder.get(this).lastError = "原生錄音啟動失敗：" + e.getMessage();
+            }
+        }
         return START_NOT_STICKY;
     }
 

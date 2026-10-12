@@ -2238,8 +2238,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.48';
+        const NOVA_APP_VERSION = '2.6.49';
         const NOVA_CHANGELOG = [
+            { v: '2.6.49', date: '2026-10-12', notes: [
+                '錄音改為原生錄音（Android 前景服務裡的原生 MediaRecorder，錄成 AAC）：實測 WebView 錄音在關螢幕長時間後會閃退、整段遺失。原生錄音不經過網頁，WebView 當掉或 App 被系統回收都不影響錄音；自動分切也由原生端執行；下次開啟會自動找回遺留的段落。可在 設定→錄音 關閉（改回 WebView 錄音）',
+                '錄音格式新增 AAC（.aac）的副檔名辨識（本機下載、雲端上傳）',
+                '修正：原生錄音進行中，其他功能呼叫「釋放麥克風」不會再把錄音服務關掉'
+            ] },
             { v: '2.6.48', date: '2026-10-12', notes: [
                 '修正錄音設定沒進備份／沒保存：自動分切與逐字稿分段分鐘數原本只有按下設定頁底部「儲存」才會存（沒按就不會被使用、也不會進備份），現在輸入完就存；並修正「設為 0＝不自動分切」其實會被改回 60 的問題（儲存、啟動、還原三處都會把 0 變成 60）',
                 '重新安裝後可還原舊資料：全新安裝時若沒有任何資料，會跳出「從舊備份還原」提示，可直接選 Documents/NOVA_Backups 裡的 NOVA_Live.json 或完整備份檔；並避免全新安裝一開機就用空白狀態覆蓋掉上次留下的 NOVA_Live.json（寫入前先另存為 NOVA_Live_上次安裝.json）'
@@ -2690,7 +2695,7 @@
         window.novaFgsAcquire = function () { window._novaFgsHold++; };
         window.novaFgsRelease = function () {
             window._novaFgsHold = Math.max(0, window._novaFgsHold - 1);
-            if (!window._novaFgsHold) { try { if (!(mediaRecorder && mediaRecorder.state !== 'inactive') && appState.translateMode === 'off' && !appState.isContinuous) stopRecordingForegroundService(); } catch (e) {} }
+            if (!window._novaFgsHold) { try { if (!window._nativeRecActive && !(mediaRecorder && mediaRecorder.state !== 'inactive') && appState.translateMode === 'off' && !appState.isContinuous) stopRecordingForegroundService(); } catch (e) {} }
         };
         async function stopRecordingForegroundService() {
             if (window._novaFgsHold > 0) return;
@@ -12038,7 +12043,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                         const base64Data = await new Promise((resolve, reject) => {
                             const fr = new FileReader(); fr.onloadend = () => resolve(fr.result.split(',')[1]); fr.onerror = reject; fr.readAsDataURL(audioBlob);
                         });
-                        const uploadExt  = (rec.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : '.weba';
+                        const uploadExt  = (rec.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (rec.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
                         const uploadFilename = (rec.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_') + uploadExt;
                         showToast(`☁️ 第 ${i+1}/${ids.length} 段（${rawSizeMB} MB）上傳中…`);
                         const res = await fetch(appState.driveUrl, {
@@ -12074,7 +12079,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                 if (!audioBlob && record.audioData) audioBlob = base64ToBlob(record.audioData);
                 if (!audioBlob) { showToast("找不到本地音檔資料。"); return; }
 
-                const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : '.weba';
+                const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (record.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
                 const safeTitle = (record.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_');
                 const filename = safeTitle + ext;
 
@@ -12119,7 +12124,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                     console.error("MP3 Conversion Error:", e);
                     showToast(`❌ MP3 轉換失敗：${e.message}，將改以原格式下載`);
                     // 降級：原格式下載
-                    const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : '.weba';
+                    const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (record.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
                     const url = URL.createObjectURL(audioBlob);
                     const a = document.createElement('a');
                     a.href = url; a.download = (record.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_') + ext;
@@ -14458,7 +14463,7 @@ try {
             const year    = dateObj.getFullYear();
             const timeStr = dateObj.toTimeString().split(' ')[0].replace(/:/g, '');
             // 原生使用 weba/m4a 格式儲存，不自動轉 MP3
-            const fileExt  = actualMimeType.includes('mp4') ? '.m4a' : '.weba';
+            const fileExt  = actualMimeType.includes('mp4') ? '.m4a' : actualMimeType.includes('aac') ? '.aac' : '.weba';
             const filename    = `NOVA_Audio_${month}${day}${year}_${timeStr}${fileExt}`;
             const displayDate = dateObj.toLocaleString();
             const recordId    = Date.now();
@@ -15180,7 +15185,7 @@ try {
                 // 直接使用原始 weba 格式上傳，不轉 MP3
                 const uploadBlob = audioBlob;
                 const uploadMime = rec.mimeType || 'audio/webm';
-                const uploadExt  = uploadMime.includes('mp4') ? '.m4a' : '.weba';
+                const uploadExt  = uploadMime.includes('mp4') ? '.m4a' : uploadMime.includes('aac') ? '.aac' : '.weba';
                 let uploadFilename = rec.title.replace(/[\\/:*?"<>|]/g, '_') + uploadExt;
                 const finalSizeMB = rawSizeMB;
 
@@ -20612,7 +20617,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.0"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

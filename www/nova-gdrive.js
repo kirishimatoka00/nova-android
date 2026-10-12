@@ -89,7 +89,7 @@
 
   /* ───────── 音訊／筆記上傳覆寫 ───────── */
   var orig = { manual: W.manualUploadToDrive, note: W.uploadNoteAudioToDrive, batch: W.batchUploadToDrive, backup: W.backupNoteToDrive };
-  function audioName(rec, blob) { var mime = rec.mimeType || blob.type || 'audio/webm', ext = mime.indexOf('mp4') !== -1 ? '.m4a' : mime.indexOf('mpeg') !== -1 ? '.mp3' : mime.indexOf('wav') !== -1 ? '.wav' : '.weba'; return String(rec.title || rec.filename || ('NOVA_Audio_' + rec.id)).replace(/[\\/:*?"<>|]/g, '_') + ext; }
+  function audioName(rec, blob) { var mime = rec.mimeType || blob.type || 'audio/webm', ext = mime.indexOf('mp4') !== -1 ? '.m4a' : mime.indexOf('aac') !== -1 ? '.aac' : mime.indexOf('mpeg') !== -1 ? '.mp3' : mime.indexOf('wav') !== -1 ? '.wav' : '.weba'; return String(rec.title || rec.filename || ('NOVA_Audio_' + rec.id)).replace(/[\\/:*?"<>|]/g, '_') + ext; }
   async function getBlob(rec) { var b = await W.loadAudioBlob(rec.id); if (!b && rec.audioData) b = W.base64ToBlob(rec.audioData); return b; }
   async function uploadRecord(rec, store, label) {
     var blob = await getBlob(rec); if (!blob) throw new Error('找不到本地音訊資料');
