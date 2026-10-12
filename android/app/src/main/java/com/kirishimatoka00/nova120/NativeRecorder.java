@@ -1,6 +1,8 @@
 package com.kirishimatoka00.nova120;
 
 import android.content.Context;
+import android.media.AudioManager;
+import android.media.AudioRecordingConfiguration;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
@@ -49,7 +51,78 @@ public class NativeRecorder {
     private PowerManager.WakeLock wl;
     public volatile String lastError = "";
 
+    private boolean lastSilenced = false;
+    private long lastBeatSize = -1;
+    private AudioManager.AudioRecordingCallback recCb;
+
     private NativeRecorder(Context c) { ctx = c; }
+
+    // ───── v2.6.51：原生事件記錄（錄音異常時用來判斷原因）─────
+    public synchronized void log(String m) {
+        try {
+            File f = new File(dir(), "rec.log");
+            if (f.exists() && f.length() > 100 * 1024) {   // 過大就砍掉前半
+                String all = readText(f);
+                writeText(f, all.substring(all.length() / 2));
+            }
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US);
+            FileOutputStream o = new FileOutputStream(f, true);
+            try { o.write((sdf.format(new java.util.Date()) + " " + m + "\n").getBytes("UTF-8")); } finally { o.close(); }
+        } catch (Exception ignore) {}
+    }
+
+    public synchronized String readLog(int maxChars) {
+        try {
+            File f = new File(dir(), "rec.log");
+            if (!f.exists()) return "";
+            String all = readText(f);
+            return all.length() > maxChars ? all.substring(all.length() - maxChars) : all;
+        } catch (Exception e) { return ""; }
+    }
+
+    private final Runnable beatRun = new Runnable() {
+        @Override public void run() {
+            try {
+                synchronized (NativeRecorder.this) {
+                    if (!recording) return;
+                    long sz = (curFile != null) ? curFile.length() : -1;
+                    log("♥ 第" + (idx + 1) + "段 已寫入 " + (sz / 1024) + "KB" + (sz == lastBeatSize ? " ⚠檔案沒有成長（錄音可能已停擺或被靜音）" : ""));
+                    lastBeatSize = sz;
+                }
+            } catch (Throwable ignore) {}
+            h.postDelayed(this, 60000);
+        }
+    };
+
+    private void registerSilenceWatch() {
+        try {
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return;
+            recCb = new AudioManager.AudioRecordingCallback() {
+                @Override public void onRecordingConfigChanged(java.util.List<AudioRecordingConfiguration> configs) {
+                    try {
+                        boolean silenced = false;
+                        if (Build.VERSION.SDK_INT >= 29 && configs != null) {
+                            for (AudioRecordingConfiguration c : configs) if (c.isClientSilenced()) silenced = true;
+                        }
+                        if (silenced != lastSilenced) {
+                            lastSilenced = silenced;
+                            log(silenced ? "⚠ 麥克風被系統靜音（其他應用程式／系統佔用麥克風）" : "麥克風恢復");
+                        }
+                    } catch (Throwable ignore) {}
+                }
+            };
+            am.registerAudioRecordingCallback(recCb, h);
+        } catch (Throwable ignore) {}
+    }
+
+    private void unregisterSilenceWatch() {
+        try {
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null && recCb != null) am.unregisterAudioRecordingCallback(recCb);
+        } catch (Throwable ignore) {}
+        recCb = null;
+    }
 
     public synchronized boolean isRecording() { return recording; }
     public synchronized String getSid() { return sid; }
@@ -92,6 +165,11 @@ public class NativeRecorder {
         recording = true;
         writeSession(false);
         scheduleSplit();
+        lastSilenced = false; lastBeatSize = -1;
+        log("▶ 開始錄音 sid=" + sid + " ctx=" + rctx + " 分切=" + (splitMs / 60000) + "分");
+        registerSilenceWatch();
+        h.removeCallbacks(beatRun);
+        h.postDelayed(beatRun, 60000);
     }
 
     private void beginSegment() throws Exception {
@@ -105,6 +183,12 @@ public class NativeRecorder {
             r.setAudioSamplingRate(44100);
             r.setAudioEncodingBitRate(BITRATE);
             r.setOutputFile(curFile.getAbsolutePath());
+            r.setOnErrorListener(new MediaRecorder.OnErrorListener() {
+                @Override public void onError(MediaRecorder mr, int what, int extra) { log("⚠ 錄音器錯誤 what=" + what + " extra=" + extra); }
+            });
+            r.setOnInfoListener(new MediaRecorder.OnInfoListener() {
+                @Override public void onInfo(MediaRecorder mr, int what, int extra) { log("ℹ 錄音器訊息 what=" + what + " extra=" + extra); }
+            });
             r.prepare();
             r.start();
         } catch (Exception e) {
@@ -143,12 +227,14 @@ public class NativeRecorder {
         if (!recording) return;
         endSegment();
         idx++;
+        log("✂ 分切 → 第" + (idx + 1) + "段");
         try {
             beginSegment();
         } catch (Exception e1) {
             try { Thread.sleep(300); beginSegment(); }
             catch (Exception e2) {
                 lastError = "分切後無法重新開始錄音：" + e2.getMessage();
+                log("⚠ " + lastError);
                 recording = false;
                 writeSession(true);
                 releaseWake();
@@ -163,9 +249,12 @@ public class NativeRecorder {
         if (!recording) return;
         recording = false;
         h.removeCallbacks(splitRun);
+        h.removeCallbacks(beatRun);
         endSegment();
         writeSession(true);
         releaseWake();
+        unregisterSilenceWatch();
+        log("■ 停止錄音");
     }
 
     private void writeSession(boolean ended) {
@@ -216,12 +305,14 @@ public class NativeRecorder {
                 try {
                     long end = f.lastModified();
                     long dur = f.length() * 8L * 1000L / BITRATE;
+                    log("⚠ 找到沒有正常結束的錄音檔 " + n + "（" + (f.length() / 1024) + "KB，最後寫入時間 " + new java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(new java.util.Date(end)) + "）");
                     JSONObject o = new JSONObject();
                     o.put("sid", fsid);
                     o.put("index", Integer.parseInt(base.substring(us + 1)));
                     o.put("ctx", "record");
                     o.put("startedAt", end - dur);
                     o.put("endedAt", end);
+                    o.put("orphan", true);
                     writeText(done, o.toString());
                 } catch (Exception ignore) {}
             }
@@ -261,13 +352,16 @@ public class NativeRecorder {
         return out;
     }
 
+    /** 已由 JS 存進資料庫：搬到 archive/ 保留 3 天（萬一存檔內容有問題還救得回來），不直接刪除 */
     public synchronized void ack(String path) {
         try {
             File aac = new File(path);
             if (!aac.getParentFile().equals(dir())) return;   // 安全檢查：只處理自己的資料夾
             String n = aac.getName();
             String base = n.endsWith(".aac") ? n.substring(0, n.length() - 4) : n;
-            aac.delete();
+            File arch = new File(dir(), "archive");
+            if (!arch.exists()) arch.mkdirs();
+            if (aac.exists() && !aac.renameTo(new File(arch, n))) aac.delete();
             new File(dir(), base + ".done").delete();
             int us = base.lastIndexOf('_');
             if (us > 0) {
@@ -277,6 +371,10 @@ public class NativeRecorder {
                 if (left != null) for (File f : left) if (f.getName().startsWith(fsid + "_")) { any = true; break; }
                 if (!any && !(recording && fsid.equals(sid))) new File(dir(), fsid + ".session").delete();
             }
+            // 清掉超過 3 天的封存
+            File[] old = arch.listFiles();
+            long cut = System.currentTimeMillis() - 3L * 24 * 3600 * 1000;
+            if (old != null) for (File f : old) if (f.lastModified() < cut) f.delete();
         } catch (Exception ignore) {}
     }
 

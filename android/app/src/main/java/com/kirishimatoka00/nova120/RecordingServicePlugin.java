@@ -66,7 +66,7 @@ public class RecordingServicePlugin extends Plugin {
             Intent intent = new Intent(getContext(), RecordingForegroundService.class);
             intent.setAction(RecordingForegroundService.ACTION_START_REC);
             intent.putExtra("ctx", call.getString("ctx", "record"));
-            Integer sm = call.getInt("splitMins", 0);
+            Integer sm = Integer.valueOf(call.getData().optInt("splitMins", 0));
             intent.putExtra("splitMins", sm == null ? 0 : sm.intValue());
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getContext().startForegroundService(intent);
@@ -153,8 +153,8 @@ public class RecordingServicePlugin extends Plugin {
         java.io.RandomAccessFile raf = null;
         try {
             String p = call.getString("path");
-            Long off = call.getLong("offset", 0L);
-            Integer len = call.getInt("length", 786432);
+            Long off = call.getData().optLong("offset", 0L);   // v2.6.51：PluginCall.getLong 遇到 Integer 會回傳預設值 0，導致每一段都讀到檔案開頭
+            Integer len = Integer.valueOf(call.getData().optInt("length", 786432));
             java.io.File f = new java.io.File(p);
             if (!f.getParentFile().equals(NativeRecorder.get(getContext()).dir())) { call.reject("路徑不在錄音資料夾內"); return; }
             long offset = off == null ? 0L : off.longValue();
@@ -174,5 +174,13 @@ public class RecordingServicePlugin extends Plugin {
         } finally {
             try { if (raf != null) raf.close(); } catch (Exception ignore) {}
         }
+    }
+
+    // getLog() → {log}  原生錄音事件記錄（診斷用）
+    @PluginMethod
+    public void getLog(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("log", NativeRecorder.get(getContext()).readLog(6000));
+        call.resolve(r);
     }
 }

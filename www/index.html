@@ -2238,8 +2238,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.50';
+        const NOVA_APP_VERSION = '2.6.51';
         const NOVA_CHANGELOG = [
+            { v: '2.6.51', date: '2026-10-12', notes: [
+                '修正原生錄音存下來的音檔內容錯誤（錄音長度正確但實際只有開頭一小段、播放到幾分鐘就停住）：分段讀檔時 Capacitor 的 getLong 遇到整數會回傳預設值 0，每一段都讀成檔案開頭。改為直接讀 JSON 數值；取回後會比對檔案大小，不符就不存、不刪原檔',
+                '原生端處理完的音檔改為搬到封存資料夾保留 3 天，不再直接刪除（萬一內容有問題還救得回來）',
+                '新增原生錄音事件記錄（開始／分切／每分鐘寫入量／錄音器錯誤／麥克風被系統靜音／異常中止），發現異常時會在聊天區顯示最後 20 行；也可執行 novaShowNativeLog() 查看，用來找出錄音提前停止的原因'
+            ] },
             { v: '2.6.50', date: '2026-10-12', notes: [
                 '修正原生錄音在分切點（1 小時段落）閃退、之後一開 App 就閃退：段落取回時一次把整個檔案（約 29MB）轉 base64 傳過橋接，超出 WebView 能承受的大小而崩潰，重開又自動重試所以每次開啟都崩潰。改成分段讀檔（每次約 0.75MB），並加上防閃退迴圈（同一個錄音檔處理失敗 3 次會先跳過，App 才能正常開啟）',
                 '原生分切計時的例外保護'
@@ -20621,7 +20626,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.1"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.1"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.2"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.1 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.2 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.1 修正大段落（約 1 小時）取回時一次傳整個 base64 造成 App 閃退；改分段讀檔，並加防閃退迴圈（同一檔案失敗 3 次先跳過）
+ * 版本紀錄：v1.0.2 修正分段讀檔時 offset 永遠是 0（Capacitor getLong 遇 Integer 回傳預設值），造成存下來的音檔是開頭片段重複；取回後比對檔案大小；原生端改為封存 3 天不直接刪除；新增原生事件記錄
+ *           v1.0.1 修正大段落（約 1 小時）取回時一次傳整個 base64 造成 App 閃退；改分段讀檔，並加防閃退迴圈（同一檔案失敗 3 次先跳過）
  *           v1.0.0 初版
  */
 (function () {
@@ -63,6 +64,8 @@
           setTries(s.path, tn + 1);
           var blob = await readSeg(s.path, s.size);
           if (!blob || blob.size < 2048) { await P().ackSegment({ path: s.path }); continue; }
+          if (s.size && blob.size !== s.size) throw new Error('取回的檔案大小不符（原檔 ' + s.size + ' B，取回 ' + blob.size + ' B），已保留原檔');
+          if (s.orphan) msg('⚠️ 找回一段沒有正常結束的錄音（原生錄音在 ' + new Date(s.endedAt).toLocaleTimeString() + ' 左右停止寫入，推測為被系統中止）。內容為停止前已錄到的部分。');
           if (NR.lastSid !== s.sid) { appState.recGroupId = null; NR.lastSid = s.sid; }
           var cx = s.ctx === 'note' ? 'note' : 'record';
           appState.recordingContext = cx; appState.currentAudioTranscript = '';
@@ -157,7 +160,18 @@
     } catch (e) { return; }
     var n = await ingest();
     if (n) msg('🛟 已找回 ' + n + ' 段上次沒處理完的錄音，存到「錄音紀錄」。');
+    if (n || !NR.active) await showNativeLog(true);
   }
+  async function showNativeLog(onlyIfWarn) {
+    try {
+      var r = await P().getLog(), t = (r && r.log) || '';
+      if (!t) { if (!onlyIfWarn) msg('🔍 原生錄音記錄：（無）'); return; }
+      var lines = t.split('\n').filter(Boolean);
+      if (onlyIfWarn && !lines.slice(-40).some(function (l) { return l.indexOf('⚠') !== -1; })) return;
+      msg('🔍 原生錄音記錄（最後 20 行）：\n' + lines.slice(-20).join('\n'));
+    } catch (e) {}
+  }
+  W.novaShowNativeLog = function () { return showNativeLog(false); };
   D.addEventListener('visibilitychange', function () { if (!D.hidden && P()) setTimeout(tick, 800); });
   setTimeout(boot, 4500);
 
