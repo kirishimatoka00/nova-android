@@ -1,4 +1,4 @@
-/* nova-gdrive.js — v1.0.0 (2026-10-11)
+/* nova-gdrive.js — v1.0.1 (2026-10-12)
  * ① 錄音／筆記音訊改走「Google Drive 授權」直接上傳（Drive 可續傳上傳，分段送出，沒有 Apps Script 的 10MB 限制）；
  *    已連接 Google 且授權含 Drive 時優先使用，否則維持原本 Apps Script 路徑。檔案放在雲端硬碟的「NOVA 錄音」資料夾。
  *    覆寫 window.manualUploadToDrive／uploadNoteAudioToDrive／batchUploadToDrive／backupNoteToDrive（沒授權時呼叫原函式）；
@@ -9,6 +9,7 @@
  * 依賴：NovaGoogle（_raw／_has／_connected／_token）、loadAudioBlob／base64ToBlob／saveToDB／renderAudioRecords／renderNotes／showToast
  * 對外：window.NovaGDrive
  * 版本紀錄
+ *   v1.0.1 2026-10-12  自動上傳（novaAutoUpload）：上傳期間保留前景服務、失敗進待上傳清單並在回到前景時重試、顯示失敗原因
  *   v1.0.0 2026-10-11  首版。誠實聲明：只在沙盒用模擬的 Drive 端點驗證流程（瀏覽器路徑）；原生 CapacitorHttp 的分段上傳（308 回應處理）
  *                      與下載到手機未在真機驗證，請先用小檔案實測，再試大檔案
  */
@@ -98,6 +99,31 @@
     var f = await uploadBlob(blob, name, rec.mimeType || blob.type || 'audio/webm', { folder: 'NOVA 錄音', onProgress: function (p) { if (p - last >= 20) { last = p; toast('☁️ ' + (label || '') + '上傳中 ' + p + '%（' + mb + ' MB）', 2500); } } });
     rec.driveUrl = f.webViewLink; W.saveToDB(store, rec); return f;
   }
+  /* ───────── v1.0.1 自動上傳：保留前景服務＋失敗進待上傳清單，回前景重試 ───────── */
+  var PK = 'nova_gdrive_pending', running = false;
+  function pend() { try { return JSON.parse(g(PK, '[]')); } catch (e) { return []; } }
+  function setPend(a) { s(PK, JSON.stringify(a.slice(-50))); }
+  function pendAdd(kind, id) { var a = pend(); if (!a.some(function (x) { return x.k === kind && x.id === id; })) { a.push({ k: kind, id: id }); setPend(a); } }
+  function pendDel(kind, id) { setPend(pend().filter(function (x) { return !(x.k === kind && x.id === id); })); }
+  async function runPending(fromVisible) {
+    if (running || !canUpload()) { if (!canUpload() && W._novaPreHold) { W._novaPreHold = false; try { W.novaFgsRelease(); } catch (e) {} } return; }
+    var list = pend(); if (!list.length) return;
+    running = true; try { W.novaFgsAcquire(); } catch (e) {}
+    if (W._novaPreHold) { W._novaPreHold = false; try { W.novaFgsRelease(); } catch (e) {} }   // 歸還「錄音結束」時預先借的那一份
+    try {
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i], arr = it.k === 'notes' ? appState.notes : appState.audioRecords;
+        var rec = arr.find(function (x) { return String(x.id) === String(it.id); });
+        if (!rec || rec.driveUrl) { pendDel(it.k, it.id); continue; }
+        try { await uploadRecord(rec, it.k, '自動上傳 '); pendDel(it.k, it.id); toast('✅ 已自動上傳至 Google Drive「NOVA 錄音」資料夾'); try { W.renderAudioRecords(); W.renderNotes(); } catch (e) {} }
+        catch (e) { toast('❌ 自動上傳失敗：' + (e.message || e) + '（回到 App 時會自動重試，也可手動上傳）', 7000); }
+      }
+    } finally { running = false; try { W.novaFgsRelease(); } catch (e) {} }
+  }
+  W.novaAutoUpload = function (kind, id) { pendAdd(kind, String(id)); return runPending(false); };
+  D.addEventListener('visibilitychange', function () { if (!D.hidden && pend().length) setTimeout(function () { runPending(true); }, 2500); });
+  setTimeout(function () { if (pend().length) runPending(true); }, 8000);
+
   W.manualUploadToDrive = async function (id) {
     if (!canUpload()) return orig.manual ? orig.manual.apply(this, arguments) : toast('⚠️ 請先連接 Google 或設定 Apps Script URL');
     var rec = appState.audioRecords.find(function (x) { return String(x.id) === String(id); }); if (!rec) return;
