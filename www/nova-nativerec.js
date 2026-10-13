@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.4 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.5 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.4 依副檔名決定 mime（.m4a→audio/mp4，原生端已轉封裝，播放器能顯示正確總長）
+ * 版本紀錄：v1.0.5 錄音進行中不處理大段（>6MB）：延到停止後再存，避免分切後一分鐘內處理大檔把整個 App 拖垮（記錄顯示行程在分切後約 1 分鐘消失）
+ * v1.0.4 依副檔名決定 mime（.m4a→audio/mp4，原生端已轉封裝，播放器能顯示正確總長）
  * v1.0.3 紅色錄音提示顯示累計時長（mm:ss／h:mm:ss）
  *           v1.0.2 修正分段讀檔時 offset 永遠是 0（Capacitor getLong 遇 Integer 回傳預設值），造成存下來的音檔是開頭片段重複；取回後比對檔案大小；原生端改為封存 3 天不直接刪除；新增原生事件記錄
  *           v1.0.1 修正大段落（約 1 小時）取回時一次傳整個 base64 造成 App 閃退；改分段讀檔，並加防閃退迴圈（同一檔案失敗 3 次先跳過）
@@ -61,6 +62,10 @@
       var r = await P().listFinished(), segs = (r && r.segments) || [];
       for (var i = 0; i < segs.length; i++) {
         var s = segs[i];
+        if (NR.active && (s.size || 0) > 6 * 1048576) {   // v1.0.5：錄音中不處理大檔，等停止後再存（檔案安全地留在原生資料夾）
+          if (!NR.deferMsg) { NR.deferMsg = true; msg('📦 第 ' + ((s.index || 0) + 1) + ' 段已錄完並安全保存在手機裡（' + Math.round(s.size / 1048576) + 'MB），為避免拖垮錄音，會等錄音結束後再存進錄音紀錄。'); }
+          continue;
+        }
         try {
           var tn = tries(s.path);
           if (tn >= 3) { if (!NR.warned) { NR.warned = true; msg('⚠️ 有一段錄音（' + s.path.split('/').pop() + '，' + Math.round((s.size || 0) / 1048576) + 'MB）處理失敗多次，已先跳過以免 App 閃退；檔案仍在手機的 App 資料夾內。'); } continue; }
@@ -110,7 +115,7 @@
     try {
       await P().startRecording({ ctx: cx, splitMins: appState.recSettings.autoSplitMins || 0 });
     } catch (e) { console.warn('[NativeRec] 啟動失敗，退回 WebView 錄音：', e); toast('原生錄音啟動失敗，改用一般錄音：' + (e.message || e), 5000); return false; }
-    setActive(true); NR.ctx = cx; NR.t0 = Date.now(); appState.recGroupId = null; NR.lastSid = null;
+    setActive(true); NR.ctx = cx; NR.t0 = Date.now(); NR.deferMsg = false; appState.recGroupId = null; NR.lastSid = null;
     ui(true); startPoll();
     msg((cx === 'note' ? '🎙️ 開始錄製「語音筆記」' : '🎙️ 開始錄音') + '（原生錄音：關螢幕、App 被系統回收也不會中斷，點擊上方紅燈停止）');
     return true;

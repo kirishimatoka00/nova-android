@@ -1,4 +1,4 @@
-/* nova-gdrive.js — v1.0.1 (2026-10-12)
+/* nova-gdrive.js — v1.0.2 (2026-10-13)
  * ① 錄音／筆記音訊改走「Google Drive 授權」直接上傳（Drive 可續傳上傳，分段送出，沒有 Apps Script 的 10MB 限制）；
  *    已連接 Google 且授權含 Drive 時優先使用，否則維持原本 Apps Script 路徑。檔案放在雲端硬碟的「NOVA 錄音」資料夾。
  *    覆寫 window.manualUploadToDrive／uploadNoteAudioToDrive／batchUploadToDrive／backupNoteToDrive（沒授權時呼叫原函式）；
@@ -9,6 +9,7 @@
  * 依賴：NovaGoogle（_raw／_has／_connected／_token）、loadAudioBlob／base64ToBlob／saveToDB／renderAudioRecords／renderNotes／showToast
  * 對外：window.NovaGDrive
  * 版本紀錄
+ *   v1.0.2 2026-10-13  原生錄音進行中不執行自動上傳（停止後才傳），避免大檔上傳拖垮錄音
  *   v1.0.1 2026-10-12  自動上傳（novaAutoUpload）：上傳期間保留前景服務、失敗進待上傳清單並在回到前景時重試、顯示失敗原因
  *   v1.0.0 2026-10-11  首版。誠實聲明：只在沙盒用模擬的 Drive 端點驗證流程（瀏覽器路徑）；原生 CapacitorHttp 的分段上傳（308 回應處理）
  *                      與下載到手機未在真機驗證，請先用小檔案實測，再試大檔案
@@ -106,6 +107,7 @@
   function pendAdd(kind, id) { var a = pend(); if (!a.some(function (x) { return x.k === kind && x.id === id; })) { a.push({ k: kind, id: id }); setPend(a); } }
   function pendDel(kind, id) { setPend(pend().filter(function (x) { return !(x.k === kind && x.id === id); })); }
   async function runPending(fromVisible) {
+    if (W._nativeRecActive) return;   // v1.0.2：原生錄音進行中不上傳（停止後再傳）
     if (running || !canUpload()) { if (!canUpload() && W._novaPreHold) { W._novaPreHold = false; try { W.novaFgsRelease(); } catch (e) {} } return; }
     var list = pend(); if (!list.length) return;
     running = true; try { W.novaFgsAcquire(); } catch (e) {}
