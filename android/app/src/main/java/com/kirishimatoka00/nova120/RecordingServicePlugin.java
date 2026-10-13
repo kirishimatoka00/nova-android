@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.PowerManager;
 
 import androidx.core.content.ContextCompat;
 
@@ -136,6 +137,28 @@ public class RecordingServicePlugin extends Plugin {
             call.resolve(r);
         } catch (Exception e) {
             call.reject("讀取錄音段落失敗: " + e.getMessage());
+        }
+    }
+
+    // keepAwake({on}) v2.6.56：處理大錄音檔期間保持 CPU 不休眠（螢幕關著時 JS 會被凍住，導致處理停滯）。最長 90 分鐘自動釋放
+    private static PowerManager.WakeLock ingestWl;
+    @PluginMethod
+    public synchronized void keepAwake(PluginCall call) {
+        try {
+            boolean on = call.getData().optBoolean("on", true);
+            if (on) {
+                if (ingestWl == null) {
+                    PowerManager pm = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+                    ingestWl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "nova:ingest");
+                    ingestWl.setReferenceCounted(false);
+                }
+                ingestWl.acquire(90L * 60L * 1000L);
+            } else if (ingestWl != null && ingestWl.isHeld()) {
+                ingestWl.release();
+            }
+            call.resolve();
+        } catch (Exception e) {
+            call.resolve();   // 失敗不影響流程
         }
     }
 

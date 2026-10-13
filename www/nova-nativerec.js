@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.6 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.7 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.6 防閃退計數改用新的鍵（nova_nr_try2_），讓因舊版本地存檔 bug 而被跳過的大段錄音，在修正後重新處理一次
+ * 版本紀錄：v1.0.7 處理段落時顯示進度（第 k/N 段、大小、各階段耗時）；處理期間保持 CPU 喚醒（螢幕關著時 JS 會被凍住，曾讓第 2 段拖了 35 分鐘）
+ * v1.0.6 防閃退計數改用新的鍵（nova_nr_try2_），讓因舊版本地存檔 bug 而被跳過的大段錄音，在修正後重新處理一次
  * v1.0.5 錄音進行中不處理大段（>6MB）：延到停止後再存，避免分切後一分鐘內處理大檔把整個 App 拖垮（記錄顯示行程在分切後約 1 分鐘消失）
  * v1.0.4 依副檔名決定 mime（.m4a→audio/mp4，原生端已轉封裝，播放器能顯示正確總長）
  * v1.0.3 紅色錄音提示顯示累計時長（mm:ss／h:mm:ss）
@@ -61,8 +62,13 @@
     NR.busy = true; var saved = 0;
     try {
       var r = await P().listFinished(), segs = (r && r.segments) || [];
+      var todo = segs.filter(function (x) { return !(NR.active && (x.size || 0) > 6 * 1048576) && tries(x.path) < 3; }), k = 0, awake = false;
+      if (todo.length && (todo.length > 1 || (todo[0].size || 0) > 6 * 1048576)) {
+        try { await P().keepAwake({ on: true }); awake = true; } catch (e) {}
+        msg('⏳ 開始處理 ' + todo.length + ' 段錄音（共 ' + Math.round(todo.reduce(function (a, x) { return a + (x.size || 0); }, 0) / 1048576) + 'MB），請稍候，處理期間可以關螢幕。');
+      }
       for (var i = 0; i < segs.length; i++) {
-        var s = segs[i];
+        var s = segs[i], T0 = Date.now(), big = (s.size || 0) > 6 * 1048576;
         if (NR.active && (s.size || 0) > 6 * 1048576) {   // v1.0.5：錄音中不處理大檔，等停止後再存（檔案安全地留在原生資料夾）
           if (!NR.deferMsg) { NR.deferMsg = true; msg('📦 第 ' + ((s.index || 0) + 1) + ' 段已錄完並安全保存在手機裡（' + Math.round(s.size / 1048576) + 'MB），為避免拖垮錄音，會等錄音結束後再存進錄音紀錄。'); }
           continue;
@@ -71,6 +77,8 @@
           var tn = tries(s.path);
           if (tn >= 3) { if (!NR.warned) { NR.warned = true; msg('⚠️ 有一段錄音（' + s.path.split('/').pop() + '，' + Math.round((s.size || 0) / 1048576) + 'MB）處理失敗多次，已先跳過以免 App 閃退；檔案仍在手機的 App 資料夾內。'); } continue; }
           setTries(s.path, tn + 1);
+          k++;
+          if (awake) msg('📥 第 ' + k + '/' + todo.length + ' 段（' + Math.round((s.size || 0) / 1048576) + 'MB）讀取中…');
           var blob = await readSeg(s.path, s.size);
           if (!blob || blob.size < 2048) { await P().ackSegment({ path: s.path }); continue; }
           if (s.size && blob.size !== s.size) throw new Error('取回的檔案大小不符（原檔 ' + s.size + ' B，取回 ' + blob.size + ' B），已保留原檔');
@@ -81,6 +89,7 @@
           var isSeg = (s.segCount > 1) || !s.sessionEnded;
           await processAndSaveAudioSegment([blob], mimeOf(s.path), Date.now() - (s.durationMs || 0), cx, isSeg);
           await P().ackSegment({ path: s.path }); setTries(s.path, 0); saved++;
+          if (awake) msg('✅ 第 ' + k + '/' + todo.length + ' 段已存好（耗時 ' + Math.round((Date.now() - T0) / 1000) + ' 秒）' + (k < todo.length ? '，接著處理下一段…' : '。'));
           if (s.sessionEnded && s.index >= s.segCount - 1) { appState.recGroupId = null; NR.lastSid = null; }
         } catch (e) {
           console.warn('[NativeRec] 段落處理失敗', e);
@@ -89,6 +98,7 @@
         }
       }
     } catch (e) { console.warn('[NativeRec] listFinished 失敗', e); }
+    try { await P().keepAwake({ on: false }); } catch (e) {}
     NR.busy = false;
     if (!NR.active) { appState.recordingContext = 'default'; appState.currentAudioTranscript = ''; }
     return saved;

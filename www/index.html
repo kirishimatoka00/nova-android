@@ -2238,8 +2238,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.55';
+        const NOVA_APP_VERSION = '2.6.56';
         const NOVA_CHANGELOG = [
+            { v: '2.6.56', date: '2026-10-13', notes: [
+                '錄音結束後處理多段大檔時，顯示進度：「開始處理 N 段」、「第 k/N 段讀取中」、「第 k 段已存好（耗時 X 秒）」，不再沒有任何訊息',
+                '修正第 2 段拖了 35 分鐘才存好：推測是螢幕關著時 CPU 休眠、網頁處理被凍住，直到再開螢幕才繼續。處理期間改為保持 CPU 喚醒（最長 90 分鐘自動釋放）。注意：需要新版 APK 才有喚醒功能'
+            ] },
             { v: '2.6.55', date: '2026-10-13', notes: [
                 '找到錄音超過約 40 分鐘就閃退的真正原因：錄音存好後，「同步存到本地資料夾（Documents/NOVA_Recordings）」會把整個音檔一次轉成 base64 丟過 Capacitor 橋接（約 28MB 會讓 App 當掉）。改為分段寫入（每段約 768KB）。之前因閃退而被跳過的大段錄音，更新後會自動重新處理一次'
             ] },
@@ -20645,7 +20649,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.6"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.7"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
