@@ -1,6 +1,6 @@
 /* ═════════════════════════════════════════════
    nova-backup-ext.js — NOVA Android 完整備份補強（跟 index.html 放同一個資料夾 www/，在 <head> 載入）
-   版本：v1.0.1
+   版本：v1.0.2
    版本紀錄：
    v1.0.0 - App v2.6.39。備份原本只列舉固定欄位，之後新增的設定頁參數（自主任務、Jev、遙控主機、技能自動比對、記憶模式、翻譯輸入模式、
             深度研究偏好、口譯／語音設定…）都沒進備份。改成：把 localStorage 裡所有 nova_／cal_ 開頭的設定一次收進 lsSettings（排除
@@ -19,7 +19,7 @@
         try {
             for (var i = 0; i < localStorage.length; i++) {
                 var k = localStorage.key(i);
-                if (!k || !/^(nova_|cal_)/.test(k) || EXCLUDE[k] || k.indexOf('nova_nr_try_') === 0) continue;
+                if (!k || !/^(nova_|cal_)/.test(k) || EXCLUDE[k] || k.indexOf('nova_nr_try') === 0) continue;
                 var v = localStorage.getItem(k);
                 if (v != null && v.length <= MAX_VAL) out[k] = v;
             }

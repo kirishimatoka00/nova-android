@@ -2238,8 +2238,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.54';
+        const NOVA_APP_VERSION = '2.6.55';
         const NOVA_CHANGELOG = [
+            { v: '2.6.55', date: '2026-10-13', notes: [
+                '找到錄音超過約 40 分鐘就閃退的真正原因：錄音存好後，「同步存到本地資料夾（Documents/NOVA_Recordings）」會把整個音檔一次轉成 base64 丟過 Capacitor 橋接（約 28MB 會讓 App 當掉）。改為分段寫入（每段約 768KB）。之前因閃退而被跳過的大段錄音，更新後會自動重新處理一次'
+            ] },
             { v: '2.6.54', date: '2026-10-13', notes: [
                 '修正長時間錄音在 1 小時分切後約 1 分鐘 App 閃退：原生記錄顯示分切後行程在約 1 分鐘內消失，推測是錄音中同時處理約 29MB 的大檔（轉存＋存檔＋上傳）造成記憶體不足。現在錄音進行中不處理超過 6MB 的段落、也不自動上傳，等錄音結束後再依序存檔與上傳；段落檔案安全保存在原生資料夾，閃退後重開仍會自動救回'
             ] },
@@ -14120,18 +14123,25 @@ try {
                 try {
                     const { Filesystem } = Capacitor.Plugins;
                     const Directory = { Documents: 'DOCUMENTS', External: 'EXTERNAL' };
-                    const base64 = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(audioBlob);
-                    });
-                    await Filesystem.writeFile({
-                        path: `NOVA_Recordings/${filename}`,
-                        data: base64,
-                        directory: Directory.Documents,
-                        recursive: true
-                    });
+                    // v2.6.55：分段寫入（先 writeFile 再 appendFile，每段約 768KB）。
+                    // 舊做法一次把整個檔案轉 base64 再丟過橋，錄音超過約 20MB（約 40 分鐘）就會讓 App 閃退。
+                    const CH = 786432, total = audioBlob.size;
+                    const path = `NOVA_Recordings/${filename}`;
+                    for (let off = 0; off < total || off === 0; off += CH) {
+                        const part = audioBlob.slice(off, Math.min(total, off + CH));
+                        const b64 = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+                            reader.onerror = reject;
+                            reader.readAsDataURL(part);
+                        });
+                        if (off === 0) {
+                            await Filesystem.writeFile({ path, data: b64, directory: Directory.Documents, recursive: true });
+                        } else {
+                            await Filesystem.appendFile({ path, data: b64, directory: Directory.Documents });
+                        }
+                        if (total === 0) break;
+                    }
                     return true;
                 } catch(e) {
                     console.warn('Android saveAudioToLocalDir 失敗:', e);
@@ -20635,7 +20645,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.5"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.6"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
