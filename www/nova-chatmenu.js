@@ -1,8 +1,9 @@
-/* nova-chatmenu.js — v1.0.0 (2026-10-11)
+/* nova-chatmenu.js — v1.0.1 (2026-10-16)
  * 對話紀錄與資料夾旁的功能收進「⋮」三點選單（對標桌面版）：
  *   對話：重新命名／建立分支對話／匯出成 Markdown（新增）／移至資料夾／刪除
  *   資料夾：重新命名資料夾／刪除資料夾（收合箭頭維持在最右邊）
  * 版本紀錄
+ *   v1.0.1 2026-10-16  ⋮ 選單配色改由 nova-ui.css 的 .nova-item-menu 依主題決定（白晝模式上下不再有黑邊）
  *   v1.0.0 2026-10-11  首版。Markdown 匯出沿用 _novaExportTextFile（Capacitor 檔案輸出），內容格式同桌面版 exportChatSessionAsMarkdown。
  */
 (function () {
@@ -19,11 +20,13 @@
     var anchor = (event && (event.currentTarget || event.target)) || null;
     var rect = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { top: 80, bottom: 80, right: W.innerWidth - 10, left: 10 };
     var menu = document.createElement('div');
-    menu.style.cssText = 'position:fixed;background:#1e293b;border:1px solid #334155;border-radius:12px;box-shadow:0 25px 50px -12px rgba(0,0,0,.6);padding:6px 0;z-index:999999;min-width:170px;visibility:hidden;';
+    menu.className = 'nova-item-menu';
+    menu.style.cssText = 'position:fixed;z-index:999999;min-width:170px;visibility:hidden;';   // 配色由 nova-ui.css 的 .nova-item-menu 依黑夜／白晝主題決定
     document.body.appendChild(menu);
     items.forEach(function (it) {
       var b = document.createElement('button');
-      b.style.cssText = 'width:100%;text-align:left;padding:12px 14px;font-size:.875rem;display:flex;align-items:center;gap:8px;background:transparent;border:none;color:' + (it.danger ? '#f87171' : '#e2e8f0') + ';';
+      b.className = 'nv-mi' + (it.danger ? ' nv-danger' : '');
+      b.style.cssText = 'width:100%;text-align:left;padding:12px 14px;font-size:.875rem;display:flex;align-items:center;gap:8px;border:none;';
       b.innerHTML = '<i class="' + it.icon + '" style="font-size:1rem;"></i><span>' + it.label + '</span>';
       b.onclick = function (e) { e.stopPropagation(); W.closeNovaItemMenu(); it.onClick(); };
       menu.appendChild(b);

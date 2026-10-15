@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.10.0
+   版本：v1.11.0
    版本紀錄：
+   v1.11.0 - v2.6.57：第 18 節——錄音頁動作按鈕統一（.nv-act-btn，無陰影、白晝高對比）、逐字稿框（.nv-tbox）、側欄清單無底色（按下才顯示）、輸入區按鈕無底色（作用中才顯示；聯網作用中為漸層呼吸）、⋮ 選單（.nova-item-menu）依主題配色、筆記色盤（.nv-palette）。
    v1.10.0 - v2.6.39：頂列標題 .nv-top-title、頂列按鈕間距壓縮；筆記工具列手機版改圖示化（隱藏文字說明、色塊縮小）。
    v1.9.0 - v2.6.39：第 16 節——筆記編輯區（.note-editor-html）、表格拖曳把手、筆記工具列在手機窄螢幕的換行與觸控尺寸。
    v1.8.0 - v2.6.39：第 15 節——＋選單按鈕邊框與圖示同色（--pc），去掉白邊與光暈。
@@ -396,3 +397,62 @@ html:root body .nv-top-btn { min-width: 34px; min-height: 34px; }
   #note-edit-modal .flex-wrap button, #note-edit-modal .flex-wrap > label[for], #fullscreen-content-editor .flex-wrap button { padding: 5px 8px; font-size: 15px; }
   #note-ocr-model-select { max-width: 150px !important; font-size: 12px !important; margin-left: auto !important; }
 }
+
+
+/* ═══ §18（v1.11.0）v2.6.57 介面統一 ═══ */
+/* (a) 錄音頁動作按鈕：全部同一款，無陰影；白晝用卡片底＋深字＋明顯邊框 */
+html:root body .nv-act-btn { background: var(--nv-card) !important; color: var(--nv-text) !important; border: 1px solid var(--nv-line-strong) !important; box-shadow: none !important; text-decoration: none; }
+html:root body .nv-act-btn i { color: var(--nv-accent-text) !important; }
+html:root body .nv-act-btn:active { background: var(--nv-hover) !important; border-color: var(--nv-accent) !important; }
+/* 逐字稿框：不要在白晝變成深灰底 */
+html:root body .nv-tbox { background: var(--nv-card-2) !important; border: 1px solid var(--nv-line) !important; }
+html:root body .nv-tbox p { color: var(--nv-text-2) !important; }
+html:root body .nv-tbox p.italic { color: var(--nv-faint) !important; }
+
+html:root body .nv-badge { background: var(--nv-accent-soft) !important; color: var(--nv-accent-text) !important; border-color: transparent !important; }
+
+/* (b) 側欄（抽屜）清單：沒有底色框，按下才出現底色（仿 Claude）。選擇器加 [class][class] 是為了壓過白晝覆蓋表裡的 [class*="bg-slate-800"] */
+html:root body #mobile-menu nav button[class][class],
+html:root body #mobile-menu #mobile-chat-history-list > div[class][class],
+html:root body #mobile-menu #mobile-chat-history-list div[class][class],
+html:root body #mobile-menu #mobile-chat-history-list button[class][class],
+html:root body #mobile-menu > div:last-child button[class][class] { background: transparent !important; background-color: transparent !important; box-shadow: none !important; border-color: transparent !important; }
+html:root body #mobile-menu nav button[class][class]:active,
+html:root body #mobile-menu #mobile-chat-history-list > div[class][class]:active,
+html:root body #mobile-menu #mobile-chat-history-list button[class][class]:active,
+html:root body #mobile-menu > div:last-child button[class][class]:active { background: var(--nv-active) !important; background-color: var(--nv-active) !important; }
+
+/* (c) 輸入區按鈕：預設無底色；作用中才有顏色 */
+html:root body #nova-composer > button { background: transparent !important; box-shadow: none !important; border: 0 !important; color: var(--nv-muted) !important; }
+html:root body #nova-composer > button:active { background: var(--nv-hover) !important; }
+html:root body #nova-composer > #smart-action-btn.bg-blue-600 { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; }
+html:root body #nova-composer > #smart-action-btn.bg-red-600 { background: #dc2626 !important; color: #fff !important; }
+html:root body #nova-composer > #kb-mode-toggle-btn.text-emerald-400 { background: rgba(16,185,129,.16) !important; color: #059669 !important; }
+html:root body #nova-composer > #search-toggle-btn.animate-pulse {
+  color: #4f46e5 !important;
+  background: linear-gradient(120deg, rgba(59,130,246,.30), rgba(168,85,247,.30), rgba(20,184,166,.30), rgba(59,130,246,.30)) !important;
+  background-size: 300% 300% !important;
+  animation: nvSearchBreath 2.8s ease-in-out infinite !important;
+}
+@keyframes nvSearchBreath {
+  0%   { background-position: 0% 50%;   opacity: 1;   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+  50%  { background-position: 100% 50%; opacity: .72; box-shadow: 0 0 14px 3px rgba(99,102,241,.35); }
+  100% { background-position: 0% 50%;   opacity: 1;   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+}
+
+/* (d) ⋮ 選單：整個選單用同一個底色，沒有上下黑邊 */
+.nova-item-menu { background: var(--nv-card) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 12px; box-shadow: var(--nv-shadow) !important; padding: 6px !important; overflow: hidden; }
+html:root body .nova-item-menu button.nv-mi.nv-mi { background: transparent !important; background-color: transparent !important; color: var(--nv-text) !important; border-radius: 8px; }
+html:root body .nova-item-menu button.nv-mi.nv-mi:active { background: var(--nv-active) !important; background-color: var(--nv-active) !important; }
+html:root body .nova-item-menu button.nv-mi.nv-danger { color: var(--nv-danger) !important; }
+html:root body #tab-audio button[onclick^="deleteAudioRecord"] { background: transparent !important; }
+
+/* (e) 筆記色盤（WebView 沒有系統選色視窗，改用 App 內建） */
+.nv-palette { position: fixed; z-index: 1000000; background: var(--nv-card); color: var(--nv-text); border: 1px solid var(--nv-line-strong); border-radius: 14px; box-shadow: var(--nv-shadow); padding: 10px; width: 232px; }
+.nv-palette .nv-pal-title { font-size: 12px; color: var(--nv-muted); margin: 0 2px 8px; }
+.nv-palette .nv-pal-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.nv-palette .nv-sw { width: 100%; aspect-ratio: 1; border-radius: 50%; border: 1px solid rgba(128,128,128,.45); padding: 0; cursor: pointer; }
+.nv-palette .nv-sw:active { transform: scale(.88); }
+.nv-palette .nv-pal-row { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+.nv-palette input[type=text] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--nv-line-strong); background: var(--nv-canvas); color: var(--nv-text); }
+.nv-palette button.nv-pal-btn { font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--nv-line-strong); background: var(--nv-card-2); color: var(--nv-text); }

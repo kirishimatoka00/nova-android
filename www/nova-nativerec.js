@@ -1,11 +1,12 @@
-/* nova-nativerec.js v1.0.7 (2026-10-12) — 原生錄音（Android）
+/* nova-nativerec.js v1.0.8 (2026-10-12) — 原生錄音（Android）
  * 為什麼：WebView 的 MediaRecorder 在關螢幕長時間錄音時，頁面可能被系統凍結／回收（閃退），錄音就整段遺失。
  * 做法：錄音改由 Android 前景服務裡的原生 MediaRecorder 負責（AAC/ADTS 串流檔，原生端自己每 N 分鐘換檔＝自動分切）。
  *       JS 端只負責：開始／停止、把已結束的段落取回並存成錄音紀錄／語音筆記。WebView 當掉也不影響錄音，
  *       下次開啟會自動把遺留的段落找回來。非 Android 或原生失敗時，自動退回原本的 WebView 錄音。
  * 限制（誠實聲明）：只能在真機驗證；原生分切換檔時有極短（約 0.1–0.3 秒）的空檔；錄音期間不支援系統音訊混錄（手機本來就沒有）。
  * 開關：localStorage nova_native_rec（預設開，設定→錄音可關）
- * 版本紀錄：v1.0.7 處理段落時顯示進度（第 k/N 段、大小、各階段耗時）；處理期間保持 CPU 喚醒（螢幕關著時 JS 會被凍住，曾讓第 2 段拖了 35 分鐘）
+ * 版本紀錄：v1.0.8 設定頁「使用原生錄音」卡片改用主題色票（白晝不再是深灰底淺灰字）
+ * v1.0.7 處理段落時顯示進度（第 k/N 段、大小、各階段耗時）；處理期間保持 CPU 喚醒（螢幕關著時 JS 會被凍住，曾讓第 2 段拖了 35 分鐘）
  * v1.0.6 防閃退計數改用新的鍵（nova_nr_try2_），讓因舊版本地存檔 bug 而被跳過的大段錄音，在修正後重新處理一次
  * v1.0.5 錄音進行中不處理大段（>6MB）：延到停止後再存，避免分切後一分鐘內處理大檔把整個 App 拖垮（記錄顯示行程在分切後約 1 分鐘消失）
  * v1.0.4 依副檔名決定 mime（.m4a→audio/mp4，原生端已轉封裝，播放器能顯示正確總長）
@@ -198,9 +199,9 @@
   function injectToggle() {
     var tab = D.getElementById('tab-rec'); if (!tab || D.getElementById('nova-native-rec-card')) return;
     var box = D.createElement('div'); box.id = 'nova-native-rec-card';
-    box.style.cssText = 'background:rgba(30,41,59,.6);border:1px solid #334155;border-radius:12px;padding:14px;margin-bottom:12px;';
+    box.style.cssText = 'background:var(--nv-card-2,#1e293b);border:1px solid var(--nv-line-strong,#334155);border-radius:12px;padding:14px;margin-bottom:12px;';
     box.innerHTML = '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;"><input type="checkbox" id="nova-native-rec-cb" style="margin-top:3px;width:18px;height:18px;">' +
-      '<span><b style="font-size:13px;color:#e2e8f0;">使用原生錄音（建議）</b><br><span style="font-size:11px;color:#94a3b8;line-height:1.5;">由 Android 前景服務直接錄音（AAC 格式），關螢幕、WebView 閃退都不會中斷或遺失；自動分切也由原生端執行。關閉則使用原本的 WebView 錄音（webm）。</span></span></label>';
+      '<span><b style="font-size:13px;color:var(--nv-text,#e2e8f0);">使用原生錄音（建議）</b><br><span style="font-size:11px;color:var(--nv-muted,#94a3b8);line-height:1.5;">由 Android 前景服務直接錄音（AAC 格式），關螢幕、WebView 閃退都不會中斷或遺失；自動分切也由原生端執行。關閉則使用原本的 WebView 錄音（webm）。</span></span></label>';
     tab.insertBefore(box, tab.firstChild);
     var cb = D.getElementById('nova-native-rec-cb'); cb.checked = enabled();
     cb.onchange = function () { try { localStorage.setItem('nova_native_rec', cb.checked ? '1' : '0'); } catch (e) {} toast(cb.checked ? '已啟用原生錄音' : '已改用 WebView 錄音'); };

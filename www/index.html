@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.10.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.11.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2238,8 +2238,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.56';
+        const NOVA_APP_VERSION = '2.6.57';
         const NOVA_CHANGELOG = [
+            { v: '2.6.57', date: '2026-10-16', notes: [
+                '筆記：選字後點「文字顏色／螢光筆／儲存格底色／框線顏色」改用 App 內建色盤（Android WebView 沒有系統選色視窗，所以之前點了沒有反應）；色盤可選 24 色或輸入 #RRGGBB（新增 nova-colorpal.js）',
+                '錄音紀錄：合併下載 MP3、AI 分析等所有動作按鈕改同一款式（無陰影，白晝模式為淺底深字＋明顯邊框）；逐字稿框與「使用原生錄音」卡片白晝不再是深灰底',
+                '輸入區按鈕全部無底色，只有作用中才顯示；聯網搜尋作用中為藍紫青漸層呼吸閃爍',
+                '右側欄清單（對話、資料夾、工具）改成沒有底色框，按下去才顯示底色（仿 Claude）',
+                '對話旁「⋮」選單改用主題配色，白晝模式上下不再有黑邊'
+            ] },
             { v: '2.6.56', date: '2026-10-13', notes: [
                 '錄音結束後處理多段大檔時，顯示進度：「開始處理 N 段」、「第 k/N 段讀取中」、「第 k 段已存好（耗時 X 秒）」，不再沒有任何訊息',
                 '修正第 2 段拖了 35 分鐘才存好：推測是螢幕關著時 CPU 休眠、網頁處理被凍住，直到再開螢幕才繼續。處理期間改為保持 CPU 喚醒（最長 90 分鐘自動釋放）。注意：需要新版 APK 才有喚醒功能'
@@ -10523,8 +10530,8 @@ msg.files : (msg.file ? [msg.file] : []);
                         const segIdsForModal = `[${noteSegs.map(s => `'${s.id}'`).join(',')}]`;
                         const aiLabel = noteSegs.length > 1 ? `AI 分析 (全 ${noteSegs.length} 段)` : 'AI 分析';
                         audioActions.innerHTML = `
-                            <button onclick="batchDownloadWeba(${segIdsForModal}, 'note')" class="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600 px-3 py-1.5 rounded-lg transition-colors"><i class="ph-bold ph-download-simple"></i> weba${noteSegs.length>1?` (${noteSegs.length})`:''}</button>
-                            <button onclick="batchDownloadMp3(${segIdsForModal}, 'note')" class="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-green-300 border border-green-700/50 px-3 py-1.5 rounded-lg transition-colors"><i class="ph-bold ph-file-audio"></i> MP3${noteSegs.length>1?` (${noteSegs.length})`:''}</button>
+                            <button onclick="batchDownloadWeba(${segIdsForModal}, 'note')" class="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600 px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-download-simple"></i> weba${noteSegs.length>1?` (${noteSegs.length})`:''}</button>
+                            <button onclick="batchDownloadMp3(${segIdsForModal}, 'note')" class="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-green-300 border border-green-700/50 px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-file-audio"></i> MP3${noteSegs.length>1?` (${noteSegs.length})`:''}</button>
                             <button onclick="closeNoteEdit(); summarizeVoiceNote('${n.id}');" class="flex items-center gap-1 text-xs bg-purple-700 hover:bg-purple-600 text-white px-3 py-1.5 rounded-lg transition-colors"><i class="ph-bold ph-sparkle"></i> ${aiLabel}</button>`;
                     } else {
                         audioArea.classList.add('hidden');
@@ -12933,9 +12940,9 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                         ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-900/40 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full"><i class="ph-fill ph-scissors"></i> 分段 ${noteSegCount} 段</span>`
                         : '';
                     if (noteGroupBadge) extraAudioButtons += `<div class="col-span-full mb-1">${noteGroupBadge}</div>`;
-                    extraAudioButtons += `<button onclick="batchDownloadWeba(${segIdsJs}, 'note')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1"><i class="ph-bold ph-download-simple"></i> weba${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
-                    extraAudioButtons += `<button onclick="batchDownloadMp3(${segIdsJs}, 'note')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-green-300 transition-colors border border-green-700/50 flex items-center justify-center gap-1"><i class="ph-bold ph-file-audio"></i> MP3${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
-                    if (noteSegCount > 1) extraAudioButtons += `<button onclick="downloadMergedMp3(${segIdsJs}, '${n.title.replace(/'/g,"\\'")}', 'note')" class="text-xs bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded text-white transition-colors flex items-center justify-center gap-1" title="接合所有分段為一個 MP3"><i class="ph-bold ph-music-notes-plus"></i> 合併 MP3</button>`;
+                    extraAudioButtons += `<button onclick="batchDownloadWeba(${segIdsJs}, 'note')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1 nv-act-btn"><i class="ph-bold ph-download-simple"></i> weba${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
+                    extraAudioButtons += `<button onclick="batchDownloadMp3(${segIdsJs}, 'note')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-green-300 transition-colors border border-green-700/50 flex items-center justify-center gap-1 nv-act-btn"><i class="ph-bold ph-file-audio"></i> MP3${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
+                    if (noteSegCount > 1) extraAudioButtons += `<button onclick="downloadMergedMp3(${segIdsJs}, '${n.title.replace(/'/g,"\\'")}', 'note')" class="text-xs bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded text-white transition-colors flex items-center justify-center gap-1 nv-act-btn" title="接合所有分段為一個 MP3"><i class="ph-bold ph-music-notes-plus"></i> 合併 MP3</button>`;
                     const aiLabel = noteSegCount > 1 ? `AI 分析 (全 ${noteSegCount} 段)` : 'AI 分析';
                     extraAudioButtons += `<button onclick="summarizeVoiceNote('${n.id}')" class="text-xs bg-purple-900/50 border border-purple-500/50 hover:bg-purple-800/50 px-2 py-1.5 rounded text-purple-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-sparkle"></i> ${aiLabel}</button>`;
                 } else {
@@ -13028,20 +13035,20 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
 
                 const cloudBtn = novaHasDrive()
                     ? (anyDriveUrl
-                        ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm bg-blue-900/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-800/50 transition-colors"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
-                        : `<button onclick="manualUploadToDrive('${primary.id}')" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors shadow"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive</button>`)
+                        ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
+                        : `<button onclick="manualUploadToDrive('${primary.id}')" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive</button>`)
                     : '';
 
                 const transcriptHtml = displayTranscript
-                    ? `<div class="bg-slate-950/50 p-3 rounded-lg border border-slate-800/50 mb-2"><p class="text-xs text-slate-400 font-bold mb-1">逐字稿：</p><p class="text-sm text-slate-300 max-h-28 overflow-y-auto scrollbar-thin whitespace-pre-wrap">${escapeHtml(displayTranscript)}</p></div>`
-                    : `<div class="bg-slate-950/50 p-3 rounded-lg border border-slate-800/50 mb-2"><p class="text-xs text-slate-600 italic">尚無逐字稿</p></div>`;
+                    ? `<div class="nv-tbox bg-slate-950/50 p-3 rounded-lg border border-slate-800/50 mb-2"><p class="text-xs text-slate-400 font-bold mb-1">逐字稿：</p><p class="text-sm text-slate-300 max-h-28 overflow-y-auto scrollbar-thin whitespace-pre-wrap">${escapeHtml(displayTranscript)}</p></div>`
+                    : `<div class="nv-tbox bg-slate-950/50 p-3 rounded-lg border border-slate-800/50 mb-2"><p class="text-xs text-slate-600 italic">尚無逐字稿</p></div>`;
 
                 const summaryHtml = latestSummary
                     ? `<div class="bg-purple-950/30 p-3 rounded-lg border border-purple-800/40 mb-2"><p class="text-xs text-purple-300 font-bold mb-1"><i class="ph-fill ph-sparkle"></i> AI 摘要：</p><p class="text-sm text-slate-300 max-h-28 overflow-y-auto scrollbar-thin whitespace-pre-wrap">${escapeHtml(latestSummary)}</p></div>`
                     : '';
 
                 const groupBadge = totalSegs > 1
-                    ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-900/40 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full"><i class="ph-fill ph-scissors"></i> ${totalSegs} 段錄音</span>`
+                    ? `<span class="nv-badge inline-flex items-center gap-1 text-[10px] font-bold bg-orange-900/40 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full"><i class="ph-fill ph-scissors"></i> ${totalSegs} 段錄音</span>`
                     : '';
 
                 // 多段播放器（各段一個）
@@ -13070,13 +13077,13 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     ${summaryHtml}
                     <div class="flex flex-wrap items-center gap-2 mt-3">
                         ${novaHasDrive() ? (anyDriveUrl
-                            ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm bg-blue-900/30 text-blue-400 border border-blue-500/30 px-3 py-1.5 rounded-lg hover:bg-blue-800/50 transition-colors"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
-                            : `<button onclick="batchUploadToDrive([${segs.map(s=>`'${s.id}'`).join(',')}])" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors shadow"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>`)
+                            ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
+                            : `<button onclick="batchUploadToDrive([${segs.map(s=>`'${s.id}'`).join(',')}])" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>`)
                             : ''}
-                        <button onclick="batchDownloadWeba([${segs.map(s=>`'${s.id}'`).join(',')}], 'record')" class="flex items-center gap-1 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors"><i class="ph-bold ph-download-simple"></i> weba${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>
-                        <button onclick="batchDownloadMp3([${segs.map(s=>`'${s.id}'`).join(',')}], 'record')" class="flex items-center gap-1 text-sm bg-slate-700 hover:bg-slate-600 text-green-300 border border-green-700/50 px-3 py-1.5 rounded-lg transition-colors"><i class="ph-bold ph-file-audio"></i> MP3${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>
-                        ${totalSegs > 1 ? `<button onclick="downloadMergedMp3([${segs.map(s=>`'${s.id}'`).join(',')}], '${escapeHtml(primary.title).replace(/'/g,"\\'")}', 'record')" class="flex items-center gap-1 text-sm bg-orange-700 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors shadow-lg" title="將所有分段接合並下載為一個 MP3 檔案"><i class="ph-bold ph-music-notes-plus"></i> 合併下載 MP3</button>` : ''}
-                        <button onclick="summarizeAudioRecord('${primary.id}')" class="flex items-center gap-1 text-sm bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors shadow-lg"><i class="ph-bold ph-sparkle"></i>${totalSegs > 1 ? ` AI 分析 (全 ${totalSegs} 段)` : ' AI 深度分析'}</button>
+                        <button onclick="batchDownloadWeba([${segs.map(s=>`'${s.id}'`).join(',')}], 'record')" class="flex items-center gap-1 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-download-simple"></i> weba${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>
+                        <button onclick="batchDownloadMp3([${segs.map(s=>`'${s.id}'`).join(',')}], 'record')" class="flex items-center gap-1 text-sm bg-slate-700 hover:bg-slate-600 text-green-300 border border-green-700/50 px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-file-audio"></i> MP3${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>
+                        ${totalSegs > 1 ? `<button onclick="downloadMergedMp3([${segs.map(s=>`'${s.id}'`).join(',')}], '${escapeHtml(primary.title).replace(/'/g,"\\'")}', 'record')" class="flex items-center gap-1 text-sm bg-orange-700 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors nv-act-btn" title="將所有分段接合並下載為一個 MP3 檔案"><i class="ph-bold ph-music-notes-plus"></i> 合併下載 MP3</button>` : ''}
+                        <button onclick="summarizeAudioRecord('${primary.id}')" class="flex items-center gap-1 text-sm bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-sparkle"></i>${totalSegs > 1 ? ` AI 分析 (全 ${totalSegs} 段)` : ' AI 深度分析'}</button>
                     </div>
                 </div>`;
             }).join('') || '<div class="text-center text-slate-500 mt-10"><i class="ph-thin ph-microphone text-6xl mb-3"></i><p>尚無錄音紀錄</p></div>';
@@ -20649,8 +20656,8 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.0.0"></script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.0"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.7"></script><!-- v2.6.39：任務管理對標桌面 -->
-<script src="./nova-notes-pro.js?v=1.1.0"></script><!-- v2.6.39：筆記本對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-notes-pro.js?v=1.1.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>
