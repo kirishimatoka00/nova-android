@@ -488,12 +488,12 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.11.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.12.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
-    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.0.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.0.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -751,7 +751,7 @@
                     </button>
                     <nav id="tools-section" class="space-y-1 mt-1">
                         <button onclick="switchTab('dashboard')" id="nav-dashboard" class="flex items-center space-x-3 w-full p-2 rounded-lg bg-slate-800 text-blue-400 transition-all text-sm"><i class="ph-fill ph-chats-circle text-lg"></i><span>助理對話</span></button>
-                        <button onclick="switchTab('schedule')" id="nav-schedule" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>任務管理</span></button>
+                        <button onclick="switchTab('schedule')" id="nav-schedule" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>排程管理</span></button>
                         <button onclick="switchTab('notes')" id="nav-notes" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-notebook text-lg"></i><span>筆記/文件</span></button>
                         <button onclick="switchTab('audio')" id="nav-audio" class="flex items-center space-x-3 w-full p-2 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-waveform text-lg"></i><span>錄音紀錄</span></button>
                     </nav>
@@ -822,7 +822,7 @@
                         <h3 class="text-xs font-bold text-slate-500 tracking-wider mb-2">工具與紀錄</h3>
                         <nav class="space-y-1">
                             <button onclick="switchTab('dashboard'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg bg-slate-800 text-blue-400 transition-all text-sm"><i class="ph-fill ph-chats-circle text-lg"></i><span>助理對話</span></button>
-                            <button onclick="switchTab('schedule'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>任務管理</span></button>
+                            <button onclick="switchTab('schedule'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-calendar-check text-lg"></i><span>排程管理</span></button>
                             <button onclick="switchTab('notes'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-notebook text-lg"></i><span>筆記/文件</span></button>
                             <button onclick="switchTab('audio'); toggleMobileMenu();" class="flex items-center space-x-3 w-full p-3 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"><i class="ph-fill ph-waveform text-lg"></i><span>錄音紀錄</span></button>
                         </nav>
@@ -1801,11 +1801,11 @@
                 </div>
             </div>
 
-            <!-- ================= 任務管理介面 (Schedule View) ================= -->
+            <!-- ================= 排程管理介面 (Schedule View) ================= -->
             <div id="view-schedule" class="hidden flex-col h-full w-full p-6 overflow-y-auto">
                 <div class="max-w-3xl mx-auto w-full">
                     <header class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-white">任務管理</h2>
+                        <h2 class="text-2xl font-bold text-white">排程管理</h2>
                         <button onclick="window.addTodoManually && window.addTodoManually()" class="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-500 transition-colors"><i class="ph-bold ph-plus"></i><span>新增</span></button>
                     </header>
                     <div id="full-todo-list" class="space-y-3"></div>
@@ -2238,8 +2238,17 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.57';
+        const NOVA_APP_VERSION = '2.6.58';
         const NOVA_CHANGELOG = [
+            { v: '2.6.58', date: '2026-10-16', notes: [
+                '參考桌面版 v3.61～v3.70 的升級，移植六項：',
+                '① 一般對話「智慧分派」（桌面版 v3.66／v3.67）：到「多專家 → 並行設定」最下方開啟後，在一般對話送出的長要求會先判斷（先問 Jev，不確定才用一次輕量 LLM），需要多位專家分工的自動交給並行作業；可選派工前先確認。預設關閉，關閉時完全不判斷、不多花額度；判斷失敗／不確定一律照一般對話。Jev 設定頁多一個「智慧分派」開關（nova-jev.js v1.5.0、nova-jev-ui.js v1.1.0、nova-experts-glue.js v1.1.0、新檔 nova-autoroute.js v1.0.0）。',
+                '② 送出鈕回到麥克風（桌面版 v3.70.5）：程式端把輸入框清空（送出後、還原、智慧分派接手）時，按鈕不再停在紙飛機。',
+                '③ 設定頁開關對比（桌面版 v3.70.3）：白晝模式開啟時軌道原本變成接近白色，改成強調色軌道＋白色滑塊，關閉維持米色。',
+                '④ 專案資料夾列改 Claude 風格（桌面版 v3.64.1）：平時只有圖示＋名稱，沒有底色／計數／箭頭，展開的資料夾整列加深，裡面的對話縮排對齊名稱；「⋯」常駐顯示。',
+                '⑤「任務管理」改名「排程管理」（側欄、手機選單、頁面標題；內部 id 與資料不變）。',
+                '⑥ Canvas 返回對話時終止內部程式（桌面版 v3.52.6）：計時器、動畫、音效、Worker 不再在背景繼續跑（手機省電）；再次開啟會從頭執行。'
+            ] },
             { v: '2.6.57', date: '2026-10-16', notes: [
                 '筆記：選字後點「文字顏色／螢光筆／儲存格底色／框線顏色」改用 App 內建色盤（Android WebView 沒有系統選色視窗，所以之前點了沒有反應）；色盤可選 24 色或輸入 #RRGGBB（新增 nova-colorpal.js）',
                 '錄音紀錄：合併下載 MP3、AI 分析等所有動作按鈕改同一款式（無陰影，白晝模式為淺底深字＋明顯邊框）；逐字稿框與「使用原生錄音」卡片白晝不再是深灰底',
@@ -9169,6 +9178,17 @@ msg.files : (msg.file ? [msg.file] : []);
             }
         };
 
+        // ★ v2.6.58（移植桌面版 v3.70.5）：程式端直接把輸入框清空（送出後、還原、智慧分派接手等，全專案有十幾處）不會觸發 input 事件，
+        //   傳送鈕就會停在「紙飛機」而不是麥克風；這裡攔截 #user-input 的 value 寫入，寫完同步更新按鈕圖示（思考中不動，由停止鈕邏輯管）。
+        (function () {
+            var ta = document.getElementById('user-input'); if (!ta) return;
+            var d = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value'); if (!d || !d.set) return;
+            Object.defineProperty(ta, 'value', { configurable: true, get: function () { return d.get.call(this); }, set: function (v) {
+                d.set.call(this, v);
+                try { if (typeof appState !== 'undefined' && appState.isThinking) return; if (typeof window.updateSmartActionBtn === 'function') window.updateSmartActionBtn(); } catch (e) { /* */ }
+            } });
+        })();
+
         window.renderChatFilePreview = function() {
             const container = document.getElementById('chat-file-preview-container');
             if(!appState.chatFiles || appState.chatFiles.length === 0) {
@@ -12495,21 +12515,15 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             folders.forEach(f => {
                 const fIds = folderGroups[f] || [];
                 const isCollapsed = window._chatFolderCollapsed[f] === true;
-                const caretClass = isCollapsed ? '-rotate-90' : '';
-                const countBadge = fIds.length > 0 ? `<span class="text-[9px] text-slate-500 ml-1">${fIds.length}</span>` : '';
-                html += `<div class="mb-1">
-                    <div class="flex items-center justify-between px-2 py-2 rounded-xl bg-slate-800/50 cursor-pointer active:bg-slate-700/60" onclick="window.toggleChatFolderCollapse('${escapeHtml(f)}')">
-                        <div class="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
-                            <i class="ph-fill ph-folder text-emerald-400 text-base shrink-0"></i>
-                            <span class="text-sm font-semibold text-slate-200 truncate">${escapeHtml(f)}</span>
-                            ${countBadge}
-                        </div>
-                        <div class="flex items-center gap-1 shrink-0">
-                            <button onclick="event.stopPropagation();openChatFolderMenu('${escapeHtml(f)}', event)" class="p-2 text-slate-400 active:text-blue-400" title="更多操作"><i class="ph-bold ph-dots-three-vertical text-sm"></i></button>
-                            <i class="ph-bold ph-caret-down text-slate-400 text-sm transition-transform ${caretClass}"></i>
-                        </div>
+                // ★ v2.6.58（移植桌面版 v3.64.1 ④）：資料夾列改 Claude 風格——平時只有圖示＋名稱（沒有底色／卡片／計數／箭頭），
+                //   展開的資料夾整列加深；展開後的對話縮排對齊資料夾名稱、沒有左邊線。樣式在 nova-ui.css v1.12.0 的 .nova-fld*。
+                html += `<div class="nova-fld${isCollapsed ? '' : ' open'}">
+                    <div class="nova-fld-h" onclick="window.toggleChatFolderCollapse('${escapeHtml(f)}')" title="${escapeHtml(f)}（${fIds.length} 個對話）">
+                        <i class="ph ph-${isCollapsed ? 'folder' : 'folder-open'} nova-fld-ic"></i>
+                        <span class="nova-fld-nm">${escapeHtml(f)}</span>
+                        <button class="nova-fld-more" onclick="event.stopPropagation();openChatFolderMenu('${escapeHtml(f)}', event)" title="更多操作"><i class="ph-bold ph-dots-three"></i></button>
                     </div>
-                    ${isCollapsed ? '' : `<div class="pl-3 border-l border-slate-700 ml-2 mt-1 space-y-0.5">${fIds.length > 0 ? fIds.map(sid => _chatSessionItemHtml(sid, groups)).join('') : '<p class="text-[11px] text-slate-600 px-2 py-1.5">尚無對話，點擊對話旁的 📁 移入</p>'}</div>`}
+                    ${isCollapsed ? '' : `<div class="nova-fld-body">${fIds.length > 0 ? fIds.map(sid => _chatSessionItemHtml(sid, groups)).join('') : '<p class="nova-fld-empty">尚無對話，點擊對話旁的 ⋯ 移入</p>'}</div>`}
                 </div>`;
             });
 
@@ -16264,6 +16278,11 @@ window.startMultiAgentResearch = async function() {
                 input.value = ''; try { autoResizeInput(input); } catch (e) {} try { chatInitialInput = ''; } catch (e) {}
                 NovaExpertsGlue.send(text);
                 return;
+            }
+            // ★ v2.6.58：一般對話「智慧分派」——設定（多專家 → 並行作業）開啟後，先判斷這句話該不該派專家並行作業（預設關閉＝完全不影響）
+            if (window.NovaAutoRoute && NovaAutoRoute.shouldTry(text, { hasFile: !!(appState.chatFiles && appState.chatFiles.length) })) {
+                const _arHandled = await NovaAutoRoute.run(text, input);
+                if (_arHandled) return;
             }
             const hasChatFile = appState.chatFiles && appState.chatFiles.length > 0;
 
@@ -20169,7 +20188,19 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                     scheduleRender(true);
                 },
 
+                // ★ v2.6.58（移植桌面版 v3.52.6）：離開 Canvas（返回對話）＝結束程式。原本只把外層 overlay 隱藏，iframe 裡的程式（setInterval／
+                //   requestAnimationFrame／音效／Pyodide／Worker／WebGL 動畫）會繼續在背景跑（手機上會耗電、發熱）。現在把 iframe 換成空白文件，
+                //   舊文件隨之卸載、所有計時器與執行緒一併終止；同時取消尚未觸發的重繪計時器，並停止朗讀。再次開啟會從頭重新執行。
                 hide: function() {
+                    if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+                    const fr = iframe();
+                    if (fr) {
+                        fr.onload = null;
+                        try { fr.srcdoc = '<!DOCTYPE html><html><body style="margin:0;background:#0f172a"></body></html>'; } catch (e) {}
+                    }
+                    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
+                    const ld = loading(); if (ld) ld.style.display = 'none';
+                    if (status()) status().textContent = '已結束';
                     const ov = overlay();
                     if (ov) ov.style.display = 'none';
                 },
@@ -20655,7 +20686,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.0.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->

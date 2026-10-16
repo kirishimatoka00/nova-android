@@ -2,6 +2,9 @@
    NOVA Jev v1.0.0（TypeSafe AI「Jev」System One 模型：快速、型別安全的小決策）
    ------------------------------------------------------------
    版本紀錄：
+   Android v1.1.0（App v2.6.58）- 移植桌面版 nova-jev.js v1.5.0：新增用途 ⑫ dispatch（一般對話智慧分派）routeTask(text, {experts, autonomous, expertNames})——判斷一句話該走
+            chat（一般對話）／experts（派專家並行作業）。判 chat 信心 ≥ 門檻直接放行；判 experts 要信心 ≥ max(門檻, 0.8) 才採用；其餘灰色地帶回 route:null，呼叫端退回原本的 LLM 判斷。
+            設定頁（nova-jev-ui.js v1.1.0）顯示 dispatch 開關（nova_jev_f_dispatch），統計多一行「智慧分派」。手機版沒有電腦操作，autonomous 路徑邏輯保留但呼叫端不開。
    Android v1.0.0（批次 7b / App v2.6.31）- 移植自桌面版 nova-jev.js v1.4.0，邏輯不改。手機版沒有 Python 引擎，所以不注入 runPython（CORS 代打不可用；Capacitor 的 CapacitorHttp 讓 fetch 走原生，通常不會遇到 CORS）。
             手機版目前接上的用途：verify（自主任務宣告完成前複查）、skill（/ap 前技能比對）、params（技能參數建議）、partial（存半成品時建議取消冗餘步驟）；其餘用途（route／ui／memory／files／inject／flow／intent）
             邏輯都在，但手機版還沒有對應的呼叫點，設定頁不顯示它們的開關。
@@ -45,13 +48,13 @@
    ═════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var VERSION = '1.4.0';
+  var VERSION = '1.5.0';
   var ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
   var MODEL = 'jev-latest';
   var MAX_STATE_CHARS = 24000;
   var K = { key: 'nova_key_jev', on: 'nova_jev_enabled', thr: 'nova_jev_thr',
             f: { verify: 'nova_jev_f_verify', skill: 'nova_jev_f_skill', route: 'nova_jev_f_route',
-                 ui: 'nova_jev_f_ui', memory: 'nova_jev_f_memory', params: 'nova_jev_f_params', files: 'nova_jev_f_files', partial: 'nova_jev_f_partial', inject: 'nova_jev_f_inject', flow: 'nova_jev_f_flow', intent: 'nova_jev_f_intent' } };
+                 ui: 'nova_jev_f_ui', memory: 'nova_jev_f_memory', params: 'nova_jev_f_params', files: 'nova_jev_f_files', partial: 'nova_jev_f_partial', inject: 'nova_jev_f_inject', flow: 'nova_jev_f_flow', intent: 'nova_jev_f_intent', dispatch: 'nova_jev_f_dispatch' } };
 
   var D = { runPython: null, showToast: null, storage: null, fetch: null, now: null };
   function init(deps) { Object.keys(deps || {}).forEach(function (k) { D[k] = deps[k]; }); }
@@ -80,7 +83,8 @@
         partial: get(K.f.partial, '1') !== '0',
         inject: get(K.f.inject, '1') !== '0',
         flow: get(K.f.flow, '1') !== '0',
-        intent: get(K.f.intent, '1') !== '0'
+        intent: get(K.f.intent, '1') !== '0',
+        dispatch: get(K.f.dispatch, '1') !== '0'
       }
     };
   }
@@ -100,7 +104,7 @@
   // ── 統計／冷卻 ──
   var stats = { calls: 0, ok: 0, fail: 0, totalMs: 0, lastError: '', via: 'direct',
                 verifyChecked: 0, verifyRejected: 0, skillAsked: 0, skillPicked: 0, routeAsked: 0, routeUp: 0, routeDown: 0,
-                memDocs: 0, memDocsSkipped: 0, memFacts: 0, memFactsDropped: 0, paramsRated: 0, paramsPicked: 0, filesRanked: 0, stepsRated: 0, stepsDropped: 0, injScreened: 0, injFlagged: 0, triageCalls: 0, triageHints: 0, healShortcuts: 0, judgeAsked: 0, judgeSure: 0, intentAsked: 0, intentSure: 0, intentFallback: 0 };
+                memDocs: 0, memDocsSkipped: 0, memFacts: 0, memFactsDropped: 0, paramsRated: 0, paramsPicked: 0, filesRanked: 0, stepsRated: 0, stepsDropped: 0, injScreened: 0, injFlagged: 0, triageCalls: 0, triageHints: 0, healShortcuts: 0, judgeAsked: 0, judgeSure: 0, intentAsked: 0, intentSure: 0, intentFallback: 0, dispatchAsked: 0, dispatchSure: 0, dispatchFallback: 0 };
   var consecFails = 0, cooldownUntil = 0;
   function inCooldown() { return now() < cooldownUntil; }
   function noteResult(ok, ms, err) {
@@ -554,6 +558,31 @@
     return { ok: true, flags: flags, codeLanguage: lang, needLLM: needLLM, ms: r.ms };
   }
 
+  // ── ⑫ 一般對話智慧分派（移植自桌面版 v1.5.0；手機版只有 chat／experts 兩條路，沒有「電腦上動手」的 autonomous） ──
+  // 回傳 {ok, route:'chat'|'experts'|'autonomous'|null, confidence, desktop, p}；route:null＝不夠有把握，呼叫端退回原本的 LLM 判斷。
+  // opts: {experts:boolean, autonomous:boolean, expertNames:string}（沒開的路徑不會出現在選項裡）
+  async function routeTask(text, opts) {
+    if (!isActive('dispatch')) return { ok: false, error: 'off' };
+    opts = opts || {};
+    var c = getConfig();
+    var criteria = { chat: '一般問答、閒聊、解釋、查詢資訊、單一段文字／翻譯／程式碼片段、給建議、教學（「教我怎麼做」也算）；不需要分工、也不需要在使用者的電腦上動手' };
+    if (opts.experts) criteria.experts = '需要多個面向或多項成果的工作，可拆成兩項以上同時進行的任務並分給不同專長的人（例如研究後做報告加簡報、同時蒐集資料與做網頁、比較多個方案並產出文件）' + (opts.expertNames ? '；可用專家：' + short(opts.expertNames, 200) : '');
+    if (opts.autonomous) criteria.autonomous = '要實際動手執行好幾個步驟：整理／搬移／重新命名／批次處理檔案、開啟並操作軟體、自動操作網頁、安裝設定、執行腳本並檢查結果（只是教學或寫程式給使用者自己跑不算）';
+    var qs = { kind: { type: 'choice', instructions: '這則訊息最適合用哪種方式處理？不確定就選 chat。', criteria: criteria } };
+    if (opts.autonomous) qs.desktop = { type: 'noul', instructions: '完成這件事主要得靠操作軟體的視窗（點擊與輸入），而不是寫程式或腳本就能做完' };
+    var r = await ask('【使用者訊息】\n' + String(text == null ? '' : text).slice(0, 800), qs, { timeoutMs: 5000 });
+    if (!r.ok) return r;
+    var a = r.answers && r.answers.kind;
+    if (!a || !a.choice || !criteria[a.choice]) return { ok: false, error: '回應缺少 kind' };
+    var conf = typeof a.confidence === 'number' ? a.confidence : 0;
+    stats.dispatchAsked++;
+    var need = a.choice === 'chat' ? c.threshold : Math.max(c.threshold, 0.8);   // 會花額度或動手的路徑要求更高的把握
+    var route = conf >= need ? a.choice : null;
+    if (route) stats.dispatchSure++; else stats.dispatchFallback++;
+    var pd = noulOf(r.answers.desktop);
+    return { ok: true, route: route, choice: a.choice, confidence: conf, desktop: route === 'autonomous' && pd != null && pd >= c.threshold, p: pd, ms: r.ms };
+  }
+
   // ── 設定頁 UI ──
   function el(id) { return root.document && root.document.getElementById(id); }
   function loadUI() {
@@ -565,7 +594,7 @@
     set1('jev-f-verify', function (e) { e.checked = c.features.verify; });
     set1('jev-f-skill', function (e) { e.checked = c.features.skill; });
     set1('jev-f-route', function (e) { e.checked = c.features.route; });
-    ['ui', 'memory', 'params', 'files', 'partial', 'inject', 'flow', 'intent'].forEach(function (n) { set1('jev-f-' + n, function (e) { e.checked = c.features[n]; }); });
+    ['ui', 'memory', 'params', 'files', 'partial', 'inject', 'flow', 'intent', 'dispatch'].forEach(function (n) { set1('jev-f-' + n, function (e) { e.checked = c.features[n]; }); });
     renderStats();
   }
   function saveUI(silent) {
@@ -577,7 +606,7 @@
     if (g('jev-f-verify')) cfg.features.verify = g('jev-f-verify').checked;
     if (g('jev-f-skill')) cfg.features.skill = g('jev-f-skill').checked;
     if (g('jev-f-route')) cfg.features.route = g('jev-f-route').checked;
-    ['ui', 'memory', 'params', 'files', 'partial', 'inject', 'flow', 'intent'].forEach(function (n) { if (g('jev-f-' + n)) cfg.features[n] = g('jev-f-' + n).checked; });
+    ['ui', 'memory', 'params', 'files', 'partial', 'inject', 'flow', 'intent', 'dispatch'].forEach(function (n) { if (g('jev-f-' + n)) cfg.features[n] = g('jev-f-' + n).checked; });
     saveConfig(cfg);
     cooldownUntil = 0; consecFails = 0;
     if (!silent) toast('✅ Jev 設定已儲存');
@@ -597,7 +626,8 @@
       + '注入篩查：' + stats.injScreened + ' 次、標註 ' + stats.injFlagged + ' 次\n'
       + '操作判斷：判斷 ' + stats.triageCalls + ' 次、給出提示 ' + stats.triageHints + ' 則、自愈捷徑（省一次視覺 AI）' + stats.healShortcuts + ' 次\n'
       + 'Workflow 語意判斷：問 ' + stats.judgeAsked + ' 次、有把握 ' + stats.judgeSure + ' 次\n'
-      + '路由分類：問 ' + stats.intentAsked + ' 次、Jev 直接決定 ' + stats.intentSure + ' 次、退回原 LLM ' + stats.intentFallback + ' 次'
+      + '路由分類：問 ' + stats.intentAsked + ' 次、Jev 直接決定 ' + stats.intentSure + ' 次、退回原 LLM ' + stats.intentFallback + ' 次\n'
+      + '智慧分派：問 ' + stats.dispatchAsked + ' 次、Jev 直接決定 ' + stats.dispatchSure + ' 次、退回原 LLM ' + stats.dispatchFallback + ' 次'
       + (stats.lastError ? '\n最近一次錯誤：' + stats.lastError : '') + (inCooldown() ? '\n⏸ 目前冷卻中，暫時不會呼叫 Jev' : '');
   }
   async function testConnection() {
@@ -620,7 +650,7 @@
     VERSION: VERSION, init: init, getConfig: getConfig, saveConfig: saveConfig, isActive: isActive,
     ask: ask, verifyCompletion: verifyCompletion, pickSkills: pickSkills, routeComplexity: routeComplexity,
     memoryDocRelevance: memoryDocRelevance, memoryFilterFacts: memoryFilterFacts, rateParams: rateParams, rankFiles: rankFiles, rateSteps: rateSteps, screenInjection: screenInjection,
-    triage: triage, hints: hints, healDecision: healDecision, judgeCondition: judgeCondition, needsTool: needsTool, classifyIntent: classifyIntent,
+    triage: triage, hints: hints, healDecision: healDecision, judgeCondition: judgeCondition, needsTool: needsTool, classifyIntent: classifyIntent, routeTask: routeTask,
     loadUI: loadUI, saveUI: saveUI, testConnection: testConnection, renderStats: renderStats, stats: stats,
     _t: { decideVerify: decideVerify, pyCode: pyCode, httpError: httpError, resetBreaker: function () { consecFails = 0; cooldownUntil = 0; stats.via = 'direct'; } }
   };

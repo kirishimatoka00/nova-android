@@ -1,11 +1,12 @@
 /* ═════════════════════════════════════════════
    nova-jev-ui.js — NOVA Android 的 Jev 設定頁＋與技能／自主任務的銜接（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.58。設定頁多一個「智慧分派」開關（jev-f-dispatch，對應 nova-jev.js v1.5.0 的 routeTask）。
    v1.0.0 - 批次 7b（App v2.6.31）。① 設定頁「⚡ Jev 快速判斷」區塊（#tab-jev，id 跟 nova-jev.js 的 loadUI／saveUI 對得上：jev-key／jev-enabled／jev-thr／jev-f-*）。
             ② 銜接層 window.NovaJevUI：verifyDone（自主任務宣告完成前複查）。
             ③ 在 window.NovaJev 補上 nova-skill-ui.js 預期的介面：isOn(用途)、matchSkill(goal, [{name,text}])、suggestParams(候選值, goal)、suggestDrop(goal, steps)。
-            手機版只顯示已接上的 4 個用途開關（verify／skill／params／partial）。
+            手機版只顯示已接上的用途開關（verify／skill／params／partial／dispatch）。
    依賴：nova-jev.js（window.NovaJev）。Jev 沒開或任何失敗，一律回 null／false，呼叫端照原本流程。
    ═════════════════════════════════════════════ */
 (function (W) {
@@ -15,7 +16,8 @@
     var WIRED = [['verify', '完成前驗證', 'AI 宣告「任務完成」時用三題機率題複查；只有很有把握不對才退回，同一任務最多退回 2 次。'],
                  ['skill', '技能比對', '/ap 執行前，用 Jev 判斷已存技能能不能套用到這次任務（快、便宜）；不確定才問 AI。'],
                  ['params', '技能參數建議', '存技能設定參數時，「⚡ Jev 建議」會判斷哪些值下次會變。'],
-                 ['partial', '半成品步驟篩選', '存成半成品時，建議取消冗餘／試探性的步驟。']];
+                 ['partial', '半成品步驟篩選', '存成半成品時，建議取消冗餘／試探性的步驟。'],
+                 ['dispatch', '智慧分派', '一般對話送出前，用 Jev 判斷要不要派專家並行處理（需先在「多專家 → 並行作業」開啟「智慧分派」）；不確定才問 AI。']];
 
     function mk(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
     function field(label, hint) { var d = mk('div', 'margin-top:12px;'); d.appendChild(mk('div', 'font-size:13px;font-weight:700;', label)); if (hint) d.appendChild(mk('div', 'font-size:11px;opacity:.65;margin:2px 0 6px;', hint)); return d; }

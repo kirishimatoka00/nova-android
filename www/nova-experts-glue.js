@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.58。移植桌面版 v3.66／v3.67「智慧分派」的專家部分：新增 autoRoute(text)（先問 Jev routeTask，不確定／失敗退回一次輕量 LLM 判斷；失敗一律回 chat）與 autoRouteAvailable()；
+            dispatch(text, o) 新增 o.auto（對話區提示「AI 判斷這是需要多位專家分工的任務」）、o.skipConfirm（驗證通過就直接開工，驗證不過仍跳確認視窗）、o.reason。開關與送出掛鉤在 nova-autoroute.js。
    v1.0.0 - 初版（批次 4）。移植自 NOVA Desktop 的 index.html「NOVA-EXPERTS-GLUE」區塊（v3.5x，不改桌面版）：
             ① 引擎本體沿用 nova-experts.js／nova-meeting.js／nova-tasks.js（原樣移植），這支檔案負責把引擎接到手機版 App：
                專家／設定的儲存（localStorage nova_experts_v1／nova_experts_settings_v1／nova_experts_mode …）、模型呼叫（Gemini／OpenAI／Grok，
@@ -1128,7 +1130,8 @@ window.NovaExpertsGlue = (function () {
     }
 
     // ── 入口：使用者在「並行作業」模式送出一句話 ──
-    async function dispatch(text) {
+    async function dispatch(text, o) {
+        o = o || {};   // v1.1.0：o.auto＝由「智慧分派」自動轉進來；o.skipConfirm＝不跳確認視窗直接開工；o.reason＝判斷理由
         if (!TK() || !ENG()) { restoreInput(text); showToast('找不到並行作業引擎（nova-tasks.js 沒有載入）'); return; }
         const sid = appState.currentSessionId;
         const experts = loadExperts();
@@ -1136,6 +1139,7 @@ window.NovaExpertsGlue = (function () {
         if (!hasLlmKey()) { restoreInput(text); showToast('並行作業需要 Gemini 或 OpenAI API Key，請先到設定頁填寫'); return; }
         const settings = loadTSettings();
         addMessage(text, 'user');
+        if (o.auto) addMessage('🧭 AI 判斷這是需要多位專家分工的任務' + (o.reason ? '（' + String(o.reason).slice(0, 40) + '）' : '') + '，交給專家團隊並行處理。', 'system', null, [], null, null, sid);
         const st = { cancel: false };
         const panel = openPanel({ question: text, title: '⚡ 拆解任務中', onStop: stopHandler(st) });
         panel.progressText('派工模型正在把交辦內容拆成任務…');
@@ -1146,11 +1150,51 @@ window.NovaExpertsGlue = (function () {
         window._novaExpAbort.clear();
         if (!plan) { panel.finish('❌ 無法拆出任務'); addMessage('❌ ' + errText + '\n\n範例：`@小白 做一份簡報 → @老王 蒐集資料` 或 `@老王 蒐集 X；@小白 同時寫一個小網頁`', 'system', null, [], null, null, sid); return; }
         panel.finish('✅ 已拆出 ' + plan.tasks.length + ' 項任務');
-        const ans = await openDispatchConfirm(plan.tasks, experts, settings, plan.notes);
+        let ans = null;
+        if (o.skipConfirm) {   // v1.1.0：智慧分派且使用者關掉了「派工前確認」→ 驗證通過就直接開工；驗證不過仍跳確認視窗讓使用者修
+            const v0 = TK().validateTasks(plan.tasks, experts.filter(function (e) { return e.enabled; }));
+            if (v0 && v0.ok) ans = { tasks: v0.tasks, opts: { slidesImages: !!settings.slidesImages, separateChats: !!settings.separateChats } };
+        }
+        if (!ans) ans = await openDispatchConfirm(plan.tasks, experts, settings, plan.notes);
         if (!ans) { addMessage('已取消派工。', 'system', null, [], null, null, sid); return; }
         const eff = Object.assign({}, settings, { slidesImages: ans.opts.slidesImages, separateChats: ans.opts.separateChats });
         startBatch(sid, ans.tasks, eff, text);
     }
+
+    // ═══ v1.1.0：一般對話「智慧分派」判斷（只回傳判斷結果，不執行；執行與設定在 nova-autoroute.js）。失敗／不確定一律回 chat ═══
+    async function autoRoute(text) {
+        try {
+            const experts = (ENG() && TK()) ? loadExperts().filter(function (e) { return e.enabled; }) : [];
+            if (!experts.length) return { route: 'chat', reason: '' };
+            // 先問 Jev（有把握才採用；不確定／失敗／冷卻中／沒開 → 退回下面原本的 LLM 判斷）
+            if (window.NovaJev && typeof NovaJev.routeTask === 'function') {
+                try {
+                    const jr = await NovaJev.routeTask(text, { experts: true, autonomous: false, expertNames: experts.slice(0, 12).map(function (e) { return e.name; }).join('、') });
+                    if (jr && jr.ok && jr.route && (jr.route === 'chat' || jr.route === 'experts')) {
+                        return { route: jr.route, reason: 'Jev 判斷（信心 ' + Math.round((jr.confidence || 0) * 100) + '%）', via: 'jev' };
+                    }
+                } catch (e) { /* Jev 出錯 → 照舊 LLM */ }
+            }
+            if (!hasLlmKey()) return { route: 'chat', reason: '沒有可用的 Gemini／OpenAI 金鑰' };
+            const opts = ['- "chat"：一般問答、閒聊、解釋、查詢資訊、單一段文字／翻譯／程式碼片段、給建議、教學（「教我怎麼做」也算）。【不確定時一律選 chat】',
+                '- "experts"：需要「多個面向／多項成果」的工作，能拆成 2 項以上可以同時進行的任務，分給不同專長的專家（例如：研究後做成報告＋簡報、同時做資料蒐集與網頁、比較多個方案並產出文件）。只要單一、簡單的成果就不要選 experts。可用專家：'
+                + experts.slice(0, 12).map(function (e) { return e.name + (e.desc || e.description || e.role ? '（' + String(e.desc || e.description || e.role).slice(0, 24) + '）' : ''); }).join('、')];
+            const prompt = '你是 NOVA 的「任務分流員」。使用者在一般對話框送出下面這句話，請判斷最適合的處理方式：\n' + opts.join('\n')
+                + '\n\n只輸出 JSON，不要其他文字：{"route":"chat|experts","reason":"一句話（20 字內）"}\n\n使用者說：\n"""\n' + String(text).slice(0, 1500) + '\n"""';
+            let out = null;
+            try { out = await callModel({ model: defaultModel(), system: '你只輸出一個 JSON 物件。', text: prompt, json: true, maxOutputTokens: 200, thinking: 'low' }); }
+            finally { try { window._novaExpAbort.clear(); } catch (e) { /* ignore */ } }
+            const m = String((out && out.text) || '').match(/\{[\s\S]*\}/);
+            if (!m) return { route: 'chat', reason: '' };
+            const j = JSON.parse(m[0]);
+            const route = String(j.route || 'chat').toLowerCase() === 'experts' ? 'experts' : 'chat';
+            return { route: route, reason: String(j.reason || '').slice(0, 60) };
+        } catch (e) {
+            console.warn('[NOVA][智慧分派] 判斷失敗，照一般對話處理：', e && e.message);
+            return { route: 'chat', reason: '' };
+        }
+    }
+    function autoRouteAvailable() { try { return !!(ENG() && TK() && loadExperts().some(function (e) { return e.enabled; })); } catch (e) { return false; } }
 
     // ── 並行作業設定分頁 ──
     function renderTaskSettings(body, rerender) {
@@ -1173,6 +1217,7 @@ window.NovaExpertsGlue = (function () {
             const w = mk('div'); w.appendChild(labelEl(p[1])); f['m_' + p[0]] = modelSelect(s.models[p[0]]); w.appendChild(f['m_' + p[0]]); mg.appendChild(w);
         });
         body.appendChild(mg);
+        try { if (window.NovaAutoRoute) NovaAutoRoute.renderSettings(body); } catch (e) { /* ignore */ }
         const foot = mk('div', 'display:flex;gap:8px;justify-content:flex-end;margin-top:16px;');
         const reset = mk('button', btnStyle(false), '還原預設');
         reset.onclick = function () { saveTSettings(TK().DEFAULTS); renderBar(); rerender(); };
@@ -1193,7 +1238,7 @@ window.NovaExpertsGlue = (function () {
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else setTimeout(init, 0);
 
-    return { isOn: isOn, toggle: toggle, ask: ask, say: say, send: send, dispatch: dispatch, toggleBoard: toggleBoard, summarizeNow: summarizeNow, newMeeting: newMeeting, openRoster: openRoster, subMode: subMode, setSubMode: setSubMode, openManager: openManager, loadExperts: loadExperts, loadSettings: loadSettings, renderBar: renderBar, rerender: renderBar };
+    return { isOn: isOn, toggle: toggle, ask: ask, say: say, send: send, dispatch: dispatch, autoRoute: autoRoute, autoRouteAvailable: autoRouteAvailable, toggleBoard: toggleBoard, summarizeNow: summarizeNow, newMeeting: newMeeting, openRoster: openRoster, subMode: subMode, setSubMode: setSubMode, openManager: openManager, loadExperts: loadExperts, loadSettings: loadSettings, renderBar: renderBar, rerender: renderBar };
 })();
 window.toggleNovaExpertsMode = function () { window.NovaExpertsGlue.toggle(); };
 

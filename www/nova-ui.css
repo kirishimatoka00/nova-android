@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.11.0
+   版本：v1.12.0
    版本紀錄：
+   v1.12.0 - v2.6.58：第 19 節——白晝模式設定頁開關（peer toggle）開啟時軌道原本被全域覆寫變成接近白色（跟關閉的米色難分辨），改成強調色軌道＋白色滑塊（有陰影），關閉維持灰米色（移植桌面版 v3.70.3 ②）；專案資料夾列改 Claude 風格（移植桌面版 v3.64.1 ④）。
    v1.11.0 - v2.6.57：第 18 節——錄音頁動作按鈕統一（.nv-act-btn，無陰影、白晝高對比）、逐字稿框（.nv-tbox）、側欄清單無底色（按下才顯示）、輸入區按鈕無底色（作用中才顯示；聯網作用中為漸層呼吸）、⋮ 選單（.nova-item-menu）依主題配色、筆記色盤（.nv-palette）。
    v1.10.0 - v2.6.39：頂列標題 .nv-top-title、頂列按鈕間距壓縮；筆記工具列手機版改圖示化（隱藏文字說明、色塊縮小）。
    v1.9.0 - v2.6.39：第 16 節——筆記編輯區（.note-editor-html）、表格拖曳把手、筆記工具列在手機窄螢幕的換行與觸控尺寸。
@@ -456,3 +457,34 @@ html:root body #tab-audio button[onclick^="deleteAudioRecord"] { background: tra
 .nv-palette .nv-pal-row { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
 .nv-palette input[type=text] { flex: 1; min-width: 0; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--nv-line-strong); background: var(--nv-canvas); color: var(--nv-text); }
 .nv-palette button.nv-pal-btn { font-size: 13px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--nv-line-strong); background: var(--nv-card-2); color: var(--nv-text); }
+
+
+/* ───────────── 19. v2.6.58：白晝開關對比（桌面版 v3.70.3 ②）＋專案資料夾列 Claude 風格（桌面版 v3.64.1 ④） ───────────── */
+/* 開關：關閉＝灰米色軌道；開啟＝強調色軌道；滑塊一律白色＋淡陰影。選擇器加倍 [class] 才壓得過上面各處的 !important 屬性選擇器 */
+html.theme-light:root body label > input.peer + div[class][class],
+html.theme-light:root body #settings-modal label > input.peer + div[class][class] { background-color: #d6d2c4 !important; transition: background-color .18s; }
+html.theme-light:root body label > input.peer:checked + div[class][class],
+html.theme-light:root body #settings-modal label > input.peer:checked + div[class][class] { background-color: var(--nv-accent, #c15f3c) !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+html.theme-light:root body label > input.peer + div[class][class]::after,
+html.theme-light:root body #settings-modal label > input.peer + div[class][class]::after { background-color: #ffffff !important; border-color: #ffffff !important; box-shadow: 0 1px 3px rgba(0,0,0,.28); }
+
+/* 專案資料夾列（.nova-fld）：平時只有圖示＋名稱，按下／展開才有底色；手機沒有 hover，「⋯」常駐顯示、觸控範圍放大 */
+html:root body .nova-fld { margin-bottom: 1px; }
+html:root body .nova-fld-h {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px 0 8px; border-radius: 8px;
+  cursor: pointer; color: var(--nv-text-2); background: transparent; transition: background .12s, color .12s; -webkit-tap-highlight-color: transparent;
+}
+html:root body .nova-fld-h:active { background: var(--nv-hover); color: var(--nv-text); }
+html:root body .nova-fld.open > .nova-fld-h { background: var(--nv-active); color: var(--nv-text); }
+html:root body .nova-fld-h > i.nova-fld-ic { flex: none; width: 18px; font-size: 18px; text-align: center; color: var(--nv-muted); }
+html:root body .nova-fld.open > .nova-fld-h > i.nova-fld-ic { color: var(--nv-text); }
+html:root body .nova-fld-nm { flex: 1; min-width: 0; font-size: 14px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:root body .nova-fld.open > .nova-fld-h .nova-fld-nm { font-weight: 500; }
+html:root body button.nova-fld-more[class] {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent !important; color: var(--nv-faint) !important; box-shadow: none !important; cursor: pointer;
+}
+html:root body button.nova-fld-more[class]:active { background: var(--nv-hover) !important; color: var(--nv-text) !important; }
+html:root body .nova-fld-more i { font-size: 18px; }
+html:root body .nova-fld-body { margin: 2px 0 6px; padding-left: 28px; }
+html:root body .nova-fld-empty { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--nv-faint); }
