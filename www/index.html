@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.12.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.13.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2238,8 +2238,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.60';
+        const NOVA_APP_VERSION = '2.6.61';
         const NOVA_CHANGELOG = [
+            { v: '2.6.61', date: '2026-10-16', notes: [
+                '白晝模式：介面按鈕（頂列、⋮、清空對話、天氣膠囊、各頁灰色按鈕…）不再有框與灰底，只在按下時有淡淡底色；有顏色的主要按鈕（新增、送出、儲存、錄音中）不變（新檔 nova-ghost.js v1.0.0、nova-ui.css v1.13.0）。',
+                '工作資料夾的「手機」分頁可瀏覽手機任意資料夾：新增原生外掛 NovaFiles＋「所有檔案存取」權限（需要重新安裝新版 APK；第一次在視窗點「授權」，到系統頁面開啟後回到 NOVA）。未授權時仍只看得到 NOVA 私有資料夾。AI 的 phone_* 工具與附件、上傳也一併改用，路徑相對於手機儲存空間根目錄。',
+                '工作資料夾視窗版面重排：標題與關閉、分頁、上一層／重新整理、麵包屑、搜尋與新增資料夾／上傳各自一列，不再擠成一團（nova-workspace.js v1.1.0）。'
+            ] },
             { v: '2.6.60', date: '2026-10-16', notes: [
                 '修正：長期事實／對話記憶沒被 AI 用到——Gemini／Grok 的「工具呼叫」路徑（自動走、工作資料夾也走）原本完全沒帶入記憶，現在補上；另外 AI 自己的名字、角色設定這類事實（項目名稱含「你的／名字／稱呼／身分／角色」）檢索時永遠納入，不再被相似度排名擠掉（nova-memory.js v1.1.1）。',
                 '修正：開啟「自動播放 AI 語音」後一般對話不朗讀——朗讀判斷原本只認連續語音／口譯，現在依開關；工具呼叫路徑的回覆也會朗讀。',
@@ -20707,7 +20712,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script><script src="./nova-workspace.js?v=1.0.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->

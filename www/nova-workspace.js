@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-workspace.js — NOVA Android「工作資料夾」（輸入區的資料夾按鈕；跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.61：① 手機分頁改用原生外掛 NovaFiles（MANAGE_EXTERNAL_STORAGE「所有檔案存取」）：授權後從手機儲存空間根目錄起可瀏覽、上一層、讀寫任意資料夾（分段讀寫大檔）；未授權時退回 NOVA 私有「文件」資料夾並顯示授權提示。② 視窗版面重排：標題＋關閉、分頁列、麵包屑列（上一層／重新整理圖示鈕）、搜尋＋新增資料夾＋上傳各自一列；按鈕一律無框無底色（只有主要動作有色）。
    v1.0.0 - App v2.6.59。移植桌面版 nova-workspace.js v1.0.1（工作資料夾），依手機架構改寫（手機沒有 Python 引擎／sidecar）：
             ① 輸入區多一顆資料夾按鈕（#composer-workspace-btn，接在多專家鈕後面）。按下彈出選單，為「這一輪對話」指定多個工作資料夾——
                Google Drive 與「手機文件資料夾」都可以、可混用；每個資料夾各自決定當「來源」（AI 優先到這裡讀取）、「寫入」（AI 優先把產出存這裡），
@@ -104,7 +105,7 @@
 
     // ───────────────────────── 提示詞引導／Drive 預設資料夾 ─────────────────────────
     function describe(f) {
-        return f.kind === 'local' ? ('手機文件資料夾：「' + (f.ref || '(根目錄)') + '」（phone_* 工具用的相對路徑）')
+        return f.kind === 'local' ? ('手機資料夾：「' + (f.ref || '(手機儲存空間根目錄)') + '」（phone_* 工具用的相對路徑）')
             : ('Google Drive：「' + f.name + '」（folder_id=' + f.ref + '）');
     }
     function promptAddon() {
@@ -115,7 +116,7 @@
         if (src.length) { L.push('▸ 來源資料夾（要讀取、參考的檔案請優先到這裡找）：'); src.forEach(function (f, i) { L.push('  ' + (i + 1) + '. ' + describe(f)); }); }
         if (tgt.length) { L.push('▸ 寫入資料夾（要產生、儲存的檔案請優先放這裡；使用者沒有另外指定存放位置時就直接存這裡）：'); tgt.forEach(function (f, i) { L.push('  ' + (i + 1) + '. ' + describe(f)); }); }
         L.push('使用方式：Google Drive 資料夾用 drive_list／drive_read／drive_write／drive_create_folder 並帶上 folder_id（沒帶時系統會自動補上上面對應的資料夾）；'
-            + '手機文件資料夾用 phone_list／phone_read／phone_write，路徑是相對於手機「文件」目錄的相對路徑（例如 NOVA/報告.txt）。不確定內容時先列出再讀。'
+            + '手機文件資料夾用 phone_list／phone_read／phone_write，路徑是相對於手機儲存空間根目錄（授權「所有檔案存取」時，例如 Download/報告.txt；未授權時是 NOVA 私有文件目錄）的相對路徑。不確定內容時先列出再讀。'
             + '這些工具只能讀寫文字內容（讀取上限約 8 萬字）；圖片、PDF 等二進位檔無法用工具讀，請使用者用「附加為附件」。');
         L.push('若使用者這句話明確指到別的檔案或位置，以使用者的指示為準；這些資料夾不是權限限制，需要時也可以讀寫其他位置。');
         return L.join('\n') + '\n';
@@ -215,23 +216,46 @@
         return { blob: await r.blob(), name: f.name };
     }
 
-    // ───────────────────────── 手機「文件」資料夾（Capacitor Filesystem，Directory.Documents）─────────────────────────
+    // ───────────────────────── 手機檔案（v1.1.0：原生 NovaFiles「所有檔案存取」優先；沒授權才退回 App 私有「文件」資料夾）─────────────────────────
+    function PL() { try { return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaFiles; } catch (e) { return null; } }
     function FS() { try { return window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Filesystem; } catch (e) { return null; } }
-    function needFs() { var f = FS(); if (!f) throw new Error('手機文件資料夾只能在 Android App 內使用'); return f; }
+    var LM = { full: false, root: '/storage/emulated/0', checked: false };
+    async function checkAccess() {
+        var pl = PL();
+        if (pl && typeof pl.hasAccess === 'function') {
+            try { var r = await pl.hasAccess(); LM.full = !!r.granted; if (r.root) LM.root = r.root; } catch (e) { LM.full = false; }
+        } else LM.full = false;
+        LM.checked = true; return LM.full;
+    }
+    function needFs() { var f = FS(); if (!f) throw new Error('手機檔案只能在 Android App 內使用'); return f; }
     function cleanPath(p) {
         p = String(p == null ? '' : p).replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
         if (p.split('/').some(function (s) { return s === '..'; })) throw new Error('路徑不可包含 ..');
         return p;
     }
+    function absPath(rel) { var p = cleanPath(rel); return LM.root + (p ? '/' + p : ''); }
+    function rootLabel() { return LM.full ? '手機' : 'NOVA 私有文件'; }
     async function localList(path) {
-        var fs = needFs(), p = cleanPath(path);
-        var r = await fs.readdir({ path: p, directory: 'DOCUMENTS' });
+        var p = cleanPath(path);
+        if (LM.full) {
+            var r0 = await PL().list({ path: absPath(p) });
+            return (r0.files || []).map(function (e) { return { name: e.name, isDir: !!e.isDir, size: e.size, mtime: e.mtime, path: (p ? p + '/' : '') + e.name }; });
+        }
+        var r = await needFs().readdir({ path: p, directory: 'DOCUMENTS' });
         return (r.files || []).map(function (e) {
             return { name: e.name, isDir: e.type === 'directory', size: e.size, mtime: e.mtime, path: (p ? p + '/' : '') + e.name };
         }).sort(function (a, b) { return (b.isDir ? 1 : 0) - (a.isDir ? 1 : 0) || a.name.localeCompare(b.name); });
     }
     async function localReadText(path) {
-        var fs = needFs(), p = cleanPath(path);
+        var p = cleanPath(path);
+        if (LM.full) {
+            var st0 = await PL().stat({ path: absPath(p) });
+            if (st0 && Number(st0.size) > 2 * 1024 * 1024) throw new Error('檔案超過 2MB，太大不適合用工具讀取');
+            var r0 = await PL().readText({ path: absPath(p), max: MAX_TEXT * 4 });
+            var t0 = String(r0.text == null ? '' : r0.text);
+            return { text: t0.length > MAX_TEXT ? t0.slice(0, MAX_TEXT) : t0, truncated: t0.length > MAX_TEXT, total: t0.length };
+        }
+        var fs = needFs();
         var st = await fs.stat({ path: p, directory: 'DOCUMENTS' });
         if (st && Number(st.size) > 2 * 1024 * 1024) throw new Error('檔案超過 2MB，太大不適合用工具讀取');
         var r = await fs.readFile({ path: p, directory: 'DOCUMENTS', encoding: 'utf8' });
@@ -239,20 +263,51 @@
         return { text: t.length > MAX_TEXT ? t.slice(0, MAX_TEXT) : t, truncated: t.length > MAX_TEXT, total: t.length };
     }
     async function localWriteText(path, content) {
-        var fs = needFs(), p = cleanPath(path);
+        var p = cleanPath(path);
         if (!p) throw new Error('請提供檔案路徑');
-        await fs.writeFile({ path: p, data: String(content == null ? '' : content), directory: 'DOCUMENTS', encoding: 'utf8', recursive: true });
+        if (LM.full) await PL().writeText({ path: absPath(p), text: String(content == null ? '' : content) });
+        else await needFs().writeFile({ path: p, data: String(content == null ? '' : content), directory: 'DOCUMENTS', encoding: 'utf8', recursive: true });
         return { path: p };
     }
-    async function localMkdir(path) { var fs = needFs(); await fs.mkdir({ path: cleanPath(path), directory: 'DOCUMENTS', recursive: true }); }
+    async function localMkdir(path) {
+        if (LM.full) await PL().mkdir({ path: absPath(path) });
+        else await needFs().mkdir({ path: cleanPath(path), directory: 'DOCUMENTS', recursive: true });
+    }
     async function localBlob(f) {
-        var fs = needFs(), p = cleanPath(f.ref);
+        var p = cleanPath(f.ref), parts = [];
+        if (LM.full) {
+            var st0 = await PL().stat({ path: absPath(p) });
+            if (st0 && Number(st0.size) > MAX_ATTACH) throw new Error('超過 10MB');
+            var off = 0, size = Number(st0.size) || 0;
+            while (off < size) {   // 分段讀，避免一次把整檔 base64 塞過橋接
+                var c = await PL().readChunk({ path: absPath(p), offset: off, length: 786432 });
+                var bin = atob(c.data || ''), u8 = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                parts.push(u8); off += Number(c.read) || 0; if (!c.read) break;
+            }
+            return { blob: new Blob(parts, { type: guessMime(f.name) }), name: f.name };
+        }
+        var fs = needFs();
         var st = await fs.stat({ path: p, directory: 'DOCUMENTS' });
         if (st && Number(st.size) > MAX_ATTACH) throw new Error('超過 10MB');
         var r = await fs.readFile({ path: p, directory: 'DOCUMENTS' });
-        var b64 = String(r.data || ''), bin = atob(b64), n = bin.length, u8 = new Uint8Array(n);
-        for (var i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
-        return { blob: new Blob([u8], { type: guessMime(f.name) }), name: f.name };
+        var b64 = String(r.data || ''), bin2 = atob(b64), n = bin2.length, u82 = new Uint8Array(n);
+        for (var k = 0; k < n; k++) u82[k] = bin2.charCodeAt(k);
+        return { blob: new Blob([u82], { type: guessMime(f.name) }), name: f.name };
+    }
+    async function localWriteBlob(path, blob) {
+        var p = cleanPath(path);
+        if (LM.full) {
+            var off = 0, first = true;
+            if (!blob.size) { await PL().writeChunk({ path: absPath(p), data: '', append: false }); return; }
+            while (off < blob.size) {
+                var b64 = await blobToB64(blob.slice(off, off + 786432));
+                await PL().writeChunk({ path: absPath(p), data: b64, append: !first });
+                first = false; off += 786432;
+            }
+        } else {
+            await needFs().writeFile({ path: p, data: await blobToB64(blob), directory: 'DOCUMENTS', recursive: true });
+        }
     }
     function guessMime(n) {
         var m = /\.([a-z0-9]+)$/i.exec(n || ''); var x = m ? m[1].toLowerCase() : '';
@@ -265,6 +320,7 @@
     function tool(name, label, desc, props, required, readOnly, run) {
         return { name: name, label: label, description: desc, parameters: { type: 'object', properties: props, required: required || [] }, readOnly: !!readOnly, needsConfirm: !readOnly, run: run };
     }
+    async function ac() { if (!LM.checked) await checkAccess(); }
     function listTools() {
         var list = folders(), out = [];
         if (!list.length) return out;
@@ -296,21 +352,21 @@
             }));
         }
         if (list.some(function (f) { return f.kind === 'local'; })) {
-            out.push(tool('phone_list', '手機文件：列出', '列出手機「文件」目錄底下某個相對路徑的檔案與資料夾（路徑留空＝文件目錄根）。', {
-                path: { type: 'string', description: '相對於文件目錄的路徑，例如 NOVA 或 NOVA/報告' } }, [], true, async function (a) {
-                var items = await localList(a && a.path);
+            out.push(tool('phone_list', '手機文件：列出', '列出手機儲存空間底下某個相對路徑的檔案與資料夾（路徑留空＝根目錄）。', {
+                path: { type: 'string', description: '相對於手機儲存空間根目錄的路徑，例如 Download 或 Documents/報告' } }, [], true, async function (a) {
+                await ac(); var items = await localList(a && a.path);
                 if (!items.length) return '（沒有項目）';
                 return items.map(function (e) { return (e.isDir ? '[資料夾] ' : '') + e.name + '｜path=' + e.path + (e.size ? '｜' + fmtSize(e.size) : ''); }).join('\n');
             }));
-            out.push(tool('phone_read', '手機文件：讀取文字檔', '讀取手機「文件」目錄下的文字檔（UTF-8），最多 8 萬字。', {
-                path: { type: 'string', description: '相對於文件目錄的檔案路徑' } }, ['path'], true, async function (a) {
-                var r = await localReadText(a.path);
+            out.push(tool('phone_read', '手機文件：讀取文字檔', '讀取手機儲存空間內的文字檔（UTF-8），最多 8 萬字。', {
+                path: { type: 'string', description: '相對於手機儲存空間根目錄的檔案路徑' } }, ['path'], true, async function (a) {
+                await ac(); var r = await localReadText(a.path);
                 return (r.truncated ? '（內容共 ' + r.total + ' 字，只顯示前 ' + MAX_TEXT + ' 字）\n\n' : '') + r.text;
             }));
-            out.push(tool('phone_write', '手機文件：寫入文字檔', '在手機「文件」目錄下建立或覆寫文字檔（UTF-8，會自動建立缺少的資料夾）。沒有指定位置時請放在使用者指定的手機寫入資料夾底下。', {
-                path: { type: 'string', description: '相對於文件目錄的檔案路徑，例如 NOVA/報告.md' }, content: { type: 'string', description: '檔案文字內容' } }, ['path', 'content'], false, async function (a) {
-                var r = await localWriteText(a.path, a.content);
-                return '已寫入「文件/' + r.path + '」';
+            out.push(tool('phone_write', '手機文件：寫入文字檔', '在手機儲存空間內建立或覆寫文字檔（UTF-8，會自動建立缺少的資料夾）。沒有指定位置時請放在使用者指定的手機寫入資料夾底下。', {
+                path: { type: 'string', description: '相對於手機儲存空間根目錄的檔案路徑，例如 Documents/報告.md' }, content: { type: 'string', description: '檔案文字內容' } }, ['path', 'content'], false, async function (a) {
+                await ac(); var r = await localWriteText(a.path, a.content);
+                return '已寫入「' + rootLabel() + '/' + r.path + '」';
             }));
         }
         return out;
@@ -342,24 +398,32 @@
             '.nw-ic{font-size:18px;flex:none}.nw-tx{flex:1;min-width:0}',
             '.nw-nm{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
             '.nw-sub{font-size:10.5px;color:var(--w-mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-            '#nova-ws-pop button.nw-btn,#nova-ws-modal button.nw-btn,#nova-ws-modal button.nw-tab{background:var(--w-bg3) !important;color:var(--w-tx) !important;border:1px solid var(--w-bd) !important;border-radius:8px;padding:8px 11px;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:none !important;min-height:36px}',
-            '#nova-ws-pop button.nw-btn:disabled,#nova-ws-modal button.nw-btn:disabled{opacity:.5}',
-            '#nova-ws-pop button.nw-btn.pri,#nova-ws-modal button.nw-btn.pri,#nova-ws-modal button.nw-tab.on{background:var(--w-ac) !important;border-color:var(--w-ac) !important;color:#fff !important}',
-            '#nova-ws-pop button.nw-btn.on,#nova-ws-modal button.nw-btn.on{background:rgba(52,211,153,.18) !important;border-color:var(--w-grn) !important;color:#047857 !important}',
-            '#nova-ws-pop button.nw-btn.x{padding:6px 9px;color:var(--w-red) !important}',
-            '.nw-btn.sm{padding:6px 9px !important;font-size:12px !important;min-height:32px !important}',
+            '#nova-ws-pop button.nw-btn,#nova-ws-modal button.nw-btn,#nova-ws-modal button.nw-tab{background:transparent !important;color:var(--w-tx) !important;border:0 !important;border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:none !important;min-height:40px;display:inline-flex;align-items:center;justify-content:center;gap:4px}',
+            '#nova-ws-pop button.nw-btn:active,#nova-ws-modal button.nw-btn:active,#nova-ws-modal button.nw-tab:active{background:rgba(148,163,184,.22) !important}',
+            '#nova-ws-pop button.nw-btn:disabled,#nova-ws-modal button.nw-btn:disabled{opacity:.35}',
+            '#nova-ws-pop button.nw-btn.pri,#nova-ws-modal button.nw-btn.pri,#nova-ws-modal button.nw-tab.on{background:var(--w-ac) !important;color:#fff !important}',
+            '#nova-ws-modal button.nw-tab{flex:1;font-weight:700;color:var(--w-mu) !important}',
+            '#nova-ws-modal button.nw-tab.on{color:#fff !important}',
+            '#nova-ws-pop button.nw-btn.on,#nova-ws-modal button.nw-btn.on{color:#059669 !important;font-weight:700}',
+            '#nova-ws-pop button.nw-btn.x{padding:6px 10px;color:var(--w-red) !important}',
+            '#nova-ws-modal button.nw-btn.ic{width:40px;padding:0;font-size:18px}',
+            '.nw-btn.sm{padding:6px 10px !important;font-size:13px !important;min-height:34px !important}',
             '.nw-act{display:flex;flex-direction:column;gap:6px;margin-top:6px}.nw-act .nw-btn{text-align:left}',
             '.nw-roles{display:flex;gap:4px;flex:none}',
             '#nova-ws-modal{position:fixed;inset:0;z-index:2147482950;background:var(--w-bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}',
             '#nova-ws-modal.nw-hidden,#nova-ws-pop.nw-hidden{display:none}',
             '.nw-win{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;font-size:14px}',
-            '.nw-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--w-bd);flex-wrap:wrap}',
-            '.nw-title{font-weight:800;font-size:15px;flex:1;min-width:120px}',
-            '.nw-tabs{display:flex;gap:4px}',
-            '.nw-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--w-bd);flex-wrap:wrap}',
-            '.nw-crumb{flex:1;min-width:140px;font-size:12px;color:var(--w-mu);display:flex;flex-wrap:wrap;gap:2px 4px;align-items:center}',
-            '.nw-crumb a{color:var(--w-ac2);cursor:pointer;text-decoration:none}.nw-crumb b{color:var(--w-tx)}',
-            '.nw-in{background:var(--w-bg2);border:1px solid var(--w-bd);color:var(--w-tx);border-radius:8px;padding:7px 9px;font-size:14px;outline:none;min-width:0;width:130px;font-family:inherit}',
+            '.nw-head{display:flex;align-items:center;gap:8px;padding:10px 8px 6px 14px}',
+            '.nw-title{font-weight:800;font-size:16px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.nw-tabs{display:flex;gap:6px;padding:2px 12px 8px}',
+            '.nw-warn{display:flex;align-items:center;gap:8px;margin:0 12px 6px;padding:8px 10px;border-radius:10px;background:rgba(245,158,11,.14);font-size:12px;line-height:1.45;color:var(--w-tx)}',
+            '.nw-warn span{flex:1}',
+            '.nw-bar{display:flex;align-items:center;gap:2px;padding:0 8px 0 4px;border-bottom:1px solid var(--w-bd)}',
+            '.nw-crumb{flex:1;min-width:0;font-size:13px;color:var(--w-mu);display:flex;gap:4px;align-items:center;white-space:nowrap;overflow-x:auto;padding:8px 6px;scrollbar-width:none}',
+            '.nw-crumb::-webkit-scrollbar{display:none}',
+            '.nw-crumb a{color:var(--w-ac2);cursor:pointer;text-decoration:none;flex:none}.nw-crumb b{color:var(--w-tx);flex:none}',
+            '.nw-tool{display:flex;align-items:center;gap:4px;padding:6px 8px 6px 12px;border-bottom:1px solid var(--w-bd)}',
+            '.nw-in{background:var(--w-bg2);border:0;color:var(--w-tx);border-radius:10px;padding:9px 11px;font-size:14px;outline:none;min-width:0;flex:1;font-family:inherit}',
             '.nw-list{flex:1;overflow:auto;padding:8px 12px}',
             '.nw-item{display:flex;align-items:center;gap:8px;padding:9px 6px;border-radius:9px;border:1px solid transparent}',
             '.nw-item:active{background:var(--w-bg2)}',
@@ -438,7 +502,7 @@
         h.push('<div class="nw-hint">指定後，AI 會優先到這些位置讀寫，不必自己找檔案（需 Gemini／Grok 模型，寫入前會先問你）；這只是引導、不是限制。不指定＝完全不加以指定。可分別決定哪個當「來源」、哪個當「寫入」。</div>');
         if (!list.length) h.push('<div class="nw-empty">尚未指定任何資料夾</div>');
         list.forEach(function (f) {
-            h.push('<div class="nw-row"><span class="nw-ic">' + (f.kind === 'local' ? '📱' : '☁️') + '</span><div class="nw-tx"><div class="nw-nm" title="' + esc(f.name) + '">' + esc(f.name) + '</div><div class="nw-sub">' + esc(f.kind === 'local' ? '手機文件/' + f.ref : 'Google Drive') + '</div></div>'
+            h.push('<div class="nw-row"><span class="nw-ic">' + (f.kind === 'local' ? '📱' : '☁️') + '</span><div class="nw-tx"><div class="nw-nm" title="' + esc(f.name) + '">' + esc(f.name) + '</div><div class="nw-sub">' + esc(f.kind === 'local' ? rootLabel() + '/' + f.ref : 'Google Drive') + '</div></div>'
                 + '<div class="nw-roles"><button class="nw-btn sm' + (isSource(f) ? ' on' : '') + '" data-role="source" data-id="' + esc(f.id) + '">來源</button><button class="nw-btn sm' + (isTarget(f) ? ' on' : '') + '" data-role="target" data-id="' + esc(f.id) + '">寫入</button></div>'
                 + '<button class="nw-btn x" data-rm="' + esc(f.id) + '" title="移除">✕</button></div>');
         });
@@ -468,12 +532,16 @@
         var m = $('nova-ws-modal');
         if (m) return m;
         m = document.createElement('div'); m.id = 'nova-ws-modal'; m.className = 'nw-hidden';
-        m.innerHTML = '<div class="nw-win"><div class="nw-head"><div class="nw-title">📁 工作資料夾與附件</div><div class="nw-tabs"><button class="nw-tab" data-tab="drive">☁️ Drive</button><button class="nw-tab" data-tab="local">📱 手機</button></div><button class="nw-btn" id="nw-close">✕ 關閉</button></div>'
-            + '<div class="nw-bar"><button class="nw-btn sm" id="nw-up">⬆ 上一層</button><button class="nw-btn sm" id="nw-ref">⟳</button><div class="nw-crumb" id="nw-crumb"></div><input class="nw-in" id="nw-q" placeholder="搜尋／篩選…"><button class="nw-btn sm" id="nw-mk">＋資料夾</button><button class="nw-btn sm" id="nw-upl">⬆ 上傳</button><input type="file" id="nw-file" multiple style="display:none"></div>'
+        m.innerHTML = '<div class="nw-win"><div class="nw-head"><div class="nw-title">📁 工作資料夾與附件</div><button class="nw-btn ic" id="nw-close" aria-label="關閉">✕</button></div>'
+            + '<div class="nw-tabs"><button class="nw-tab" data-tab="drive">☁️ Google Drive</button><button class="nw-tab" data-tab="local">📱 手機</button></div>'
+            + '<div class="nw-warn" id="nw-warn" style="display:none"><span>目前只看得到 NOVA 的私有資料夾。授權「所有檔案存取」後，才能瀏覽手機裡的其他資料夾。</span><button class="nw-btn sm pri" id="nw-auth">授權</button></div>'
+            + '<div class="nw-bar"><button class="nw-btn ic" id="nw-up" aria-label="上一層">⬆</button><button class="nw-btn ic" id="nw-ref" aria-label="重新整理">⟳</button><div class="nw-crumb" id="nw-crumb"></div></div>'
+            + '<div class="nw-tool"><input class="nw-in" id="nw-q" placeholder="搜尋／篩選…"><button class="nw-btn sm" id="nw-mk">＋ 資料夾</button><button class="nw-btn sm" id="nw-upl">⬆ 上傳</button><input type="file" id="nw-file" multiple style="display:none"></div>'
             + '<div class="nw-list" id="nw-list"></div>'
             + '<div class="nw-foot"><div class="nw-msg" id="nw-msg"></div><button class="nw-btn pri" id="nw-att" disabled>附加所選檔案</button></div></div>';
         document.body.appendChild(m);
         m.querySelector('#nw-close').onclick = closeModal;
+        m.querySelector('#nw-auth').onclick = function () { var pl = PL(); if (!pl) { toast('只能在 Android App 內授權'); return; } pl.requestAccess().then(function () { toast('請在系統頁面開啟「允許存取所有檔案」，回到 NOVA 後會自動更新'); }).catch(function (e) { toast('❌ ' + errText(e)); }); };
         m.querySelectorAll('.nw-tab').forEach(function (b) { b.onclick = function () { setTab(b.getAttribute('data-tab')); }; });
         m.querySelector('#nw-up').onclick = goUp;
         m.querySelector('#nw-ref').onclick = function () { load(true); };
@@ -494,6 +562,7 @@
         var m = modalEl();
         m.querySelectorAll('.nw-tab').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-tab') === M.tab); });
         m.querySelector('#nw-q').value = M.tab === 'drive' ? M.drive.q : M.local.filter;
+        var _w = $('nw-warn'); if (_w && M.tab === 'drive') _w.style.display = 'none';
         m.querySelector('#nw-q').placeholder = M.tab === 'drive' ? '搜尋檔名後按 Enter' : '篩選目前資料夾';
         if (M.tab === 'drive' ? !M.drive.loaded : !M.local.loaded) load(false); else renderList();
     }
@@ -501,7 +570,7 @@
         msg('載入中…');
         if (M.tab === 'local') {
             var st = M.local;
-            localList(st.path).then(function (items) { st.entries = items; st.loaded = true; st.filter = ''; var q = $('nw-q'); if (q) q.value = ''; msg(items.length + ' 個項目'); renderList(); })
+            checkAccess().then(function () { var w = $('nw-warn'); if (w) w.style.display = (!LM.full && PL()) ? 'flex' : 'none'; return localList(st.path); }).then(function (items) { st.entries = items; st.loaded = true; st.filter = ''; var q = $('nw-q'); if (q) q.value = ''; msg(items.length + ' 個項目'); renderList(); })
                 .catch(function (e) { st.entries = []; st.loaded = true; msg('❌ ' + errText(e), 'err'); renderList(); });
         } else {
             var d = M.drive, cur = d.stack[d.stack.length - 1];
@@ -518,14 +587,14 @@
         else { if (M.drive.q) { M.drive.q = ''; load(); return; } if (M.drive.stack.length > 1) { M.drive.stack.pop(); load(); } }
     }
     function curTarget() {
-        if (M.tab === 'local') return { kind: 'local', ref: M.local.path, name: M.local.path ? M.local.path.split('/').pop() : '文件' };
+        if (M.tab === 'local') return { kind: 'local', ref: M.local.path, name: M.local.path ? M.local.path.split('/').pop() : rootLabel() };
         var c = M.drive.stack[M.drive.stack.length - 1]; return { kind: 'drive', ref: c.id, name: c.name };
     }
     function renderCrumb() {
         var el = $('nw-crumb'), h = [];
         if (M.tab === 'local') {
             var parts = M.local.path ? M.local.path.split('/') : [], acc = '';
-            h.push(parts.length ? '<a data-p="">手機／文件</a>' : '<b>手機／文件</b>');
+            h.push(parts.length ? '<a data-p="">' + esc(rootLabel()) + '</a>' : '<b>' + esc(rootLabel()) + '</b>');
             parts.forEach(function (seg, i) { acc = acc ? acc + '/' + seg : seg; h.push('›'); h.push(i === parts.length - 1 ? '<b>' + esc(seg) + '</b>' : '<a data-p="' + esc(acc) + '">' + esc(seg) + '</a>'); });
         } else {
             M.drive.stack.forEach(function (s, i) { if (i) h.push('›'); h.push(i === M.drive.stack.length - 1 && !M.drive.q ? '<b>' + esc(s.name) + '</b>' : '<a data-i="' + i + '">' + esc(s.name) + '</a>'); });
@@ -558,7 +627,7 @@
         $('nw-mk').disabled = (M.tab === 'drive' && !!M.drive.q); $('nw-upl').disabled = (M.tab === 'drive' && !!M.drive.q);
         var items = normEntries(), el = $('nw-list');
         if (M.tab === 'drive' && M.drive.auth === false) { el.innerHTML = '<div class="nw-empty" style="margin:16px">尚未連接 Google 帳號。<br>請到「設定 → Google 整合」登入並授權雲端硬碟。</div>'; updateAttachBtn(); return; }
-        if (!items.length) { el.innerHTML = '<div class="nw-empty" style="margin:16px">這裡沒有項目' + (M.tab === 'local' ? '<br><span style="font-size:11px">（Android 只保證看得到 NOVA 自己建立的檔案）</span>' : '') + '</div>'; updateAttachBtn(); return; }
+        if (!items.length) { el.innerHTML = '<div class="nw-empty" style="margin:16px">這裡沒有項目' + (M.tab === 'local' && !LM.full ? '<br><span style="font-size:11px">（未授權「所有檔案存取」時只看得到 NOVA 自己建立的檔案）</span>' : '') + '</div>'; updateAttachBtn(); return; }
         var cur = folders(), h = [];
         items.forEach(function (it, i) {
             var added = it.isDir && cur.some(function (f) { return f.id === fid(it.kind, it.ref); });
@@ -639,9 +708,8 @@
             var f = files[i]; msg('上傳中（' + (i + 1) + '/' + files.length + '）：' + f.name + '…');
             try {
                 if (t.kind === 'local') {
-                    if (f.size > 20 * 1024 * 1024) throw new Error('超過 20MB');
-                    var b64 = await blobToB64(f), p = (t.ref ? t.ref + '/' : '') + f.name.replace(/[\\/:*?"<>|]/g, '_');
-                    await needFs().writeFile({ path: cleanPath(p), data: b64, directory: 'DOCUMENTS', recursive: true });
+                    if (f.size > 50 * 1024 * 1024) throw new Error('超過 50MB');
+                    await localWriteBlob((t.ref ? t.ref + '/' : '') + f.name.replace(/[\\/:*?"<>|]/g, '_'), f);
                 } else {
                     await driveUpload(f, f.name, f.type || 'application/octet-stream', { parent: t.ref === 'root' ? undefined : t.ref });
                 }
@@ -658,12 +726,13 @@
         if (s !== _lastSid) { _lastSid = s; _lastBtnSig = ''; refreshButton(); if (popOpen()) renderPopover(); }
         else refreshButton();   // 按鈕可能在 DOM 之後才出現／被重繪
     }, 700);
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && $('nova-ws-modal') && !$('nova-ws-modal').classList.contains('nw-hidden') && M.tab === 'local' && !LM.full) { M.local.path = ''; load(true); } });
     window.addEventListener('resize', function () { if (popOpen()) placePop(); });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { ensureStyle(); refreshButton(); }); else { ensureStyle(); setTimeout(refreshButton, 0); }
     registerTools();
 
     window.NovaWorkspace = {
-        version: '1.0.0',
+        version: '1.1.0',
         togglePopover: togglePopover,
         open: openModal,
         getFolders: function () { return folders().map(function (f) { return Object.assign({}, f); }); },

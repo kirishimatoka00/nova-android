@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingServicePlugin.class);
+        registerPlugin(NovaFilesPlugin.class);   // v2.6.61：手機檔案瀏覽（所有檔案存取）
         registerPlugin(NovaAccessibilityPlugin.class);   // v2.6.24：無障礙服務外掛（批次 5b）
         super.onCreate(savedInstanceState);
 
