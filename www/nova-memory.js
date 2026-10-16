@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.1.1
    版本紀錄：
+   v1.1.1 - App v2.6.60：retrieveContext 讓「你的…／名字／稱呼／身分／角色」類長期事實（AI 自己的名字與角色設定）永遠納入（最多 4 筆），不受相似度前 5 排名影響。其餘不變
    v1.1.0 - 配合 nova-memsync.js（與桌面版記憶互通的 Drive 同步）：匯出 _getOne／_del；刪除長期事實／對話摘要、清空全部記憶時記墓碑（markCoreDeleted／markEpisodicDeleted／markClearedAll）。其餘不變
    v1.0.0 - 初版（批次 6b）。移植 NOVA Desktop 的三層記憶設計（桌面版把資料放在 sidecar 的 SQLite，手機沒有 sidecar，所以改放獨立的 IndexedDB「nova_memory_db」，
             不動知識庫的資料庫）。刻意不做 Google Drive 同步。
@@ -244,6 +245,8 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
             var core = await getAll('core'), epi = opts.coreOnly ? [] : await getAll('episodic');
             var coreRows = core.map(function (r) { return { r: r, s: (r.vector && r.vector.length && qv) ? cosine(qv, r.vector) : null }; });
             var withVec = coreRows.filter(function (x) { return x.s !== null; }).sort(function (a, b) { return b.s - a.s; }).slice(0, CORE_TOP_K).map(function (x) { return x.r; });
+            var _persona = coreRows.filter(function (x) { return x.s !== null && /^你的|名字|稱呼|身分|角色|人設|persona/i.test(String(x.r.entity || '')); }).slice(0, 4).map(function (x) { return x.r; });   // v1.x：AI 自己的名字／角色設定永遠納入，不受相似度排名影響
+            withVec = withVec.concat(_persona.filter(function (r) { return withVec.indexOf(r) < 0; }));
             var noVec = coreRows.filter(function (x) { return x.s === null; }).map(function (x) { return x.r; });   // 沒向量的永遠納入（舊行為）
             var coreOut = withVec.concat(noVec).sort(function (a, b) { return (b.lastUpdated || 0) - (a.lastUpdated || 0); });
             var now = Date.now();

@@ -492,7 +492,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.1"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
     <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
@@ -1008,7 +1008,7 @@
                             <div class="flex items-center justify-between border-t border-slate-700 pt-3">
                                 <div>
                                     <label class="block text-xs text-purple-400 font-bold flex items-center gap-1"><i class="ph-fill ph-speaker-high"></i> 自動播放 AI 語音</label>
-                                    <p class="text-[10px] text-slate-500 mt-1">開啟時，連續語音或口譯的回覆會自動朗讀。</p>
+                                    <p class="text-[10px] text-slate-500 mt-1">開啟時，AI 的回覆（一般對話、連續語音、口譯）會自動朗讀。</p>
                                 </div>
                                 <label class="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
                                     <input type="checkbox" id="key-auto-tts" class="sr-only peer">
@@ -2238,8 +2238,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.59';
+        const NOVA_APP_VERSION = '2.6.60';
         const NOVA_CHANGELOG = [
+            { v: '2.6.60', date: '2026-10-16', notes: [
+                '修正：長期事實／對話記憶沒被 AI 用到——Gemini／Grok 的「工具呼叫」路徑（自動走、工作資料夾也走）原本完全沒帶入記憶，現在補上；另外 AI 自己的名字、角色設定這類事實（項目名稱含「你的／名字／稱呼／身分／角色」）檢索時永遠納入，不再被相似度排名擠掉（nova-memory.js v1.1.1）。',
+                '修正：開啟「自動播放 AI 語音」後一般對話不朗讀——朗讀判斷原本只認連續語音／口譯，現在依開關；工具呼叫路徑的回覆也會朗讀。',
+                '修正：麥克風連續收音講完一句就停——工具呼叫結束後沒有重新開始收音，現在會接著收，直到你再按一次麥克風才停。'
+            ] },
             { v: '2.6.59', date: '2026-10-16', notes: [
                 '「工作資料夾」（移植桌面版 v3.64）：輸入區多一顆資料夾按鈕，可為本輪對話指定多個 Google Drive／手機文件資料夾，各自決定當「來源」或「寫入」；也可在瀏覽視窗把檔案附加為附件、上傳、新增資料夾。指定後對話會走工具呼叫（Gemini／Grok），AI 優先到這些資料夾讀寫（drive_*／phone_* 工具，寫入前會先問你）。資料夾只是引導、不是限制。手機文件資料夾受 Android 分區儲存限制，只保證看得到 NOVA 自己建立的檔案（新檔 nova-workspace.js v1.0.0）。'
             ] },
@@ -9804,11 +9809,19 @@ msg.files : (msg.file ? [msg.file] : []);
                     let a = ''; try { a = JSON.stringify(args); } catch (e) {}
                     return await showConfirm('AI 想呼叫工具：\n【' + (tool.label || tool.name) + '】\n參數：' + a.slice(0, 300) + '\n\n這個工具沒有標示為唯讀，要允許嗎？');
                 };
+                // v2.6.60：工具呼叫路徑也要帶入長期記憶（原本只有一般對話有）
+                let modelText = text;
+                try {
+                    if (window.NovaMemory && NovaMemory.isOn()) {
+                        const _mc = await NovaMemory.retrieveContext(String(text).slice(0, 500));
+                        if (_mc && _mc.found) modelText = _mc.context + '\n\n' + text;
+                    }
+                } catch (e) { console.warn('[NOVA][記憶] FC 注入略過', e); }
                 let result;
                 if (provider === 'gemini') {
                     let model = appState.geminiModel;
                     if (!model || model === 'gemini-multi' || /image|imagen|nano-banana|tts|live/i.test(model)) model = window.NOVA_GEMINI_MODEL_DEFAULT;
-                    const contents = _fcHistoryContents(true).concat([{ role: 'user', parts: [{ text: text }] }]);
+                    const contents = _fcHistoryContents(true).concat([{ role: 'user', parts: [{ text: modelText }] }]);
                     // 若歷史最後一則就是 user（理論上不會），避免兩個連續 user
                     result = await window.NovaFC.runGeminiLoop({
                         fetchImpl: function () { return window.fetch.apply(window, arguments); }, apiKey: appState.keys.gemini, model: model,
@@ -9820,7 +9833,7 @@ msg.files : (msg.file ? [msg.file] : []);
                     if (!model || model === 'grok-multi' || /imagine|image/i.test(model)) model = 'grok-4.3';
                     const msgs = [{ role: 'system', content: _fcSystemPrompt() }];
                     _fcHistoryContents(true).forEach(function (c) { msgs.push({ role: c.role === 'model' ? 'assistant' : 'user', content: c.parts[0].text }); });
-                    msgs.push({ role: 'user', content: text });
+                    msgs.push({ role: 'user', content: modelText });
                     result = await window.NovaFC.runOpenAILoop({
                         fetchImpl: function () { return window.fetch.apply(window, arguments); }, apiKey: appState.keys.grok, model: model,
                         endpoint: 'https://api.x.ai/v1/chat/completions', messages: msgs, tools: tools, maxRounds: 6, confirm: confirmFn, onEvent: onEvent
@@ -9831,12 +9844,15 @@ msg.files : (msg.file ? [msg.file] : []);
                 const used = (result.log || []).filter(function (l) { return !l.denied; }).length;
                 const note = '\n\n*(' + providerLabel + ' Function Calling，' + result.rounds + ' 輪、呼叫 ' + used + ' 次工具' + (result.cacheUsed ? '、Context Caching 已命中' : '') + ')*';
                 addMessage((result.text || '(沒有文字回應)') + note, 'ai');
+                try { const _fid = appState.messages[appState.messages.length - 1].id; if (result.text) speakText(result.text, false, String(_fid)); } catch (e) {}   // v2.6.60：自動播放 AI 語音
             } catch (e) {
                 appState.messages = appState.messages.filter(function (m) { return m.id !== tid; });
                 addMessage('❌ 工具呼叫失敗：' + ((e && e.message) || e), 'ai');
                 console.error('[NOVA][FC] 失敗：', e);
             }
             appState.isThinking = false; updateSendButtonState(false); renderMessages();
+            // v2.6.60：連續語音下，工具呼叫結束後要重新開始收音（原本只有一般對話路徑會，造成講完一句就停）
+            try { if (appState.isContinuous && !appState.isTTSPlaying && typeof _restoreContinuousMicUI === 'function') _restoreContinuousMicUI(); } catch (e) {}
             return true;
         };
 
@@ -11040,7 +11056,7 @@ ${dateRtf}\\par
 };
 
         function speakText(text, force = false, msgId = null) {
-            const shouldAutoPlay = appState.isLiveMode || appState.translateMode !== 'off' || appState.isContinuous;
+            const shouldAutoPlay = appState.isLiveMode || appState.translateMode !== 'off' || appState.isContinuous || appState.autoTTS;   // v2.6.60：一般對話也依「自動播放 AI 語音」開關朗讀
             
             const continueLoop = () => {
                 if (appState.translateMode === 'auto') {
