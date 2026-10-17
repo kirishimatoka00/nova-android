@@ -2,6 +2,7 @@
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
    版本：v1.14.0
    版本紀錄：
+   v1.15.0 - v2.6.63：抽屜改從右側滑入、標題列精簡（只留 logo＋X）。
    v1.14.0 - v2.6.62：第 21 節——側邊欄抽屜化（#mobile-menu 寬約 87% 螢幕、右側圓角、滑入動畫）與遮罩（#mobile-menu-scrim）。
    v1.13.0 - v2.6.61：第 20 節——白晝模式按鈕無框無底色（.nv-ghost，由 nova-ghost.js 標記）。
    v1.12.0 - v2.6.58：第 19 節——白晝模式設定頁開關（peer toggle）開啟時軌道原本被全域覆寫變成接近白色（跟關閉的米色難分辨），改成強調色軌道＋白色滑塊（有陰影），關閉維持灰米色（移植桌面版 v3.70.3 ②）；專案資料夾列改 Claude 風格（移植桌面版 v3.64.1 ④）。
@@ -498,8 +499,12 @@ html.theme-light:root body .nv-ghost:active { background: rgba(15, 23, 42, .07) 
 
 
 /* ═══ §21（v1.14.0）v2.6.62 側邊欄抽屜：仿 Claude 手機版（約 87% 螢幕寬，右側露出遮罩）═══ */
-html:root body #mobile-menu { right: auto !important; width: min(87vw, 400px) !important; border-radius: 0 22px 22px 0; box-shadow: 10px 0 36px rgba(0, 0, 0, .28); animation: nvDrawerIn .22s ease-out; }
+html:root body #mobile-menu { left: auto !important; right: 0 !important; width: min(87vw, 400px) !important; border-radius: 22px 0 0 22px; box-shadow: -10px 0 36px rgba(0, 0, 0, .28); animation: nvDrawerIn .22s ease-out; }
+/* v2.6.63：標題列只留 logo＋X 所需高度，整體上移 */
+html:root body #mobile-menu { padding-top: env(safe-area-inset-top, 0px) !important; }
+html:root body #mobile-menu > div:first-child { padding: 6px 14px !important; border-bottom-width: 0 !important; }
+html:root body #mobile-menu > div:nth-child(2) { padding-top: 4px !important; padding-bottom: 8px !important; }
 html.theme-light:root body #mobile-menu { background: var(--nv-canvas) !important; }
-@keyframes nvDrawerIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes nvDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 #mobile-menu-scrim { position: fixed; inset: 0; z-index: 49; background: rgba(0, 0, 0, .42); display: none; animation: nvScrimIn .22s ease-out; }
 @keyframes nvScrimIn { from { opacity: 0; } to { opacity: 1; } }

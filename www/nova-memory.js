@@ -2,6 +2,7 @@
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
    版本：v1.2.0
    版本紀錄：
+   v1.3.0 - App v2.6.63：設定頁「長期事實」「對話摘要」改成可收合（預設收起，重新整理後保留展開狀態）；私密記憶專區需先用密碼解鎖（NovaPrivateLock，見 nova-private.js v1.1.0），解鎖後可「上鎖」「變更密碼」。
    v1.2.0 - App v2.6.62：支援「私密對話」。程式包成工廠 createMemory(CFG)，建立兩個互不相通的記憶庫：主記憶 NovaMemory（IndexedDB nova_memory_db）與私密記憶 NovaMemoryPrivate（nova_memory_private_db，Profile／開關也各用自己的 localStorage 鍵）。新增 NovaPrivate（nova_private_sessions：哪些對話是私密）。分流規則：主記憶只摘要／固化一般對話，私密記憶只處理私密對話（acceptSid）；檢索也只在對應類型的對話生效（retrieveContext 對不符合的對話回 found:false）；筆記／文件匯入只進主記憶；私密記憶不接雲端同步（NovaMemSync）、不併入主記憶備份。設定頁 renderSettings 可分別畫在兩個容器。其餘不變
    v1.1.1 - App v2.6.60：retrieveContext 讓「你的…／名字／稱呼／身分／角色」類長期事實（AI 自己的名字與角色設定）永遠納入（最多 4 筆），不受相似度前 5 排名影響。其餘不變
    v1.1.0 - 配合 nova-memsync.js（與桌面版記憶互通的 Drive 同步）：匯出 _getOne／_del；刪除長期事實／對話摘要、清空全部記憶時記墓碑（markCoreDeleted／markEpisodicDeleted／markClearedAll）。其餘不變
@@ -314,25 +315,41 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
 
     // ───────── 設定頁 ─────────
-    var ui = { root: null };
+    var ui = { root: null }, openSet = {};
     async function renderSettings(el) {
         ui.root = el || ui.root; el = ui.root; if (!el) return;
+        var LK = CFG.priv ? W.NovaPrivateLock : null;
+        if (LK && !LK.unlocked()) {
+            el.innerHTML = '<div class="nv-card"><h4>🕶️ 私密記憶・已上鎖</h4><p class="nv-muted">' + (LK.hasPw() ? '輸入密碼後才能查看與管理私密記憶。' : '尚未設定密碼，請先設定才能進入私密記憶。') + '</p><button class="nv-btn" id="nm-unlock" style="margin-top:6px">' + (LK.hasPw() ? '🔓 解鎖' : '🔐 設定密碼並進入') + '</button></div>';
+            el.querySelector('#nm-unlock').onclick = async function () { if (await LK.ask()) renderSettings(el); };
+            return;
+        }
         var st = await stats(), core = (await getAll('core')).sort(function (a, b) { return (b.lastUpdated || 0) - (a.lastUpdated || 0); });
         var epi = (await getAll('episodic')).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 30);
         var log = (await getAll('log')).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 20);
         var sid = W.appState && appState.currentSessionId;
-        el.innerHTML =
-            '<div class="nv-card"><h4>' + (CFG.priv ? '🕶️ 私密記憶（只供私密對話使用，與上方主記憶完全分開）' : '🧠 AI 記憶') + '</h4><label class="nova-em-item"><input type="checkbox" id="nm-on" ' + (isOn() ? 'checked' : '') + '> <span>啟用記憶（背景摘要對話、固化長期事實、回答前自動帶入相關記憶）</span></label>' +
+        el.innerHTML = (LK ? '<div class="nv-card"><div style="display:flex;align-items:center;gap:8px"><b style="flex:1">🔓 私密記憶已解鎖</b><button class="nv-btn" id="nm-relock">上鎖</button></div><details style="margin-top:6px"><summary style="cursor:pointer" class="nv-muted">變更密碼</summary><input id="nm-pw-old" type="password" class="nv-input" placeholder="舊密碼" style="margin-top:6px"><input id="nm-pw-new" type="password" class="nv-input" placeholder="新密碼（至少 4 字元）" style="margin-top:6px"><button class="nv-btn" id="nm-pw-save" style="margin-top:6px">儲存新密碼</button></details></div>' : '') +
+            '<div class="nv-card" style="margin-top:' + (LK ? 8 : 0) + 'px"><h4>' + (CFG.priv ? '🕶️ 私密記憶（只供私密對話使用，與上方主記憶完全分開）' : '🧠 AI 記憶') + '</h4><label class="nova-em-item"><input type="checkbox" id="nm-on" ' + (isOn() ? 'checked' : '') + '> <span>啟用記憶（背景摘要對話、固化長期事實、回答前自動帶入相關記憶）</span></label>' +
             '<p class="nv-muted" style="margin-top:6px">資料只存在這支手機（IndexedDB），不上傳；摘要與固化會呼叫 Gemini 輕量模型。</p></div>' +
             '<div class="nv-card" style="margin-top:8px"><h4>目前記憶量</h4><div class="nv-muted">長期事實 ' + st.core + ' 筆｜對話摘要 ' + st.episodic + ' 筆｜追蹤中的實體 ' + st.entities + ' 個</div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="nv-btn" id="nm-now">立即整理目前對話</button><button class="nv-btn nv-danger" id="nm-clear">清空全部記憶</button></div></div>' +
             '<div class="nv-card" style="margin-top:8px"><h4>使用者 Profile</h4><textarea id="nm-profile" class="nv-input" rows="3" placeholder="例：我是 XX，從事 XX，目前專案是 XX（讓記憶只記跟你有關的事）">' + esc(getProfile()) + '</textarea><button class="nv-btn" id="nm-profile-save" style="margin-top:6px">儲存 Profile</button></div>' +
-            '<div class="nv-card" style="margin-top:8px"><h4>長期事實（' + core.length + '）</h4>' + (core.length ? core.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.entity) + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.fact) + '</div></div><button class="nv-btn nm-del-core" data-k="' + esc(r.entity) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。同一個主題 30 天內被提到 3 次、或匯入文件／筆記時抽到穩定事實，就會出現在這裡。</p>') + '</div>' +
-            '<div class="nv-card" style="margin-top:8px"><h4>對話摘要（最近 ' + epi.length + ' 筆）</h4>' + (epi.length ? epi.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.topic || '對話') + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.summary) + '</div></div><button class="nv-btn nm-del-epi" data-k="' + esc(r.id) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。每 10 則 AI 回覆會自動摘要一次。</p>') + '</div>' +
+            '<details class="nv-card nm-fold" data-f="core"' + (openSet.core ? ' open' : '') + ' style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">長期事實（' + core.length + '）</summary>' + (core.length ? core.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.entity) + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.fact) + '</div></div><button class="nv-btn nm-del-core" data-k="' + esc(r.entity) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。同一個主題 30 天內被提到 3 次、或匯入文件／筆記時抽到穩定事實，就會出現在這裡。</p>') + '</details>' +
+            '<details class="nv-card nm-fold" data-f="epi"' + (openSet.epi ? ' open' : '') + ' style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">對話摘要（最近 ' + epi.length + ' 筆）</summary>' + (epi.length ? epi.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.topic || '對話') + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.summary) + '</div></div><button class="nv-btn nm-del-epi" data-k="' + esc(r.id) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。每 10 則 AI 回覆會自動摘要一次。</p>') + '</details>' +
             '<details class="nv-card" style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">維護守則（schema）</summary><textarea id="nm-schema" class="nv-input" rows="10" style="margin-top:6px;font-size:12px"></textarea><div style="display:flex;gap:8px;margin-top:6px"><button class="nv-btn" id="nm-schema-save">儲存</button><button class="nv-btn" id="nm-schema-reset">還原預設</button></div></details>' +
             '<details class="nv-card" style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">操作紀錄（最近 20 筆）</summary>' + (log.length ? log.map(function (l) { return '<div class="nv-muted" style="margin-top:4px">' + new Date(l.ts).toLocaleString() + '｜' + esc(l.op) + '｜' + esc(l.entity) + '：' + esc(l.detail) + '</div>'; }).join('') : '<p class="nv-muted">沒有紀錄</p>') + '</details>';
         var $ = function (id) { return el.querySelector('#' + id); };
         readSchema().then(function (t) { var s = $('nm-schema'); if (s) s.value = t; });
+        Array.prototype.forEach.call(el.querySelectorAll('details.nm-fold'), function (d) { d.addEventListener('toggle', function () { openSet[d.getAttribute('data-f')] = d.open; }); });
+        if (LK) {
+            $('nm-relock').onclick = function () { LK.lock(); renderSettings(el); };
+            $('nm-pw-save').onclick = async function () {
+                var o = $('nm-pw-old').value, n = $('nm-pw-new').value;
+                if (!(await LK.verify(o))) { toast('舊密碼錯誤'); return; }
+                if (n.length < 4) { toast('新密碼至少 4 個字元'); return; }
+                await LK.setPassword(n); toast('🔐 密碼已更新'); renderSettings(el);
+            };
+        }
         $('nm-on').onchange = function (e) { setOn(e.target.checked); toast(e.target.checked ? '🧠 記憶已開啟' : '🧠 記憶已關閉'); };
         $('nm-profile-save').onclick = function () { setProfile($('nm-profile').value); toast('✅ 已儲存 Profile'); };
         $('nm-now').onclick = async function () { if (!sid || !acceptSid(sid)) { toast(CFG.priv ? '目前不是私密對話' : '目前沒有對話或目前是私密對話'); return; } if (!gkey()) { toast('需要 Gemini API Key'); return; } toast('整理中…'); await maybeCompress(sid, true); setTimeout(function () { renderSettings(); }, 4000); };
