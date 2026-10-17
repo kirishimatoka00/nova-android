@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.18.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.19.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2241,8 +2241,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.66';
+        const NOVA_APP_VERSION = '2.6.67';
         const NOVA_CHANGELOG = [
+            { v: '2.6.67', date: '2026-10-17', notes: [
+                '聯網搜尋開啟時連外圈的漸層光環也拿掉，只剩圖示變色（nova-ui.css v1.19.0）。',
+                '黑夜模式時畫面最下方的系統導覽列（返回／首頁／最近工作）一起變深色，白晝模式變白色：新增原生外掛 NovaSystemBars（需要重新安裝新版 APK 才會生效）。'
+            ] },
             { v: '2.6.66', date: '2026-10-17', notes: [
                 'AI 大腦圖譜對標桌面版 v1.3.0：圖中心有兩顆「核心」（你、AI），其餘節點依活躍度分成五層同心殼層圍繞（近期常用／30 天內／90 天內／更久／久未使用）；新增 AI 思考節點、紅圈（需處理）／黃圈（提醒）、相似度門檻拉桿、圖例；介面改手機版（圖層標籤可橫滑、點節點資訊在底部面板）。AI 的核心名稱會讀長期記憶裡你幫它取的名字，沒有就顯示 NOVA（nova-brain-graph.js v2.0.0）。',
                 '3D 圖譜函式庫重新打包（vendor/nova-graph3d.js v2）：多開放畫光暈與圈圈需要的 three 元件。'
@@ -6225,6 +6229,7 @@ return html;
 
             if (theme === 'light') {
                 document.documentElement.classList.add('theme-light');
+                try { if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaSystemBars) Capacitor.Plugins.NovaSystemBars.setNavBar({ color: '#ffffff', light: true }).catch(function(){}); } catch(e) {}   // v2.6.67：系統導覽列
                 // ★ Android：白晝模式 → 狀態列/導航列改為白色
                 if (window.Capacitor && window.Capacitor.getPlatform() === 'android') {
                     try {
@@ -6239,6 +6244,7 @@ return html;
                 if (metaTheme) metaTheme.setAttribute('content', '#f8fafc');
             } else {
                 document.documentElement.classList.remove('theme-light');
+                try { if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaSystemBars) Capacitor.Plugins.NovaSystemBars.setNavBar({ color: '#020617', light: false }).catch(function(){}); } catch(e) {}   // v2.6.67：系統導覽列
                 // ★ Android：深色模式 → 狀態列/導航列恢復 App 深色
                 if (window.Capacitor && window.Capacitor.getPlatform() === 'android') {
                     try {

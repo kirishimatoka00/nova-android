@@ -30,8 +30,10 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(RecordingServicePlugin.class);
         registerPlugin(NovaFilesPlugin.class);   // v2.6.61：手機檔案瀏覽（所有檔案存取）
+        registerPlugin(NovaSystemBarsPlugin.class);   // v2.6.67：導覽列顏色跟主題
         registerPlugin(NovaAccessibilityPlugin.class);   // v2.6.24：無障礙服務外掛（批次 5b）
         super.onCreate(savedInstanceState);
+        try { getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#020617")); } catch (Exception e) { /* 之後由 JS 依主題設定 */ }   // v2.6.67：啟動預設深色導覽列
 
         // ★ Step 1：App 啟動時主動請求所有必要的 Android 系統權限
         // 若未提前請求，WebView 的 getUserMedia / geolocation 即使宣告了也無法使用
