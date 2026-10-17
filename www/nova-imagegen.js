@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-imagegen.js — NOVA Android「生圖模式」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.69。生圖模型、圖片風格、圖片比例、解析度、生成張數全部改成下拉選單（原為晶片／卡片按鈕）。
    v1.0.0 - App v2.6.68。新增專門生成圖片的全螢幕介面（＋選單 →「生圖」）：
             a. 圖片描述　b. Gemini／Grok 生圖模型選擇　c. 解析度（依模型列出可用尺寸，並顯示約略像素）
             d. 圖片比例（依模型列出，附形狀預覽）　e. 參考圖片上傳（自動縮圖，數量依模型）
@@ -132,6 +133,14 @@
         'html:root body #nig-root .nig-ref button{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:0 !important;background:rgba(0,0,0,.62) !important;color:#fff !important;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}' +
         'html:root body #nig-root .nig-add{flex:0 0 72px;height:72px;border-radius:12px;border:1.5px dashed var(--nv-line-strong,#334155) !important;background:transparent !important;color:var(--nv-muted,#94a3b8) !important;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;cursor:pointer}' +
         'html:root body #nig-root .nig-add i{font-size:20px}' +
+        '#nig-root .nig-f{display:block;margin-bottom:12px}#nig-root .nig-f:last-child{margin-bottom:0}' +
+        '#nig-root .nig-fl{display:block;margin:0 2px 6px;font-size:12px;font-weight:700;letter-spacing:.4px;color:var(--nv-muted,#94a3b8)}' +
+        '#nig-root .nig-sw{position:relative;display:block}' +
+        '#nig-root .nig-sw i{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--nv-muted,#94a3b8);font-size:16px}' +
+        'html:root body #nig-root select.nig-sel{width:100%;min-height:46px;padding:0 36px 0 14px;border-radius:12px;border:1px solid var(--nv-line-strong,#334155) !important;background:var(--nv-card-2,#1e293b) !important;color:var(--nv-text,#f1f5f9) !important;font:inherit;font-size:15px;font-weight:600;outline:none;-webkit-appearance:none;appearance:none;box-shadow:none !important;text-overflow:ellipsis}' +
+        'html:root body #nig-root select.nig-sel:focus{border-color:var(--nv-accent,#3b82f6) !important}' +
+        '#nig-root select.nig-sel option,#nig-root select.nig-sel optgroup{background:var(--nv-card,#0f172a);color:var(--nv-text,#f1f5f9)}' +
+        '#nig-root .nig-two{display:grid;grid-template-columns:1fr 1.5fr;gap:10px}#nig-root .nig-two .nig-f{margin-bottom:6px}' +
         '#nig-root .nig-hint{font-size:11.5px;color:var(--nv-faint,#7c8aa0);line-height:1.5;margin:6px 2px 0}' +
         '#nig-root .nig-bar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);border-top:1px solid var(--nv-line,#1e293b);background:var(--nv-chrome,#0f172a)}' +
         '#nig-root .nig-sum{flex:1;min-width:0;font-size:12px;line-height:1.45;color:var(--nv-muted,#94a3b8)}' +
@@ -213,34 +222,21 @@
         if (P.refs.length < m.maxRef) h += '<button class="nig-add nv-keep" data-act="addref"><i class="ph-bold ph-plus"></i>新增</button>';
         h += '</div>' + (m.prov === 'grok' ? '<div class="nig-hint">Grok 有參考圖時走「圖片編輯」，輸出會沿用參考圖的比例，比例與解析度設定可能不生效。</div>' : '<div class="nig-hint">可上傳人物、商品或風格範例，描述裡可寫「把參考圖中的…改成…」。</div>') + '</div>';
 
-        // b. 模型
-        h += '<div class="nig-card"><div class="nig-lb">生圖模型</div><div class="nig-seg">' +
-            '<button class="nv-keep' + (m.prov === 'gemini' ? ' on' : '') + '" data-act="prov" data-v="gemini">Gemini</button>' +
-            '<button class="nv-keep' + (m.prov === 'grok' ? ' on' : '') + '" data-act="prov" data-v="grok">Grok</button></div>';
-        MODELS.filter(function (x) { return x.prov === m.prov; }).forEach(function (x) {
-            h += '<button class="nig-model nv-keep' + (x.id === P.model ? ' on' : '') + '" data-act="model" data-v="' + x.id + '"><span class="nig-dot"></span><span><div class="nig-mn">' + esc(x.name) + '</div><div class="nig-md">' + esc(x.desc) + '</div></span></button>';
-        });
-        h += '</div>';
-
-        // f. 風格
-        h += '<div class="nig-card"><div class="nig-lb">圖片風格</div><div class="nig-row">';
-        STYLES.forEach(function (s) { h += '<button class="nig-chip nv-keep' + (s.id === P.style ? ' on' : '') + '" data-act="style" data-v="' + s.id + '"><span>' + s.e + '</span>' + esc(s.n) + '</button>'; });
-        h += '</div></div>';
-
-        // d. 比例
-        h += '<div class="nig-card"><div class="nig-lb">圖片比例</div><div class="nig-row">';
-        m.ratios.forEach(function (r) { h += '<button class="nig-chip nv-keep' + (r === P.ratio ? ' on' : '') + '" data-act="ratio" data-v="' + r + '">' + shape(r) + r + '</button>'; });
-        h += '</div></div>';
-
-        // c. 解析度
-        h += '<div class="nig-card"><div class="nig-lb">解析度<em>此模型支援 ' + m.sizes.map(function (s) { return SIZE_LABEL[s]; }).join('／') + '</em></div><div class="nig-row">';
-        m.sizes.forEach(function (s) { var d = dims(m, s, P.ratio); h += '<button class="nig-chip nv-keep' + (s === P.size ? ' on' : '') + '" data-act="size" data-v="' + s + '">' + SIZE_LABEL[s] + '<span style="opacity:.65;font-weight:500;font-size:11px">約 ' + d[0] + '×' + d[1] + '</span></button>'; });
-        h += '</div>' + (m.sizes.length === 1 && m.prov === 'gemini' ? '<div class="nig-hint">這個模型只有單一解析度。</div>' : '') + '</div>';
-
-        // 張數
-        h += '<div class="nig-card"><div class="nig-lb">生成張數<em>每張各呼叫一次，額度照張數計算</em></div><div class="nig-cnt">';
-        [1, 2, 3, 4].forEach(function (n) { h += '<button class="nv-keep' + (n === P.count ? ' on' : '') + '" data-act="count" data-v="' + n + '">' + n + '</button>'; });
-        h += '</div></div>';
+        // b~g. 下拉選單
+        var opts = function (arr, cur) { return arr.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join(''); };
+        var mg = '<optgroup label="Gemini">' + opts(MODELS.filter(function (x) { return x.prov === 'gemini'; }).map(function (x) { return [x.id, x.name]; }), P.model) + '</optgroup>' +
+                 '<optgroup label="Grok">' + opts(MODELS.filter(function (x) { return x.prov === 'grok'; }).map(function (x) { return [x.id, x.name]; }), P.model) + '</optgroup>';
+        var sel = function (key, label, inner, hint) { return '<label class="nig-f"><span class="nig-fl">' + label + '</span><span class="nig-sw"><select class="nig-sel nv-keep" data-sel="' + key + '">' + inner + '</select><i class="ph-bold ph-caret-down"></i></span>' + (hint ? '<span class="nig-hint">' + hint + '</span>' : '') + '</label>'; };
+        h += '<div class="nig-card">' +
+            sel('model', '生圖模型', mg, esc(m.desc)) +
+            sel('style', '圖片風格', opts(STYLES.map(function (x) { return [x.id, x.e + ' ' + x.n]; }), P.style)) +
+            '<div class="nig-two">' +
+            sel('ratio', '圖片比例', opts(m.ratios.map(function (r) { return [r, r]; }), P.ratio)) +
+            sel('size', '解析度', opts(m.sizes.map(function (z) { var d = dims(m, z, P.ratio); return [z, SIZE_LABEL[z] + ' · ' + d[0] + '×' + d[1]]; }), P.size)) +
+            '</div>' +
+            '<div class="nig-hint" style="margin:-2px 2px 10px">此模型支援解析度：' + m.sizes.map(function (z) { return SIZE_LABEL[z]; }).join('／') + '</div>' +
+            sel('count', '生成張數（每張各呼叫一次）', opts([1, 2, 3, 4].map(function (n) { return [String(n), n + ' 張']; }), String(P.count))) +
+            '</div>';
         return h;
     }
     function shell() {
@@ -474,6 +470,12 @@
         root = D.createElement('div'); root.id = 'nig-root'; root.innerHTML = shell();
         D.body.appendChild(root);
         root.addEventListener('click', onClick);
+        root.addEventListener('change', function (e) {
+            var t = e.target; if (!t || !t.getAttribute) return; var k = t.getAttribute('data-sel'); if (!k) return;
+            var ta = D.getElementById('nig-ta'); if (ta) P.prompt = ta.value;
+            if (k === 'model') P.model = t.value; else if (k === 'style') P.style = t.value; else if (k === 'ratio') P.ratio = t.value; else if (k === 'size') P.size = t.value; else if (k === 'count') P.count = +t.value;
+            clamp(); savePrefs(); render();
+        });
         D.getElementById('nig-file').addEventListener('change', function (e) { var f = e.target.files; if (f && f.length) addFiles(f); e.target.value = ''; });
     }
     function open() {
@@ -481,6 +483,6 @@
     }
     function close() { if (!root) return; P.open = false; root.classList.remove('nig-open'); D.getElementById('nig-layer').innerHTML = ''; }
 
-    W.NovaImageGen = { open: open, close: close, version: '1.0.0', _models: MODELS };
+    W.NovaImageGen = { open: open, close: close, version: '1.1.0', _models: MODELS };
     W.openImageGen = open;
 })();

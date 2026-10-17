@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.68';
+        const NOVA_APP_VERSION = '2.6.69';
         const NOVA_CHANGELOG = [
+            { v: '2.6.69', date: '2026-10-17', notes: [
+                '生圖模式：生圖模型、圖片風格、圖片比例、解析度、生成張數全部改成下拉選單（nova-imagegen.js v1.1.0）。'
+            ] },
             { v: '2.6.68', date: '2026-10-17', notes: [
                 '＋選單移除「多專家」按鈕（輸入區已有多專家快捷鈕）。原按鈕改成看不見的狀態載體，快捷鈕的開／關顯示不受影響。',
                 '＋選單新增「生圖」：專門生成圖片的全螢幕介面（新檔 nova-imagegen.js v1.0.0）。可設定圖片描述、Gemini／Grok 生圖模型（Nano Banana 2.1、Gemini 3 Pro Image、3.1 Flash-Lite Image、2.5 Flash Image、Grok Imagine 2.0／Imagine）、依模型列出的解析度與比例、參考圖片（自動縮圖）、15 種風格（真實相片、電影感、動漫、3D、水彩…）、張數 1～4；結果可儲存、送到對話、當作參考圖、放大，並保留最近 24 張歷史。',
@@ -20859,7 +20862,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.0.0"></script><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
