@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.15.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.16.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2247,6 +2247,7 @@
                 '對標桌面版 v3.72.0「專案視窗」：點側邊欄資料夾名稱開啟專案頁（點資料夾圖示才是展開／收合）。手機版三個分頁——總覽（AI 專案摘要、AI 專案記憶可編輯、專案對話清單）／知識庫問答（只根據本專案對話與關聯筆記回答，附 [編號] 出處、可存成筆記）／設定（專案指示、關聯筆記、輸出 .md／.html／.txt／.rtf、用 AI 摘要產生 .pptx）。私密對話不會進專案（nova-projects.js v1.0.0）。',
                 '對標桌面版 v3.73.0「AI 思考」：設定 → 記憶 新增可收合的「💡 AI 思考」面板——記憶叢集可逐一開關與選模式（自動／定時／手動），AI 產生金色的創新想法／可能被忽略／關聯下一步，可採納成正式長期事實；聊天遇到相關話題時 AI 會另起一行加註「💡AI 思考：…」並標金色底。思考用模型可跟隨聊天、固定指定模型或由 Jev 依難度挑選。只作用於主記憶，私密記憶不產生也不引用（nova-thoughts.js v1.0.0、nova-memory.js v1.4.0）。',
                 '新增輕量模型呼叫 nova-lean-llm.js：背景整理工作不帶對話歷史、不注入記憶，依所選模型走 Gemini／Grok／OpenAI。',
+                '白晝模式筆記卡片：Word／RichText 等動作鈕原本有藍灰底框、其餘無框，現在全部統一成無框無底色（nova-ui.css v1.16.0）。
                 '完整備份新增專用欄位 aiThoughts／projectsMeta（AI 思考與專案資料；nova-backup-ext.js v1.0.4）。',
             ] },
             { v: '2.6.63', date: '2026-10-17', notes: [

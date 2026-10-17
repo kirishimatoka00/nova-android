@@ -2,6 +2,7 @@
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
    版本：v1.14.0
    版本紀錄：
+   v1.16.0 - v2.6.64：第 22 節——白晝模式筆記卡片（#full-note-list／#mini-note-list）所有動作鈕（Word／RichText／雲端備份／匯入向量庫…）統一成無框無底色，只在按下時有淡底。
    v1.15.0 - v2.6.63：抽屜改從右側滑入、標題列精簡（只留 logo＋X）。
    v1.14.0 - v2.6.62：第 21 節——側邊欄抽屜化（#mobile-menu 寬約 87% 螢幕、右側圓角、滑入動畫）與遮罩（#mobile-menu-scrim）。
    v1.13.0 - v2.6.61：第 20 節——白晝模式按鈕無框無底色（.nv-ghost，由 nova-ghost.js 標記）。
@@ -508,3 +509,11 @@ html.theme-light:root body #mobile-menu { background: var(--nv-canvas) !importan
 @keyframes nvDrawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 #mobile-menu-scrim { position: fixed; inset: 0; z-index: 49; background: rgba(0, 0, 0, .42); display: none; animation: nvScrimIn .22s ease-out; }
 @keyframes nvScrimIn { from { opacity: 0; } to { opacity: 1; } }
+
+
+/* ═══ §22（v1.16.0）v2.6.64 白晝模式：筆記卡片動作鈕統一（原本 Word／RichText 有藍灰底框，其餘無框）═══ */
+html.theme-light:root body #full-note-list button[class][class],
+html.theme-light:root body #mini-note-list button[class][class] { background: transparent !important; background-color: transparent !important; background-image: none !important; border-color: transparent !important; box-shadow: none !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #full-note-list button[class][class]:active,
+html.theme-light:root body #mini-note-list button[class][class]:active { background: rgba(15, 23, 42, .07) !important; }
+html.theme-light:root body #full-note-list button[onclick^="openNoteEdit"] { color: var(--nv-accent) !important; }
