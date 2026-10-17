@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.16.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.17.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2241,8 +2241,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.64';
+        const NOVA_APP_VERSION = '2.6.65';
         const NOVA_CHANGELOG = [
+            { v: '2.6.65', date: '2026-10-17', notes: [
+                '白晝模式修正：多專家快捷鈕啟動後圖示不再消失（改深紫色）。',
+                '聯網搜尋啟動時拿掉底色，只保留按鈕外圈的漸層呼吸光環（nova-ui.css v1.17.0）。'
+            ] },
             { v: '2.6.64', date: '2026-10-17', notes: [
                 '對標桌面版 v3.72.0「專案視窗」：點側邊欄資料夾名稱開啟專案頁（點資料夾圖示才是展開／收合）。手機版三個分頁——總覽（AI 專案摘要、AI 專案記憶可編輯、專案對話清單）／知識庫問答（只根據本專案對話與關聯筆記回答，附 [編號] 出處、可存成筆記）／設定（專案指示、關聯筆記、輸出 .md／.html／.txt／.rtf、用 AI 摘要產生 .pptx）。私密對話不會進專案（nova-projects.js v1.0.0）。',
                 '對標桌面版 v3.73.0「AI 思考」：設定 → 記憶 新增可收合的「💡 AI 思考」面板——記憶叢集可逐一開關與選模式（自動／定時／手動），AI 產生金色的創新想法／可能被忽略／關聯下一步，可採納成正式長期事實；聊天遇到相關話題時 AI 會另起一行加註「💡AI 思考：…」並標金色底。思考用模型可跟隨聊天、固定指定模型或由 Jev 依難度挑選。只作用於主記憶，私密記憶不產生也不引用（nova-thoughts.js v1.0.0、nova-memory.js v1.4.0）。',

@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.14.0
+   版本：v1.17.0
    版本紀錄：
+   v1.17.0 - v2.6.65：白晝模式多專家快捷鈕啟動後圖示改深紫（原本淺紫字疊在淺紫底而消失）；聯網搜尋作用中拿掉底色，只留漸層呼吸光環。
    v1.16.0 - v2.6.64：第 22 節——白晝模式筆記卡片（#full-note-list／#mini-note-list）所有動作鈕（Word／RichText／雲端備份／匯入向量庫…）統一成無框無底色，只在按下時有淡底。
    v1.15.0 - v2.6.63：抽屜改從右側滑入、標題列精簡（只留 logo＋X）。
    v1.14.0 - v2.6.62：第 21 節——側邊欄抽屜化（#mobile-menu 寬約 87% 螢幕、右側圓角、滑入動畫）與遮罩（#mobile-menu-scrim）。
@@ -434,16 +435,25 @@ html:root body #nova-composer > #smart-action-btn.bg-blue-600 { background: var(
 html:root body #nova-composer > #smart-action-btn.bg-red-600 { background: #dc2626 !important; color: #fff !important; }
 html:root body #nova-composer > #kb-mode-toggle-btn.text-emerald-400 { background: rgba(16,185,129,.16) !important; color: #059669 !important; }
 html:root body #nova-composer > #search-toggle-btn.animate-pulse {
+  position: relative; overflow: visible;
   color: #4f46e5 !important;
-  background: linear-gradient(120deg, rgba(59,130,246,.30), rgba(168,85,247,.30), rgba(20,184,166,.30), rgba(59,130,246,.30)) !important;
-  background-size: 300% 300% !important;
-  animation: nvSearchBreath 2.8s ease-in-out infinite !important;
+  background: transparent !important; background-color: transparent !important;
+  animation: nvSearchGlow 2.8s ease-in-out infinite !important;
 }
-@keyframes nvSearchBreath {
-  0%   { background-position: 0% 50%;   opacity: 1;   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
-  50%  { background-position: 100% 50%; opacity: .72; box-shadow: 0 0 14px 3px rgba(99,102,241,.35); }
-  100% { background-position: 0% 50%;   opacity: 1;   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+/* v2.6.65：作用中不填底色，只有一圈漸層光環呼吸（用遮罩挖空中間） */
+html:root body #nova-composer > #search-toggle-btn.animate-pulse::before {
+  content: ""; position: absolute; inset: 0; border-radius: 9999px; padding: 2px; pointer-events: none;
+  background: linear-gradient(120deg, #3b82f6, #a855f7, #14b8a6, #3b82f6); background-size: 300% 300%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: nvSearchRing 2.8s ease-in-out infinite;
 }
+@keyframes nvSearchRing { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes nvSearchGlow {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+  50%      { opacity: .78; box-shadow: 0 0 14px 2px rgba(99,102,241,.35); }
+}
+html:root:not(.theme-light) body #nova-composer > #search-toggle-btn.animate-pulse { color: #93c5fd !important; }
 
 /* (d) ⋮ 選單：整個選單用同一個底色，沒有上下黑邊 */
 .nova-item-menu { background: var(--nv-card) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 12px; box-shadow: var(--nv-shadow) !important; padding: 6px !important; overflow: hidden; }
@@ -517,3 +527,8 @@ html.theme-light:root body #mini-note-list button[class][class] { background: tr
 html.theme-light:root body #full-note-list button[class][class]:active,
 html.theme-light:root body #mini-note-list button[class][class]:active { background: rgba(15, 23, 42, .07) !important; }
 html.theme-light:root body #full-note-list button[onclick^="openNoteEdit"] { color: var(--nv-accent) !important; }
+
+
+/* ───────────── 23. v2.6.65：白晝模式多專家鈕啟動時圖示消失（淺紫字疊在淺紫底） ───────────── */
+html.theme-light:root body #nova-composer > #composer-experts-btn.nova-exp-on { background: rgba(168,85,247,.20) !important; color: #6b21a8 !important; }
+html.theme-light:root body #nova-composer > #composer-experts-btn.nova-exp-on i { color: #6b21a8 !important; opacity: 1 !important; }
