@@ -1,4 +1,4 @@
-/* nova-google.js — v1.2.1 (2026-10-17)
+/* nova-google.js — v1.3.0 (2026-10-17)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.3.0 2026-10-17  App v2.6.63：Gmail 信件改用 HTML 渲染（沙盒 iframe：無腳本、CSP 擋表單與框架；做法同桌面版）：cid 內嵌圖換成 data URI 永遠顯示、遠端圖片預設封鎖並可按「顯示圖片」放行、可切換純文字；連結用系統瀏覽器開。雲端硬碟清單（.ngd-row／對話框）補白晝模式配色。
  *   v1.2.1 2026-10-17  App v2.6.63：Google 整合頁加白晝模式（html.theme-light 下改用 --nv-* 色票：分頁、按鈕無框無底、輸入框、清單、文字色）
  *   v1.2.0 2026-10-11  「Docs」分頁改為「📁 雲端硬碟」（由 nova-gdrive.js 提供瀏覽／讀寫）；匯出內部存取點 _raw／_token／_has／_connected 給 nova-gdrive.js
  *   v1.1.0 2026-10-11  Drive 同步新增：知識庫（documents／folders／chunks，向量不上傳、收到端用 Gemini 補算）、AI 記憶（呼叫 nova-memsync.js，與桌面版共用 NOVA_Memory_Sync.json）；合併知識庫頁記下的刪除墓碑
@@ -247,7 +248,59 @@
     (function walk(x) { if (!x) return; if (x.mimeType === 'text/plain' && x.body && x.body.data) plain += b64dec(x.body.data); else if (x.mimeType === 'text/html' && x.body && x.body.data) html += b64dec(x.body.data); (x.parts || []).forEach(walk); })(p);
     if (plain) return plain; var d = D.createElement('div'); d.innerHTML = html.replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n'); return d.textContent || '';
   }
-  async function gmailRead(id) { var m = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id + '?format=full'); return { from: hdr(m, 'From'), subject: hdr(m, 'Subject'), date: hdr(m, 'Date'), body: bodyOf(m.payload).trim() }; }
+  async function gmailRead(id) {
+    var m = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id + '?format=full');
+    var html = '', inl = [];
+    (function walk(x) {
+      if (!x) return; var mt = x.mimeType || '';
+      if (mt === 'text/html' && x.body && x.body.data) html += b64dec(x.body.data);
+      else if (/^image\//.test(mt) && x.headers) {
+        var h = x.headers.filter(function (k) { return /^content-id$/i.test(k.name); })[0];
+        if (h && h.value) inl.push({ cid: String(h.value).replace(/^\s*<|>\s*$/g, ''), mime: mt, attId: x.body && x.body.attachmentId, data: x.body && x.body.data, size: (x.body && x.body.size) || 0 });
+      }
+      (x.parts || []).forEach(walk);
+    })(m.payload);
+    return { id: id, from: hdr(m, 'From'), subject: hdr(m, 'Subject'), date: hdr(m, 'Date'), body: bodyOf(m.payload).trim(), html: html, inl: inl };
+  }
+  // 內嵌圖（cid:）換成 data URI，永遠顯示（跟桌面版一樣）；最多 20 張、單張 ≤ 2MB
+  async function resolveCid(mail) {
+    if (!mail.html || mail._cidDone) return; mail._cidDone = true;
+    var used = mail.inl.filter(function (x) { return mail.html.toLowerCase().indexOf('cid:' + x.cid.toLowerCase()) >= 0 && x.size <= 2 * 1024 * 1024; }).slice(0, 20);
+    await Promise.all(used.map(async function (x) {
+      try {
+        var d = x.data; if (!d && x.attId) { var a = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + mail.id + '/attachments/' + x.attId); d = a.data; }
+        if (!d) return;
+        var uri = 'data:' + x.mime + ';base64,' + d.replace(/-/g, '+').replace(/_/g, '/');
+        mail.html = mail.html.replace(new RegExp('cid:' + x.cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), uri);
+      } catch (e) { /* 單張失敗就略過 */ }
+    }));
+  }
+  function hasRemoteImg(h) { return /<img\b[^>]*\bsrc\s*=\s*["']?\s*https?:/i.test(h) || /url\(\s*["']?https?:/i.test(h) || /\bbackground\s*=\s*["']?https?:/i.test(h); }
+  // 信件 HTML 放進沙盒 iframe：不給 allow-scripts、CSP 擋腳本／表單／內嵌框架；遠端圖片預設封鎖，按「顯示圖片」才放行（隱私，避免追蹤像素）
+  function mailFrameDoc(html, allowImg) {
+    var clean = String(html || '').replace(/<script\b[\s\S]*?<\/script\s*>/gi, '').replace(/<(meta|base)\b[^>]*>/gi, '').replace(/<\/?(iframe|object|embed|applet|frame|frameset|form)\b[^>]*>/gi, '');
+    var rem = allowImg ? ' https: http:' : '';
+    var csp = "default-src 'none'; form-action 'none'; img-src data:" + rem + "; style-src 'unsafe-inline'" + rem + "; font-src data:" + rem;
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="' + csp + '">' +
+      '<style>html,body{margin:0;background:#fff;color:#202124}body{padding:12px 14px;font:14px/1.55 Arial,sans-serif;overflow-wrap:anywhere}img{max-width:100%;height:auto}table{max-width:100%}a{color:#1a0dab}blockquote{margin:0 0 0 .8ex;padding-left:1ex;border-left:1px solid #ccc}pre{white-space:pre-wrap}</style></head><body>' + clean + '</body></html>';
+  }
+  function openExt(u) { try { var B = W.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser; if (B && B.open) { B.open({ url: u }); return; } } catch (e) {} W.open(u, '_system'); }
+  function mountMailFrame(host, html, allowImg) {
+    host.innerHTML = '';
+    var fr = D.createElement('iframe'); fr.className = 'ng-mframe'; fr.setAttribute('sandbox', 'allow-same-origin'); fr.setAttribute('referrerpolicy', 'no-referrer');
+    fr.style.cssText = 'width:100%;border:0;border-radius:8px;background:#fff;height:160px;display:block';
+    fr.srcdoc = mailFrameDoc(html, allowImg);
+    fr.onload = function () {
+      var d; try { d = fr.contentDocument; } catch (e) { return; } if (!d || !d.body) return;
+      var fit = function () { try { fr.style.height = Math.max(120, d.documentElement.scrollHeight) + 'px'; } catch (e) {} };
+      fit();
+      d.addEventListener('click', function (ev) { var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null; if (!a) return; ev.preventDefault(); var h = a.getAttribute('href') || ''; if (/^https?:/i.test(h)) openExt(h); });
+      d.querySelectorAll('img').forEach(function (im) { im.addEventListener('load', fit); im.addEventListener('error', fit); });
+      try { if (W.ResizeObserver) new ResizeObserver(fit).observe(d.body); } catch (e) {}
+      setTimeout(fit, 300); setTimeout(fit, 1200);
+    };
+    host.appendChild(fr);
+  }
 
   /* ───────── ③ Docs ───────── */
   function docText(doc) { var out = ''; ((doc.body && doc.body.content) || []).forEach(function (el) { if (el.paragraph) (el.paragraph.elements || []).forEach(function (e) { if (e.textRun) out += e.textRun.content; }); else if (el.table) (el.table.tableRows || []).forEach(function (r) { var cells = []; (r.tableCells || []).forEach(function (c) { var t = ''; (c.content || []).forEach(function (cc) { if (cc.paragraph) (cc.paragraph.elements || []).forEach(function (e) { if (e.textRun) t += e.textRun.content.replace(/\n/g, ' '); }); }); cells.push(t.trim()); }); out += cells.join(' | ') + '\n'; }); }); return out; }
@@ -328,6 +381,7 @@
     '#nova-google-modal details{font-size:12px;color:#94a3b8}#nova-google-modal summary{cursor:pointer}' +
     '#nova-google-modal p{margin:0}#nova-google-modal .text-\\[11px\\]{font-size:11px}#nova-google-modal .text-\\[10px\\]{font-size:10px}' +
     'html.theme-light:root body #nova-google-modal{background:var(--nv-canvas) !important;color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ng-head{background:var(--nv-card) !important;border-bottom-color:var(--nv-line) !important}html.theme-light:root body #nova-google-modal .ng-head h3{color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ng-x{background:transparent !important;color:var(--nv-muted) !important}html.theme-light:root body #nova-google-modal .ng-tabs{background:var(--nv-card) !important;border-bottom-color:var(--nv-line) !important}html.theme-light:root body #nova-google-modal .ng-tab{background:transparent !important;color:var(--nv-muted) !important}html.theme-light:root body #nova-google-modal .ng-tab.on{background:var(--nv-card-2) !important;color:var(--nv-accent) !important;box-shadow:inset 0 -2px 0 var(--nv-accent)}html.theme-light:root body #nova-google-modal .ng-body{color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ng-in{background:var(--nv-card) !important;border-color:var(--nv-line-strong) !important;color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ng-btn,html.theme-light:root body #nova-google-modal .ng-gray{background:transparent !important;color:var(--nv-text-2) !important;box-shadow:none !important}html.theme-light:root body #nova-google-modal .ng-sky,html.theme-light:root body #nova-google-modal .ng-green,html.theme-light:root body #nova-google-modal .ng-purple{background:transparent !important;color:var(--nv-accent) !important}html.theme-light:root body #nova-google-modal .ng-btn:active{background:var(--nv-active,rgba(15,23,42,.07)) !important}html.theme-light:root body #nova-google-modal .text-slate-400,html.theme-light:root body #nova-google-modal .text-slate-500{color:var(--nv-muted) !important}html.theme-light:root body #nova-google-modal .text-slate-300{color:var(--nv-text-2) !important}html.theme-light:root body #nova-google-modal .text-sky-400{color:var(--nv-accent) !important}html.theme-light:root body #nova-google-modal .text-amber-400{color:#a16207 !important}html.theme-light:root body #nova-google-modal .text-red-400{color:#b91c1c !important}html.theme-light:root body #nova-google-modal .border,html.theme-light:root body #nova-google-modal .border-slate-800,html.theme-light:root body #nova-google-modal .border-slate-700{border-color:var(--nv-line) !important}html.theme-light:root body #nova-google-modal .bg-slate-900,html.theme-light:root body #nova-google-modal button.w-full,html.theme-light:root body #nova-google-modal pre{background:var(--nv-card) !important;color:var(--nv-text) !important;border-color:var(--nv-line) !important}html.theme-light:root body #nova-google-modal .bg-emerald-900\\/20{background:rgba(5,150,105,.08) !important}html.theme-light:root body #nova-google-modal details{color:var(--nv-muted) !important}html.theme-light:root body #nova-google-modal a{color:var(--nv-accent) !important}html.theme-light:root body #ng-settings-btn button{background:transparent !important;color:var(--nv-text-2) !important}' +
+    'html.theme-light:root body #nova-google-modal .ngd-row{background:var(--nv-card) !important;border-color:var(--nv-line) !important}html.theme-light:root body #nova-google-modal .ngd-nm b{color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ngd-nm small{color:var(--nv-muted) !important}html.theme-light:root body #nova-google-modal .ngd-dlg{background:rgba(250,249,245,.88) !important}html.theme-light:root body #nova-google-modal .ngd-box{background:var(--nv-card) !important;border-color:var(--nv-line-strong) !important;color:var(--nv-text) !important}html.theme-light:root body #nova-google-modal .ng-imgbar{background:var(--nv-card-2) !important}' +
     '#ng-settings-btn button{padding:10px 14px;border:0;border-radius:10px;font-size:13px;font-weight:700;background:#0369a1;color:#fff;display:inline-flex;align-items:center;gap:6px}';
   var IN = 'ng-in';
   var BTN = 'ng-btn ';
@@ -377,7 +431,22 @@
   var curMail = null;
   async function _gmailOpen(id) {
     var r = D.getElementById('ng-gr'), l = D.getElementById('ng-gl'); if (!r) return; l.style.display = 'none'; r.style.display = 'block'; r.innerHTML = '<p class="text-xs text-slate-400">讀取中…</p>';
-    try { curMail = await gmailRead(id); r.innerHTML = '<button class="text-xs text-sky-400 mb-2" onclick="NovaGoogle._gmailBack()">← 返回列表</button><div class="text-xs text-slate-400">' + esc(curMail.from) + '<br>' + esc(curMail.date) + '</div><div class="font-bold my-1">' + esc(curMail.subject) + '</div><pre class="whitespace-pre-wrap text-xs bg-slate-900 border border-slate-800 rounded-lg p-2 max-h-[40vh] overflow-y-auto">' + esc(curMail.body.slice(0, 20000)) + '</pre><div class="flex gap-2 mt-2"><button class="' + BTN + 'ng-purple" onclick="NovaGoogle._gmailAI()">請 AI 摘要</button><button class="' + BTN + 'ng-gray" onclick="NovaGoogle._gmailNote()">存成筆記</button></div><div id="ng-ai" class="text-xs mt-2 whitespace-pre-wrap"></div>'; }
+    try {
+      curMail = await gmailRead(id); var mail = curMail, hasHtml = !!(mail.html && mail.html.trim()), showPlain = !hasHtml, imgOn = false;
+      r.innerHTML = '<button class="text-xs text-sky-400 mb-2" onclick="NovaGoogle._gmailBack()">← 返回列表</button><div class="text-xs text-slate-400">' + esc(mail.from) + '<br>' + esc(mail.date) + '</div><div class="font-bold my-1">' + esc(mail.subject) + '</div>' +
+        '<div class="flex flex-wrap gap-2 mb-2">' + (hasHtml ? '<button class="' + BTN + 'ng-gray" id="ng-mfmt">顯示純文字</button>' : '') + '</div><div id="ng-mimg"></div><div id="ng-mbody"></div>' +
+        '<div class="flex gap-2 mt-2"><button class="' + BTN + 'ng-purple" onclick="NovaGoogle._gmailAI()">請 AI 摘要</button><button class="' + BTN + 'ng-gray" onclick="NovaGoogle._gmailNote()">存成筆記</button></div><div id="ng-ai" class="text-xs mt-2 whitespace-pre-wrap"></div>';
+      var host = D.getElementById('ng-mbody'), bar = D.getElementById('ng-mimg'), fmt = D.getElementById('ng-mfmt');
+      var paint = function () {
+        bar.innerHTML = '';
+        if (showPlain) { host.innerHTML = '<pre class="whitespace-pre-wrap text-xs bg-slate-900 border border-slate-800 rounded-lg p-2" style="max-height:none"></pre>'; host.firstChild.textContent = mail.body.slice(0, 20000) || '（這封信沒有可顯示的文字內容）'; return; }
+        if (!imgOn && hasRemoteImg(mail.html)) { bar.innerHTML = '<div class="ng-imgbar text-xs flex items-center gap-2 mb-2 p-2 rounded-lg border border-slate-800"><span style="flex:1">🖼 為保護隱私，遠端圖片已先封鎖。</span><button class="' + BTN + 'ng-sky" id="ng-mshow">顯示圖片</button></div>'; D.getElementById('ng-mshow').onclick = function () { imgOn = true; paint(); }; }
+        mountMailFrame(host, mail.html, imgOn);
+      };
+      if (hasHtml) { host.innerHTML = '<p class="text-xs text-slate-400">載入內嵌圖片…</p>'; await resolveCid(mail); }
+      paint();
+      if (fmt) fmt.onclick = function () { showPlain = !showPlain; fmt.textContent = showPlain ? '顯示 HTML 版' : '顯示純文字'; paint(); };
+    }
     catch (e) { r.innerHTML = '<p class="text-red-400 text-xs">讀取失敗：' + esc(e.message) + '</p>'; }
   }
   function _gmailBack() { D.getElementById('ng-gr').style.display = 'none'; D.getElementById('ng-gl').style.display = 'block'; }
