@@ -488,7 +488,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.17.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.18.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2241,8 +2241,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.65';
+        const NOVA_APP_VERSION = '2.6.66';
         const NOVA_CHANGELOG = [
+            { v: '2.6.66', date: '2026-10-17', notes: [
+                'AI 大腦圖譜對標桌面版 v1.3.0：圖中心有兩顆「核心」（你、AI），其餘節點依活躍度分成五層同心殼層圍繞（近期常用／30 天內／90 天內／更久／久未使用）；新增 AI 思考節點、紅圈（需處理）／黃圈（提醒）、相似度門檻拉桿、圖例；介面改手機版（圖層標籤可橫滑、點節點資訊在底部面板）。AI 的核心名稱會讀長期記憶裡你幫它取的名字，沒有就顯示 NOVA（nova-brain-graph.js v2.0.0）。',
+                '3D 圖譜函式庫重新打包（vendor/nova-graph3d.js v2）：多開放畫光暈與圈圈需要的 three 元件。'
+            ] },
             { v: '2.6.65', date: '2026-10-17', notes: [
                 '白晝模式修正：多專家快捷鈕啟動後圖示不再消失（改深紫色）。',
                 '聯網搜尋啟動時拿掉底色，只保留按鈕外圈的漸層呼吸光環（nova-ui.css v1.17.0）。'
@@ -20841,7 +20845,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 })();
 </script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><!-- v2.6.39：任務管理對標桌面 -->
-<script src="./nova-notes-pro.js?v=1.1.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
-<script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
+<script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
+<script src="./nova-brain-graph.js?v=2.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>

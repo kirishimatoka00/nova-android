@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.17.0
+   版本：v1.18.0
    版本紀錄：
+   v1.18.0 - v2.6.66：第 24 節——AI 大腦圖譜（#nbg-root）面板在白晝模式維持深色，按鈕不被全域規則蓋成透明。
    v1.17.0 - v2.6.65：白晝模式多專家快捷鈕啟動後圖示改深紫（原本淺紫字疊在淺紫底而消失）；聯網搜尋作用中拿掉底色，只留漸層呼吸光環。
    v1.16.0 - v2.6.64：第 22 節——白晝模式筆記卡片（#full-note-list／#mini-note-list）所有動作鈕（Word／RichText／雲端備份／匯入向量庫…）統一成無框無底色，只在按下時有淡底。
    v1.15.0 - v2.6.63：抽屜改從右側滑入、標題列精簡（只留 logo＋X）。
@@ -532,3 +533,10 @@ html.theme-light:root body #full-note-list button[onclick^="openNoteEdit"] { col
 /* ───────────── 23. v2.6.65：白晝模式多專家鈕啟動時圖示消失（淺紫字疊在淺紫底） ───────────── */
 html.theme-light:root body #nova-composer > #composer-experts-btn.nova-exp-on { background: rgba(168,85,247,.20) !important; color: #6b21a8 !important; }
 html.theme-light:root body #nova-composer > #composer-experts-btn.nova-exp-on i { color: #6b21a8 !important; opacity: 1 !important; }
+
+/* ───────────── 24. v2.6.66：AI 大腦圖譜（#nbg-root）面板固定深色，白晝模式的全域按鈕規則不要把按鈕蓋成透明／同色 ───────────── */
+html.theme-light:root body #nbg-root button { background: #1e293b !important; background-color: #1e293b !important; color: #cbd5e1 !important; border: 0 !important; box-shadow: none !important; }
+html.theme-light:root body #nbg-root #nbg-issues { color: #fca5a5 !important; }
+html.theme-light:root body #nbg-root #nbg-detail button { background: #0ea5e9 !important; color: #fff !important; }
+html.theme-light:root body #nbg-root #nbg-detail #nbg-dclose { background: #1e293b !important; color: #cbd5e1 !important; }
+html.theme-light:root body #nbg-root #nbg-head, html.theme-light:root body #nbg-root #nbg-layers, html.theme-light:root body #nbg-root #nbg-ctl { background: #0f172a !important; }

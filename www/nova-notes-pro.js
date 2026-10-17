@@ -6,6 +6,7 @@
  * 載入位置：index.html 主腳本之後（同名函式以本檔為準）。
  *
  * 版本紀錄
+ *   v1.1.1 2026-10-17  3D 函式庫載入網址升為 ?v=2（配合大腦圖譜移植；函式庫多開放 THREE 元件，介面不變）
  *   v1.1.0 2026-10-11  筆記 3D 圖譜：函式庫改本地打包（vendor/nova-graph3d.js，單一 three 實例，不需網路）、明確指定尺寸＋ResizeObserver、無 WebGL 或建立失敗改 2D 備援、顯示筆記／連結數；修正移植時漏宣告 _novaGraphInstance 造成的 ReferenceError（手機上整片空白的真正原因）
  *   v1.0.0 2026-10-11  首版：自桌面版移植編輯器/標籤/連結/OCR/圖譜/分析；補 4 個輔助函式（代理 fetch 直通、Gemini genCfg 直通）。
  */
@@ -1136,7 +1137,7 @@
         let _novaGraphInstance = null;   // v1.1.0：移植時漏宣告 → openNoteGraph 在建圖前就丟 ReferenceError，畫面整片空白（真正的空白原因）
         async function _novaLoadGraphLib() {
             if (window.NovaGraph3D) return;
-            await _novaLoadScriptOnce('./vendor/nova-graph3d.js?v=1');
+            await _novaLoadScriptOnce('./vendor/nova-graph3d.js?v=2');
             if (!window.NovaGraph3D) throw new Error('函式庫載入失敗：3D 圖譜模組沒有成功載入');
         }
         function _novaWebglOk() { try { var c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } }
