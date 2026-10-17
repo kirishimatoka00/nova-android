@@ -2,6 +2,7 @@
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
    版本：v1.2.0
    版本紀錄：
+   v1.4.0 - App v2.6.64：主記憶的 retrieveContext 結尾帶入相關的「AI 思考」（nova-thoughts.js；私密記憶不帶）。
    v1.3.0 - App v2.6.63：設定頁「長期事實」「對話摘要」改成可收合（預設收起，重新整理後保留展開狀態）；私密記憶專區需先用密碼解鎖（NovaPrivateLock，見 nova-private.js v1.1.0），解鎖後可「上鎖」「變更密碼」。
    v1.2.0 - App v2.6.62：支援「私密對話」。程式包成工廠 createMemory(CFG)，建立兩個互不相通的記憶庫：主記憶 NovaMemory（IndexedDB nova_memory_db）與私密記憶 NovaMemoryPrivate（nova_memory_private_db，Profile／開關也各用自己的 localStorage 鍵）。新增 NovaPrivate（nova_private_sessions：哪些對話是私密）。分流規則：主記憶只摘要／固化一般對話，私密記憶只處理私密對話（acceptSid）；檢索也只在對應類型的對話生效（retrieveContext 對不符合的對話回 found:false）；筆記／文件匯入只進主記憶；私密記憶不接雲端同步（NovaMemSync）、不併入主記憶備份。設定頁 renderSettings 可分別畫在兩個容器。其餘不變
    v1.1.1 - App v2.6.60：retrieveContext 讓「你的…／名字／稱呼／身分／角色」類長期事實（AI 自己的名字與角色設定）永遠納入（最多 4 筆），不受相似度前 5 排名影響。其餘不變
@@ -272,6 +273,14 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
             var parts = [];
             if (coreOut.length) parts.push('[使用者已確認的長期事實（依確認時間由新到舊排序）——若與你原本的預設認知衝突（包含你自己的名字、身分、角色設定等），一律以下面這些使用者確認的事實為準：' + coreOut.map(function (r) { return r.entity + '：' + r.fact; }).join('；') + ']');
             if (picks.length) parts.push('[過去對話參考（背景資訊，供你理解脈絡用）：' + picks.map(function (p) { return (p.topic || '過去對話') + '：' + p.summary; }).join('；') + ']');
+            // v1.4.0：主記憶才帶入「AI 思考」（桌面版 v3.73.0 對標）；私密記憶不產生也不引用
+            if (!CFG.priv && W.NovaThoughts && typeof W.NovaThoughts.contextFor === 'function') {
+                try {
+                    var ents = coreOut.map(function (r) { return r.entity; }); picks.forEach(function (p) { (p.entities || []).forEach(function (en) { ents.push(en); }); });
+                    var th = W.NovaThoughts.contextFor(queryText, { entities: ents, text: coreOut.map(function (r) { return r.entity + ' ' + r.fact; }).join(' ') + ' ' + picks.map(function (p) { return (p.topic || '') + ' ' + (p.summary || ''); }).join(' ') });
+                    if (th) parts.push(th);
+                } catch (e) { /* 不影響記憶檢索 */ }
+            }
             return parts.length ? { found: true, context: parts.join('\n'), coreCount: coreOut.length, episodicCount: picks.length } : { found: false, context: '' };
         } catch (e) { console.warn('[NOVA][記憶] 檢索失敗，略過：', e); return { found: false, context: '' }; }
     }
