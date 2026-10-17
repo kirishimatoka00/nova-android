@@ -51,6 +51,7 @@
         var A = window.appState || {}, f = { lsSettings: collectLs() };
         try { f.disabledModels = window.novaDisabledModels ? window.novaDisabledModels() : []; } catch (e) { /* ignore */ }
         try { if (window.NovaMemory && NovaMemory.exportAll) f.memoryData = await NovaMemory.exportAll().catch(function () { return null; }); } catch (e) { /* ignore */ }
+        try { if (window.NovaMemoryPrivate && NovaMemoryPrivate.exportAll) { f.privateMemoryData = await NovaMemoryPrivate.exportAll().catch(function () { return null; }); f.privateSessions = window.NovaPrivate ? NovaPrivate.list() : []; } } catch (e) { /* ignore */ }
         ['currentModel', 'geminiModel', 'grokModel', 'gptModel', 'theme', 'uiColor', 'deepDiveMode'].forEach(function (k) { if (A[k] !== undefined) f[k] = A[k]; });
         return f;
     }

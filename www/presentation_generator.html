@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <!--
+  ═══ presentation_generator v40（Android；2026-10-17，App v2.6.62）═══
+  v40：白晝模式不再用整頁 filter:invert（會把深藍變淺藍，跟主畫面不協調），改加 theme-light class 並連結 nova-subpage-light.css（跟主畫面同一組米白暖灰配色）；黑夜模式不動。
   ═══ presentation_generator v39（Android；2026-10-11）═══
   v39：套用主程式 index.html v2.6.20 設定頁「🧩 模型」的「啟用的模型」過濾——讀同源 localStorage nova_disabled_models，
        五個模型下拉（首選文字／配圖／背景圖 LLM／排版 LLM／審查）載入後以原始清單為母版重建，停用的模型不再出現；
@@ -53,79 +55,7 @@
     <style>
         :root { background-color: #020617; color-scheme: dark; }
 
-        /* ── 主題：與主程式相同的全局反色方案 ─────────────────────
-           白晝模式 = filter:invert(1) hue-rotate(180deg) 套用於 html
-           與主程式 NOVA 完全一致；header/所有面板全部自動跟著反色
-        ────────────────────────────────────────────────────────── */
-        html.pg-light-mode {
-            filter: invert(1) hue-rotate(180deg) brightness(1.05);
-        }
-        /* 投影片預覽、圖片、彩色輸入需反轉回原色 */
-        html.pg-light-mode img,
-        html.pg-light-mode video,
-        html.pg-light-mode canvas,
-        html.pg-light-mode iframe,
-        html.pg-light-mode .keep-color,
-        html.pg-light-mode [style*="background-image"],
-        html.pg-light-mode input[type="color"] {
-            filter: invert(1) hue-rotate(180deg) !important;
-        }
-        /* ── 白晝模式：彩色圖示還原深色模式飽和度 ──
-           抵銷全域 invert+hue-rotate，使圖示呈現與黑夜模式相同的彩度。
-           涵蓋：① 圖示本身帶色彩 class、② 圖示繼承父元素色彩、③ 漸層/彩色背景元素 */
-        html.pg-light-mode i[class*="ph"][class*="text-blue"],
-        html.pg-light-mode i[class*="ph"][class*="text-yellow"],
-        html.pg-light-mode i[class*="ph"][class*="text-amber"],
-        html.pg-light-mode i[class*="ph"][class*="text-emerald"],
-        html.pg-light-mode i[class*="ph"][class*="text-green"],
-        html.pg-light-mode i[class*="ph"][class*="text-rose"],
-        html.pg-light-mode i[class*="ph"][class*="text-red"],
-        html.pg-light-mode i[class*="ph"][class*="text-violet"],
-        html.pg-light-mode i[class*="ph"][class*="text-purple"],
-        html.pg-light-mode i[class*="ph"][class*="text-cyan"],
-        html.pg-light-mode i[class*="ph"][class*="text-sky"],
-        html.pg-light-mode i[class*="ph"][class*="text-teal"],
-        html.pg-light-mode i[class*="ph"][class*="text-orange"],
-        html.pg-light-mode i[class*="ph"][class*="text-pink"],
-        html.pg-light-mode i[class*="ph"][class*="text-indigo"],
-        html.pg-light-mode [class*="text-blue"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-yellow"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-amber"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-emerald"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-green"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-rose"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-red"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-violet"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-purple"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-cyan"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-sky"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-teal"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-orange"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-pink"] > i[class*="ph"],
-        html.pg-light-mode [class*="text-indigo"] > i[class*="ph"],
-        html.pg-light-mode [class*="bg-gradient"],
-        html.pg-light-mode .bg-blue-600,
-        html.pg-light-mode .bg-emerald-600,
-        html.pg-light-mode .bg-rose-600,
-        html.pg-light-mode .bg-violet-600,
-        html.pg-light-mode .bg-slate-600,
-        html.pg-light-mode [style*="background:linear-gradient"],
-        html.pg-light-mode [style*="background: linear-gradient"],
-        html.pg-light-mode [style*="color:#60a5fa"],
-        html.pg-light-mode [style*="color:#fbbf24"],
-        html.pg-light-mode [style*="color:#34d399"],
-        html.pg-light-mode [style*="color:#38bdf8"],
-        html.pg-light-mode [style*="color:#a78bfa"],
-        html.pg-light-mode [style*="color:#f87171"],
-        html.pg-light-mode [style*="color:#4ade80"],
-        html.pg-light-mode [style*="color:#fb923c"],
-        html.pg-light-mode [style*="color:#e879f9"],
-        html.pg-light-mode [style*="background-color:#3b82f6"],
-        html.pg-light-mode [style*="background-color:#2563eb"],
-        html.pg-light-mode [style*="background:#3b82f6"],
-        html.pg-light-mode [style*="background:#2563eb"] {
-            filter: invert(1) hue-rotate(180deg) !important;
-        }
+        /* v2.6.62：白晝模式改用 nova-subpage-light.css 的主畫面同色系（原本整頁 filter:invert 會把深藍變淺藍，跟主畫面不協調）；pg-light-mode 只保留當旗標 */
         html, body { background-color: #020617; min-height: 100vh; font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif; }
 
         /* ✅ 文字選取白框修正 */
@@ -168,6 +98,7 @@
         .img-pick-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
         .img-pick-thumb .err-ph { width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#475569;font-size:10px; }
     </style>
+<link rel="stylesheet" href="./nova-subpage-light.css?v=1.0.0">
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
 
@@ -975,9 +906,9 @@ function applyPgTheme(theme) {
     const isDark = theme !== 'light';
     const html = document.documentElement;
     if (isDark) {
-        html.classList.remove('pg-light-mode');
+        html.classList.remove('pg-light-mode', 'theme-light');
     } else {
-        html.classList.add('pg-light-mode');
+        html.classList.add('pg-light-mode', 'theme-light');
     }
     const icon = document.getElementById('pg-theme-icon');
     if (icon) icon.className = isDark ? 'ph-bold ph-moon' : 'ph-bold ph-sun';

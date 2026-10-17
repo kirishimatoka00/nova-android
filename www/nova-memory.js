@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.1
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.62：支援「私密對話」。程式包成工廠 createMemory(CFG)，建立兩個互不相通的記憶庫：主記憶 NovaMemory（IndexedDB nova_memory_db）與私密記憶 NovaMemoryPrivate（nova_memory_private_db，Profile／開關也各用自己的 localStorage 鍵）。新增 NovaPrivate（nova_private_sessions：哪些對話是私密）。分流規則：主記憶只摘要／固化一般對話，私密記憶只處理私密對話（acceptSid）；檢索也只在對應類型的對話生效（retrieveContext 對不符合的對話回 found:false）；筆記／文件匯入只進主記憶；私密記憶不接雲端同步（NovaMemSync）、不併入主記憶備份。設定頁 renderSettings 可分別畫在兩個容器。其餘不變
    v1.1.1 - App v2.6.60：retrieveContext 讓「你的…／名字／稱呼／身分／角色」類長期事實（AI 自己的名字與角色設定）永遠納入（最多 4 筆），不受相似度前 5 排名影響。其餘不變
    v1.1.0 - 配合 nova-memsync.js（與桌面版記憶互通的 Drive 同步）：匯出 _getOne／_del；刪除長期事實／對話摘要、清空全部記憶時記墓碑（markCoreDeleted／markEpisodicDeleted／markClearedAll）。其餘不變
    v1.0.0 - 初版（批次 6b）。移植 NOVA Desktop 的三層記憶設計（桌面版把資料放在 sidecar 的 SQLite，手機沒有 sidecar，所以改放獨立的 IndexedDB「nova_memory_db」，
@@ -21,10 +22,23 @@
 (function () {
     'use strict';
     var W = window;
-    var DB_NAME = 'nova_memory_db', DB_VER = 1;
+    // ───────── v1.2.0：私密對話狀態（哪些對話是私密的）。私密對話的記憶完全走另一個資料庫，不與主記憶混合 ─────────
+    var PRIV_KEY = 'nova_private_sessions';
+    function privList() { try { var a = JSON.parse(localStorage.getItem(PRIV_KEY) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch (e) { return []; } }
+    W.NovaPrivate = W.NovaPrivate || {
+        isPrivate: function (sid) { return sid != null && privList().indexOf(String(sid)) >= 0; },
+        isCurrent: function () { try { return !!(W.appState && this.isPrivate(W.appState.currentSessionId)); } catch (e) { return false; } },
+        mark: function (sid) { var a = privList(); if (a.indexOf(String(sid)) < 0) { a.push(String(sid)); try { localStorage.setItem(PRIV_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ } } },
+        unmark: function (sid) { var a = privList().filter(function (x) { return x !== String(sid); }); try { localStorage.setItem(PRIV_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ } },
+        list: privList,
+        setList: function (arr) { try { localStorage.setItem(PRIV_KEY, JSON.stringify((Array.isArray(arr) ? arr : []).map(String))); } catch (e) { /* ignore */ } }
+    };
+    // 工廠：同一份程式建立兩個互不相通的記憶庫（主記憶 nova_memory_db／私密記憶 nova_memory_private_db）
+    function createMemory(CFG) {
+    var DB_NAME = CFG.dbName, DB_VER = 1;
     var COMPRESS_EVERY = 10, DECAY_RATE = 0.8, DECAY_HALFLIFE_DAYS = 30, PROMOTE_THRESHOLD = 3, ENTITY_WINDOW_DAYS = 30;
     var TOP_K = 5, CORE_TOP_K = 5, THRESHOLD = 0.5, MAX_FACTS_PER_DOC = 5, TEXT_LIMIT = 8000;
-    var PROFILE_KEY = 'nova_mem_user_profile', MODE_KEY = 'nova_mem_mode';
+    var PROFILE_KEY = CFG.profileKey, MODE_KEY = CFG.modeKey;
     var DEFAULT_SCHEMA_MD = `# NOVA 記憶 Wiki 維護守則
 
 這份文件告訴 NOVA（Gemini）在把新事實併入「長期事實」（core_memory）時要
@@ -124,7 +138,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     function gkey() { return (W.appState && appState.keys && appState.keys.gemini) || ''; }
     function model() { return W.NOVA_GEMINI_MODEL_LITE || 'gemini-3.5-flash-lite'; }
     function toast(m) { try { W.showToast && W.showToast(m); } catch (e) { /* ignore */ } }
-    function changed() { try { W.dispatchEvent(new Event('nova-memory-changed')); } catch (e) { /* ignore */ } }
+    function changed() { try { W.dispatchEvent(new Event(CFG.event)); } catch (e) { /* ignore */ } }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function timeoutP(p, ms, label) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error((label || '呼叫') + '逾時')); }, ms); })]); }
 
@@ -204,9 +218,10 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
 
     // ───────── 中期摘要 ─────────
     function sessionMsgs(sid) { return (W.appState ? appState.messages : []).filter(function (m) { return String(m.sessionId) === String(sid) && (m.sender === 'user' || m.sender === 'ai'); }); }
+    function acceptSid(sid) { return !!sid && (W.NovaPrivate.isPrivate(sid) === CFG.priv); }   // 主記憶只收一般對話、私密記憶只收私密對話
     var _busy = {};
     async function maybeCompress(sessionId, force) {
-        if (!isOn() || !gkey() || !sessionId) return;
+        if (!isOn() || !gkey() || !sessionId || !acceptSid(sessionId)) return;
         try {
             var ai = sessionMsgs(sessionId).filter(function (m) { return m.sender === 'ai'; });
             var cp = await getOne('checkpoints', String(sessionId)); var done = (cp && cp.compressedCount) || 0;
@@ -216,6 +231,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         } catch (e) { /* 背景任務 */ }
     }
     async function compressSession(sessionId, fromAi) {
+        if (!acceptSid(sessionId)) return;
         var msgs = sessionMsgs(sessionId), ai = msgs.filter(function (m) { return m.sender === 'ai'; });
         var target = ai.slice(fromAi, fromAi + COMPRESS_EVERY); if (!target.length) return;
         var s = msgs.findIndex(function (m) { return m.id === target[0].id; }), e = msgs.findIndex(function (m) { return m.id === target[target.length - 1].id; });
@@ -239,7 +255,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     // ───────── 檢索 ─────────
     async function retrieveContext(queryText, opts) {
         opts = opts || {};
-        if (!isOn() || !gkey()) return { found: false, context: '' };
+        if (!isOn() || !gkey() || (W.NovaPrivate.isCurrent() !== CFG.priv)) return { found: false, context: '' };
         try {
             var qv = (typeof W.novaKbEmbedQuery === 'function') ? await timeoutP(W.novaKbEmbedQuery(String(queryText || '').slice(0, 600)), 10000, '嵌入') : null;
             var core = await getAll('core'), epi = opts.coreOnly ? [] : await getAll('episodic');
@@ -272,7 +288,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     // fire-and-forget 安全：內部吞掉所有錯誤
     async function ingestDocument(o) {
         o = o || {};
-        if (!isOn() || !gkey() || !o.text) return 0;
+        if (CFG.priv || !isOn() || !gkey() || !o.text) return 0;   // 筆記／文件匯入只進主記憶，私密記憶不收
         try {
             var facts = await extractFacts(o.text, o.title), n = 0;
             for (var i = 0; i < facts.length; i++) { await consolidateCore(String(facts[i].entity).trim(), String(facts[i].fact).trim(), o.sourceRef || '', o.sessionId || '', 1, '文件/筆記匯入'); n++; }
@@ -295,7 +311,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         if (d.mode) setOn(d.mode !== 'off');
         return n;
     }
-    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
+    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
 
     // ───────── 設定頁 ─────────
     var ui = { root: null };
@@ -306,7 +322,7 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         var log = (await getAll('log')).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 20);
         var sid = W.appState && appState.currentSessionId;
         el.innerHTML =
-            '<div class="nv-card"><h4>🧠 AI 記憶</h4><label class="nova-em-item"><input type="checkbox" id="nm-on" ' + (isOn() ? 'checked' : '') + '> <span>啟用記憶（背景摘要對話、固化長期事實、回答前自動帶入相關記憶）</span></label>' +
+            '<div class="nv-card"><h4>' + (CFG.priv ? '🕶️ 私密記憶（只供私密對話使用，與上方主記憶完全分開）' : '🧠 AI 記憶') + '</h4><label class="nova-em-item"><input type="checkbox" id="nm-on" ' + (isOn() ? 'checked' : '') + '> <span>啟用記憶（背景摘要對話、固化長期事實、回答前自動帶入相關記憶）</span></label>' +
             '<p class="nv-muted" style="margin-top:6px">資料只存在這支手機（IndexedDB），不上傳；摘要與固化會呼叫 Gemini 輕量模型。</p></div>' +
             '<div class="nv-card" style="margin-top:8px"><h4>目前記憶量</h4><div class="nv-muted">長期事實 ' + st.core + ' 筆｜對話摘要 ' + st.episodic + ' 筆｜追蹤中的實體 ' + st.entities + ' 個</div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="nv-btn" id="nm-now">立即整理目前對話</button><button class="nv-btn nv-danger" id="nm-clear">清空全部記憶</button></div></div>' +
@@ -319,15 +335,18 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         readSchema().then(function (t) { var s = $('nm-schema'); if (s) s.value = t; });
         $('nm-on').onchange = function (e) { setOn(e.target.checked); toast(e.target.checked ? '🧠 記憶已開啟' : '🧠 記憶已關閉'); };
         $('nm-profile-save').onclick = function () { setProfile($('nm-profile').value); toast('✅ 已儲存 Profile'); };
-        $('nm-now').onclick = async function () { if (!sid) { toast('目前沒有對話'); return; } if (!gkey()) { toast('需要 Gemini API Key'); return; } toast('整理中…'); await maybeCompress(sid, true); setTimeout(function () { renderSettings(); }, 4000); };
+        $('nm-now').onclick = async function () { if (!sid || !acceptSid(sid)) { toast(CFG.priv ? '目前不是私密對話' : '目前沒有對話或目前是私密對話'); return; } if (!gkey()) { toast('需要 Gemini API Key'); return; } toast('整理中…'); await maybeCompress(sid, true); setTimeout(function () { renderSettings(); }, 4000); };
         $('nm-clear').onclick = async function () { var ok = W.showConfirm ? await W.showConfirm('確定清空全部 AI 記憶（長期事實、對話摘要、實體統計）？此操作無法復原。') : true; if (ok) { await clearAll(); toast('已清空'); renderSettings(); } };
         $('nm-schema-save').onclick = async function () { await writeSchema($('nm-schema').value); toast('✅ 已儲存維護守則'); };
         $('nm-schema-reset').onclick = async function () { await resetSchema(); $('nm-schema').value = DEFAULT_SCHEMA_MD; toast('已還原預設'); };
-        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-core'), function (b) { b.onclick = async function () { await del('core', b.getAttribute('data-k')); try { W.NovaMemSync && W.NovaMemSync.markCoreDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
-        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-epi'), function (b) { b.onclick = async function () { await del('episodic', b.getAttribute('data-k')); try { W.NovaMemSync && W.NovaMemSync.markEpisodicDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
+        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-core'), function (b) { b.onclick = async function () { await del('core', b.getAttribute('data-k')); try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markCoreDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
+        Array.prototype.forEach.call(el.querySelectorAll('.nm-del-epi'), function (b) { b.onclick = async function () { await del('episodic', b.getAttribute('data-k')); try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markEpisodicDeleted(b.getAttribute('data-k')); } catch (e) {} changed(); renderSettings(); }; });
     }
 
-    W.NovaMemory = { isOn: isOn, setOn: setOn, getProfile: getProfile, setProfile: setProfile, maybeCompress: maybeCompress, compressSession: compressSession, retrieveContext: retrieveContext,
+    return { isOn: isOn, setOn: setOn, getProfile: getProfile, setProfile: setProfile, maybeCompress: maybeCompress, compressSession: compressSession, retrieveContext: retrieveContext,
         ingestDocument: ingestDocument, extractFacts: extractFacts, consolidateCore: consolidateCore, updateEntityFreq: updateEntityFreq, stats: stats, exportAll: exportAll, importAll: importAll, clearAll: clearAll,
         renderSettings: renderSettings, readSchema: readSchema, DEFAULT_SCHEMA_MD: DEFAULT_SCHEMA_MD, _open: open, _getAll: getAll, _getOne: getOne, _put: put, _del: del, _cosine: cosine };
+    }
+    W.NovaMemory = createMemory({ dbName: 'nova_memory_db', profileKey: 'nova_mem_user_profile', modeKey: 'nova_mem_mode', event: 'nova-memory-changed', priv: false });
+    W.NovaMemoryPrivate = createMemory({ dbName: 'nova_memory_private_db', profileKey: 'nova_pmem_user_profile', modeKey: 'nova_pmem_mode', event: 'nova-pmemory-changed', priv: true });
 })();

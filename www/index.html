@@ -488,11 +488,11 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.13.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.14.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.1.1"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.2.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.1"></script>
     <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
@@ -794,10 +794,13 @@
                     <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-white"><i class="ph-bold ph-x text-2xl"></i></button>
                 </div>
                 
-                <div class="p-4 shrink-0">
-                    <button onclick="createNewChat(); toggleMobileMenu();" class="flex items-center justify-center space-x-2 w-full p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 shadow-sm">
+                <div class="p-4 shrink-0 flex items-center gap-2">
+                    <button onclick="createNewChat(); toggleMobileMenu();" class="flex items-center justify-center space-x-2 flex-1 p-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 shadow-sm">
                         <i class="ph-bold ph-plus text-lg"></i>
                         <span class="font-medium text-sm">新增對話</span>
+                    </button>
+                    <button id="nova-private-new" onclick="createPrivateChat(); toggleMobileMenu();" aria-label="新增私密對話" title="新增私密對話（記憶與知識庫獨立）" class="flex items-center justify-center shrink-0 w-12 h-12 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 shadow-sm">
+                        <i class="ph-bold ph-ghost text-xl"></i>
                     </button>
                 </div>
 
@@ -1194,7 +1197,7 @@
 
                         <!-- 分頁：工具（Function Calling／遠端 MCP／Context Caching，v2.6.22） -->
                         <!-- 分頁：AI 記憶（v2.6.25，批次 6b） -->
-                        <div id="tab-memory" class="space-y-3 hidden"><div id="nova-memory-settings"></div></div>
+                        <div id="tab-memory" class="space-y-3 hidden"><div id="nova-memory-settings"></div><div id="nova-private-memory-settings" style="margin-top:18px;padding-top:14px;border-top:1px dashed var(--nv-line-strong, #334155)"></div></div>
 
                         <div id="tab-tools" class="space-y-3 hidden">
                             <div class="nv-card">
@@ -2238,8 +2241,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.61';
+        const NOVA_APP_VERSION = '2.6.62';
         const NOVA_CHANGELOG = [
+            { v: '2.6.62', date: '2026-10-17', notes: [
+                '側邊欄改成抽屜樣式：寬度約 87% 螢幕（仿 Claude 手機版），右側露出半透明遮罩，點遮罩或選單項目就關閉（nova-ui.css v1.14.0）。',
+                '向量資料庫與簡報生成頁的白晝模式改用主畫面同一組米白暖灰配色（原本是偏藍的反轉色，簡報頁還是整頁反色）；黑夜模式不動（新檔 nova-subpage-light.css v1.0.0）。',
+                '新增「私密對話」：側邊欄「新增對話」旁的幽靈圖示按鈕，開出的對話為私密對話。它的記憶完全獨立——用另一個資料庫（NovaMemoryPrivate），不讀不寫主記憶、不使用知識庫；主記憶與一般對話也看不到私密記憶。私密記憶不上雲端同步、備份時另存且還原只回私密庫。設定 → 記憶 分頁下方有「私密記憶」專區（開關、Profile、清單、清空）。對話訊息本身仍和一般對話一樣存在本機（新檔 nova-private.js v1.0.0、nova-memory.js v1.2.0）。'
+            ] },
             { v: '2.6.61', date: '2026-10-16', notes: [
                 '白晝模式：介面按鈕（頂列、⋮、清空對話、天氣膠囊、各頁灰色按鈕…）不再有框與灰底，只在按下時有淡淡底色；有顏色的主要按鈕（新增、送出、儲存、錄音中）不變（新檔 nova-ghost.js v1.0.0、nova-ui.css v1.13.0）。',
                 '工作資料夾的「手機」分頁可瀏覽手機任意資料夾：新增原生外掛 NovaFiles＋「所有檔案存取」權限（需要重新安裝新版 APK；第一次在視窗點「授權」，到系統頁面開啟後回到 NOVA）。未授權時仍只看得到 NOVA 私有資料夾。AI 的 phone_* 工具與附件、上傳也一併改用，路徑相對於手機儲存空間根目錄。',
@@ -3571,6 +3579,8 @@ async function encodeMp3(audioBuffer) {
                     gptModel: appState.gptModel,
                     disabledModels: (window.novaDisabledModels ? window.novaDisabledModels() : []),   // v2.6.22：啟用的模型（批次 1 漏掉的備份欄位）
                     memoryData: (window.NovaMemory ? await NovaMemory.exportAll().catch(() => null) : null),   // v2.6.25：AI 記憶（IndexedDB）
+                    privateMemoryData: (window.NovaMemoryPrivate ? await NovaMemoryPrivate.exportAll().catch(() => null) : null),   // v2.6.62：私密記憶（獨立資料庫，還原時也只回私密庫）
+                    privateSessions: (window.NovaPrivate ? NovaPrivate.list() : []),
                     expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
                     toolConfig: { mcpServers: (window.novaFcCfg ? window.novaFcCfg.servers() : []), disabledTools: (window.novaFcCfg ? window.novaFcCfg.disabled() : []), auto: _fcLs('nova_fc_auto', '0'), cache: _fcLs('nova_fc_cache', '1'), cacheRound: _fcLs('nova_fc_cache_round', '3') },   // v2.6.22
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
@@ -3729,6 +3739,8 @@ async function encodeMp3(audioBuffer) {
                 if (data.gptModel)     { appState.gptModel = data.gptModel; try { localStorage.setItem('nova_gpt_model', data.gptModel); } catch (e) {} }
                 if (Array.isArray(data.disabledModels)) { try { localStorage.setItem('nova_disabled_models', JSON.stringify(data.disabledModels)); if (window.novaApplyModelFilter) window.novaApplyModelFilter(); } catch (e) {} }   // v2.6.22
                 if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }   // v2.6.25
+                if (data.privateMemoryData && window.NovaMemoryPrivate) { try { await NovaMemoryPrivate.importAll(data.privateMemoryData); } catch (e) {} }   // v2.6.62：私密記憶只還原到私密庫
+                if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
                 if (data.expertsConfig && typeof data.expertsConfig === 'object') {   // v2.6.23
                     try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
                 }
@@ -4178,11 +4190,16 @@ return html;
         window.toggleMobileMenu = function() {
             const menu = document.getElementById('mobile-menu');
             if (!menu) return;
+            // v2.6.62：側邊欄改成抽屜（約 87% 螢幕寬，仿 Claude 手機版），右側露出遮罩，點遮罩關閉
+            let scrim = document.getElementById('mobile-menu-scrim');
+            if (!scrim) { scrim = document.createElement('div'); scrim.id = 'mobile-menu-scrim'; scrim.onclick = function () { window.toggleMobileMenu(); }; menu.parentNode.insertBefore(scrim, menu); }
             if (menu.style.display === 'none' || menu.style.display === '') {
                 menu.style.display = 'flex';
                 menu.style.flexDirection = 'column';
+                scrim.style.display = 'block';
             } else {
                 menu.style.display = 'none';
+                scrim.style.display = 'none';
             }
         };
 
@@ -6320,7 +6337,7 @@ return html;
             if (tabId === 'tab-models' && typeof novaRenderEnabledModels === 'function') novaRenderEnabledModels();
             // 切換到「工具」分頁時重畫（v2.6.22）
             if (tabId === 'tab-tools' && typeof novaFcRenderSettings === 'function') novaFcRenderSettings();
-            if (tabId === 'tab-memory' && window.NovaMemory) NovaMemory.renderSettings(document.getElementById('nova-memory-settings'));   // v2.6.25
+            if (tabId === 'tab-memory' && window.NovaMemory) { NovaMemory.renderSettings(document.getElementById('nova-memory-settings')); if (window.NovaMemoryPrivate) NovaMemoryPrivate.renderSettings(document.getElementById('nova-private-memory-settings')); }   // v2.6.25
             // 切換到語音分頁時重新填充人聲選單
             if (tabId === 'tab-voice' && typeof populateVoices === 'function') {
                 populateVoices();
@@ -6827,6 +6844,8 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                     // 1. 還原系統設定與金鑰
                     if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) { console.warn(e); } }   // v2.6.39：全部設定頁參數
                     if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }
+                    if (data.privateMemoryData && window.NovaMemoryPrivate) { try { await NovaMemoryPrivate.importAll(data.privateMemoryData); } catch (e) {} }
+                    if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
                     ['currentModel', 'geminiModel', 'grokModel', 'gptModel', 'theme', 'uiColor'].forEach(function (k) { if (data[k]) appState[k] = data[k]; });
                     if(data.keys) {
                         Object.keys(data.keys).forEach(k => { 
@@ -7363,7 +7382,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             if(filesArr.length === 1 && !Array.isArray(files)) msg.file = files; // legacy support for DB
             appState.messages.push(msg); saveToDB('messages', msg); scheduleEmergencyBackup();
             if (!sessionId || String(sessionId) === String(appState.currentSessionId)) renderMessages();   // v2.6.23
-            if (sender === 'ai' && !actionData && window.NovaMemory) { const _ms = msg.sessionId; setTimeout(function () { try { NovaMemory.maybeCompress(_ms); } catch (e) {} }, 4000); }   // v2.6.25：背景記憶摘要
+            if (sender === 'ai' && !actionData && window.NovaMemory) { const _ms = msg.sessionId; setTimeout(function () { try { NovaMemory.maybeCompress(_ms); if (window.NovaMemoryPrivate) NovaMemoryPrivate.maybeCompress(_ms); } catch (e) {} }, 4000); }   // v2.6.25：背景記憶摘要
             if (typeof renderChatHistoryList === 'function') renderChatHistoryList();
 
             // 💡 修正 1：開放「系統訊息 (system)」也能推播，解決排程提示看不到的問題
@@ -9817,8 +9836,8 @@ msg.files : (msg.file ? [msg.file] : []);
                 // v2.6.60：工具呼叫路徑也要帶入長期記憶（原本只有一般對話有）
                 let modelText = text;
                 try {
-                    if (window.NovaMemory && NovaMemory.isOn()) {
-                        const _mc = await NovaMemory.retrieveContext(String(text).slice(0, 500));
+                    if (window._novaMemStore() && _novaMemStore().isOn()) {
+                        const _mc = await _novaMemStore().retrieveContext(String(text).slice(0, 500));
                         if (_mc && _mc.found) modelText = _mc.context + '\n\n' + text;
                     }
                 } catch (e) { console.warn('[NOVA][記憶] FC 注入略過', e); }
@@ -12472,7 +12491,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             // 點對話名稱載入，點按鈕不載入
             return `<div class="flex items-center rounded-xl mb-0.5 overflow-hidden ${isActive ? 'nova-chat-item-active' : 'nova-chat-item'}" style="background:${isActive ? 'rgba(71,85,105,0.35)' : 'transparent'};">
                 <div class="flex items-center gap-2 min-w-0 p-2.5 cursor-pointer" style="flex:1;overflow:hidden;background:transparent;" onclick="loadChatSession('${sid}')">
-                    <i class="ph-bold ph-chat-circle text-base" style="flex-shrink:0;color:${isActive ? '#475569' : '#94a3b8'};"></i>
+                    <i class="ph-bold ${(window.NovaPrivate && NovaPrivate.isPrivate(sid)) ? 'ph-ghost' : 'ph-chat-circle'} text-base" style="flex-shrink:0;color:${isActive ? '#475569' : '#94a3b8'};"></i>
                     <span style="font-size:0.875rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${isActive ? '600' : '400'};color:${isActive ? '#e2e8f0' : '#94a3b8'};">${escapeHtml(title)}</span>
                 </div>
                 <div style="display:flex;align-items:center;flex-shrink:0;background:transparent;">
@@ -15963,6 +15982,7 @@ window.startMultiAgentResearch = async function() {
         let _novaKbDb = null;
 
         function isKbModeOn() {
+            if (window.NovaPrivate && NovaPrivate.isCurrent()) return false;   // v2.6.62：私密對話不使用知識庫
             return localStorage.getItem('nova_kb_mode') === 'on';
         }
 
@@ -16226,6 +16246,7 @@ window.startMultiAgentResearch = async function() {
         // 回傳 { found, context, items:[{docId,docName,docType,text,score}] }
         async function novaKbRetrieveContext(queryText, opts) {
             try {
+                if (window.NovaPrivate && NovaPrivate.isCurrent()) return { found: false, context: '', items: [] };   // v2.6.62：私密對話不讀知識庫（含 AI 工具 kb_search、專家 RAG）
                 opts = opts || {};
                 const [chunks, folders] = await Promise.all([novaKbGetAllChunks(), novaKbGetAllFolders()]);
                 if (!chunks || chunks.length === 0) return { found: false, context: '', items: [] };
@@ -17933,8 +17954,8 @@ if (appState.pendingAnalyzeContextId) {
                 }
 
                 // v2.6.25（批次 6b）：AI 記憶——自動帶入相關的長期事實與過去對話摘要（NovaMemory，IndexedDB）
-                if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window.NovaMemory && NovaMemory.isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt')) {
-                    try { const _mc = await NovaMemory.retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
+                if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window._novaMemStore() && _novaMemStore().isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt')) {
+                    try { const _mc = await _novaMemStore().retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
                 }
 
                 let finalPrompt = userText;
@@ -20712,7 +20733,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.0.0"></script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=1.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->

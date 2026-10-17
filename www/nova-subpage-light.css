@@ -1,0 +1,57 @@
+/* ═════════════════════════════════════════════════════════════════
+   nova-subpage-light.css — 向量資料庫（knowledgebank.html）與簡報生成（presentation_generator.html）的白晝配色
+   版本：v1.0.0
+   版本紀錄：
+   v1.0.0 - App v2.6.62。這兩頁原本的白晝模式是「slate 色相反轉」（簡報頁甚至用 filter:invert 整頁反色），出來是偏藍的淺藍底，
+            跟主畫面（nova-ui.css 的米白暖灰 token）不協調；改成跟主畫面同一組色：底 #faf9f5、卡片 #fdfcfa、次級 #f3f1ea、線 #e8e5dc、字 #141413、強調 #c15f3c。
+            只在 <html class="theme-light"> 生效，黑夜模式完全不動。主要動作按鈕（藍／紫／綠）維持原色。
+   ═════════════════════════════════════════════════════════════════ */
+html.theme-light {
+  --nv-canvas: #faf9f5; --nv-card: #fdfcfa; --nv-card-2: #f3f1ea; --nv-line: #e8e5dc; --nv-line-strong: #d9d5c9;
+  --nv-text: #141413; --nv-text-2: #3d3929; --nv-muted: #6b6860; --nv-faint: #8a8679; --nv-accent: #c15f3c;
+}
+html.theme-light, html.theme-light body { background: var(--nv-canvas) !important; color: var(--nv-text); }
+html.theme-light body::after { background: var(--nv-canvas) !important; }
+/* 背景 */
+html.theme-light body .bg-slate-950, html.theme-light body .bg-slate-900 { background-color: var(--nv-canvas) !important; }
+html.theme-light body .bg-slate-900\/95 { background-color: rgba(250,249,245,.96) !important; }
+html.theme-light body .bg-slate-950\/90 { background-color: rgba(250,249,245,.92) !important; }
+html.theme-light body .bg-slate-900\/60 { background-color: rgba(253,252,250,.7) !important; }
+html.theme-light body .bg-slate-800, html.theme-light body .bg-slate-800\/60, html.theme-light body .bg-slate-800\/50 { background-color: var(--nv-card-2) !important; }
+html.theme-light body .bg-slate-700 { background-color: var(--nv-line) !important; }
+html.theme-light body .bg-slate-600 { background-color: var(--nv-line-strong) !important; }
+/* 卡片：區塊容器（圓角＋邊框的面板）用卡片色 */
+html.theme-light body [class*="rounded-2xl"][class*="bg-slate-900"], html.theme-light body [class*="rounded-xl"][class*="bg-slate-900"],
+html.theme-light body [class*="rounded-2xl"][class*="bg-slate-950"], html.theme-light body [class*="rounded-xl"][class*="bg-slate-950"] { background-color: var(--nv-card) !important; }
+/* 內嵌樣式寫死的深色底 */
+html.theme-light body [style*="background:#1e293b"], html.theme-light body [style*="background: #1e293b"] { background: var(--nv-card-2) !important; color: var(--nv-text) !important; }
+html.theme-light body [style*="background:#0f172a"], html.theme-light body [style*="background: #0f172a"] { background: var(--nv-card) !important; }
+html.theme-light body [style*="background:#334155"], html.theme-light body [style*="background: #334155"] { background: var(--nv-line) !important; }
+html.theme-light body [style*="background:#020617"], html.theme-light body [style*="background: #020617"] { background: var(--nv-canvas) !important; }
+/* 綠色／漸層提示卡片 → 卡片色＋細線 */
+html.theme-light body [class*="from-emerald-950"], html.theme-light body [class*="from-slate-"], html.theme-light body [class*="from-indigo-950"], html.theme-light body [class*="from-violet-950"] { background-image: none !important; background-color: var(--nv-card) !important; }
+html.theme-light body [class*="border-emerald-500\/30"], html.theme-light body [class*="border-emerald-700"] { border-color: var(--nv-line-strong) !important; }
+/* 邊框 */
+html.theme-light body .border-slate-800, html.theme-light body .border-slate-900 { border-color: var(--nv-line) !important; }
+html.theme-light body .border-slate-700, html.theme-light body .border-slate-600 { border-color: var(--nv-line-strong) !important; }
+html.theme-light body .divide-slate-800 > * + *, html.theme-light body .divide-slate-700 > * + * { border-color: var(--nv-line) !important; }
+/* 文字 */
+html.theme-light body .text-white, html.theme-light body .text-slate-100, html.theme-light body .text-slate-200 { color: var(--nv-text) !important; }
+html.theme-light body .text-slate-300 { color: var(--nv-text-2) !important; }
+html.theme-light body .text-slate-400 { color: var(--nv-muted) !important; }
+html.theme-light body .text-slate-500, html.theme-light body .text-slate-600 { color: var(--nv-faint) !important; }
+/* 彩色實心按鈕上的字維持白色（用完整 class 比對，避免 hover:bg-xxx 造成誤判） */
+html.theme-light body .bg-blue-500.text-white, html.theme-light body .bg-blue-600.text-white, html.theme-light body .bg-blue-700.text-white,
+html.theme-light body .bg-violet-500.text-white, html.theme-light body .bg-violet-600.text-white, html.theme-light body .bg-emerald-600.text-white,
+html.theme-light body .bg-rose-600.text-white, html.theme-light body .bg-sky-600.text-white, html.theme-light body .bg-teal-600.text-white,
+html.theme-light body .bg-red-600.text-white, html.theme-light body .bg-indigo-600.text-white, html.theme-light body .bg-purple-600.text-white,
+html.theme-light body .bg-gradient-to-r.text-white, html.theme-light body .bg-gradient-to-br.text-white, html.theme-light body .bg-gradient-to-tr.text-white,
+html.theme-light body .bg-gradient-to-r .text-white, html.theme-light body .bg-gradient-to-br .text-white,
+html.theme-light body .bg-blue-600 .text-white, html.theme-light body .bg-violet-600 .text-white, html.theme-light body .bg-emerald-600 .text-white { color: #fff !important; }
+/* 表單 */
+html.theme-light body select, html.theme-light body input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), html.theme-light body textarea {
+  background-color: var(--nv-card) !important; color: var(--nv-text) !important; border-color: var(--nv-line-strong) !important; }
+html.theme-light body ::placeholder { color: var(--nv-faint) !important; }
+html.theme-light ::-webkit-scrollbar-thumb { background: var(--nv-line-strong); }
+/* 頂部頁首 */
+html.theme-light body .sticky.top-0, html.theme-light body header { background-color: rgba(250,249,245,.96) !important; border-color: var(--nv-line) !important; }
