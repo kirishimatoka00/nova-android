@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.70';
+        const NOVA_APP_VERSION = '2.6.71';
         const NOVA_CHANGELOG = [
+            { v: '2.6.71', date: '2026-10-18', notes: [
+                'web_search／read_webpage 加入 Firecrawl（設定 → 主要 的 Firecrawl Key，原本只給深度研究用）：搜尋順序為 Google → SerpApi → Firecrawl，說「用 firecrawl 查」可指定；讀網頁先直接讀，讀不到（動態網頁、被擋）自動改用 Firecrawl 抓 markdown，也可指定強制使用。API 先試 v2、404 再退 v1，有原生 HTTP 就走原生。'
+            ] },
             { v: '2.6.70', date: '2026-10-18', notes: [
                 '修正「模型有搜尋工具卻不上網查資料」：一般對話走工具呼叫迴圈（Function Calling）時，工具清單裡根本沒有搜尋工具，模型只好回答「沒有連網搜尋功能」。現在內建新增 web_search（先用 Gemini 的 Google 搜尋，失敗再用 SerpApi；SerpApi 改走原生 HTTP，不再繞公用代理；結果含電影場次、答案框、在地結果）與 read_webpage（讀網頁文字），並跟著輸入區的「連網搜尋」開關；系統提示明確要求即時資訊必須先搜尋。問題跟位置有關時可帶入手機定位（nearby）。',
                 '自主模式（/ap）新增 web_search 動作：只是要查資訊（電影場次、天氣、價格…）時直接取得搜尋結果，不必操作瀏覽器；資料夠了就用 done 回報完整答案。提示詞判斷器已加入使用規則（Computer Use 判斷器的動作集不變，尚未加入）。'
@@ -9871,16 +9874,37 @@ msg.files : (msg.file ? [msg.file] : []);
                     (j.organic_results || []).slice(0, 6).forEach(function (it, i) { o.push((i + 1) + '. ' + it.title + '（' + it.link + '）\n   ' + (it.snippet || '')); });
                     return o.length > 1 ? o.join('\n') : '未找到相關結果。';
                 };
+                const _fcPost = async function (path, body) {   // Firecrawl：先試 v2，404 再退 v1；有原生 HTTP 就用（無 CORS）
+                    const key = appState.keys.firecrawl; if (!key) throw new Error('沒有設定 Firecrawl 金鑰');
+                    const CH = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp;
+                    let last = '';
+                    for (const v of ['v2', 'v1']) {
+                        const url = 'https://api.firecrawl.dev/' + v + '/' + path, headers = { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' };
+                        let st, j;
+                        if (CH) { const r = await CH.request({ method: 'POST', url: url, headers: headers, data: body, responseType: 'json' }); st = r.status; j = typeof r.data === 'string' ? JSON.parse(r.data) : r.data; }
+                        else { const r = await fetch(url, { method: 'POST', headers: headers, body: JSON.stringify(body) }); st = r.status; j = await r.json().catch(function () { return null; }); }
+                        if (st >= 200 && st < 300 && j) return j;
+                        last = 'Firecrawl HTTP ' + st + ((j && (j.error || j.message)) ? '：' + (j.error || j.message) : '');
+                        if (st !== 404) break;
+                    }
+                    throw new Error(last);
+                };
+                const _wsFirecrawl = async function (q) {
+                    const j = await _fcPost('search', { query: q, limit: 6, country: 'TW', lang: 'zh-TW', scrapeOptions: { formats: ['markdown'], onlyMainContent: true } });
+                    const d = j.data || {}, list = Array.isArray(d) ? d : (d.web || []);
+                    if (!list.length) throw new Error('Firecrawl 沒有結果');
+                    return '【Firecrawl 搜尋結果】\n' + list.slice(0, 6).map(function (it, i) { return (i + 1) + '. ' + (it.title || (it.metadata && it.metadata.title) || it.url) + '（' + (it.url || (it.metadata && it.metadata.sourceURL) || '') + '）\n   ' + String(it.markdown ? it.markdown.slice(0, 700) : (it.description || '')).replace(/\n{2,}/g, '\n'); }).join('\n');
+                };
                 out.push({ name: 'web_search', label: '網路搜尋', readOnly: true,
-                    description: '即時網路搜尋（Google）。凡是需要最新資訊都必須先呼叫：新聞、天氣、價格、電影場次、營業時間、附近的店家、人物近況、官網資料等。回傳摘要與來源網址；需要細節時再用 read_webpage 讀來源頁。',
+                    description: '即時網路搜尋（Google／SerpApi／Firecrawl）。凡是需要最新資訊都必須先呼叫：新聞、天氣、價格、電影場次、營業時間、附近的店家、人物近況、官網資料等。回傳摘要與來源網址；需要細節時再用 read_webpage 讀來源頁。',
                     parameters: { type: 'object', properties: {
                         query: { type: 'string', description: '搜尋關鍵字或完整問題（建議具體，例如「人魚島的秘密 新莊 電影場次」）' },
                         nearby: { type: 'boolean', description: '問題跟使用者所在位置有關（附近、離我最近）時設 true，會帶入手機定位；預設 false' },
-                        source: { type: 'string', description: 'auto（預設）、google、serpapi。使用者指定用 SerpApi 時填 serpapi' } }, required: ['query'] },
+                        source: { type: 'string', description: 'auto（預設）、google、serpapi、firecrawl。使用者指定用哪一個就填哪一個' } }, required: ['query'] },
                     run: async function (a) {
                         const q = String(a.query || '').trim(); if (!q) return { success: false, text: '缺少 query' };
                         const nearby = a.nearby === true, src = String(a.source || 'auto').toLowerCase();
-                        const order = src === 'serpapi' ? [_wsSerp, _wsGoogle] : src === 'google' ? [_wsGoogle, _wsSerp] : [_wsGoogle, _wsSerp];
+                        const order = src === 'serpapi' ? [_wsSerp, _wsGoogle, _wsFirecrawl] : src === 'firecrawl' ? [_wsFirecrawl, _wsGoogle, _wsSerp] : [_wsGoogle, _wsSerp, _wsFirecrawl];
                         const errs = [];
                         for (let i = 0; i < order.length; i++) { try { return await order[i](q, nearby); } catch (e) { errs.push((e && e.message) || String(e)); } }
                         if (appState.docMonitorUrl && typeof searchViaGas === 'function') { try { const g = await searchViaGas(q); if (g) return g; } catch (e) { errs.push(String(e)); } }
@@ -9888,10 +9912,16 @@ msg.files : (msg.file ? [msg.file] : []);
                     } });
                 out.push({ name: 'read_webpage', label: '讀取網頁', readOnly: true,
                     description: '讀取指定網址的網頁文字內容（用於 web_search 回傳的來源頁、官網、場次頁）。只能讀公開頁面，讀不到時會回報。',
-                    parameters: { type: 'object', properties: { url: { type: 'string', description: '完整網址（含 https://）' } }, required: ['url'] },
+                    parameters: { type: 'object', properties: { url: { type: 'string', description: '完整網址（含 https://）' }, source: { type: 'string', description: 'auto（預設：先直接讀，讀不到再用 Firecrawl）或 firecrawl（強制，適合動態網頁）' } }, required: ['url'] },
                     run: async function (a) {
                         const u = String(a.url || '').trim(); if (!/^https?:\/\//i.test(u)) return { success: false, text: '網址必須以 http:// 或 https:// 開頭' };
-                        const t = await fetchUrlContent(u);
+                        const viaFc = async function () { const j = await _fcPost('scrape', { url: u, formats: ['markdown'], onlyMainContent: true }); const md = j.data && (j.data.markdown || j.data.content); return md ? String(md).slice(0, 12000) : null; };
+                        let t = null;
+                        if (String(a.source || '').toLowerCase() === 'firecrawl') { try { t = await viaFc(); } catch (e) { return { success: false, text: 'Firecrawl 讀取失敗：' + ((e && e.message) || e) }; } }
+                        else {
+                            t = await fetchUrlContent(u);
+                            if (!t && appState.keys.firecrawl) { try { t = await viaFc(); } catch (e) { /* 走下面的失敗訊息 */ } }
+                        }
                         return t ? { success: true, text: String(t).slice(0, 12000) } : { success: false, text: '讀不到這個網頁（可能需要登入、被擋或內容由 JavaScript 動態產生）。請改用 web_search 或換一個來源。' };
                     } });
             }
