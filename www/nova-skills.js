@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skills.js — NOVA Android 技能引擎（跟 index.html 放同一個資料夾 www/）
-   版本：v2.1.0
+   版本：v2.1.1
    版本紀錄：
+   v2.1.1 - App v2.6.81。每次載入完技能清單（儲存、刪除、改名、匯入後都會重新載入）發出 window 事件 'nova-skills-changed'，讓側邊欄「技能範本」清單即時更新。
    v2.1.0 - App v2.6.79。replay 新增三種「不用操作畫面」的步驟：web_search（query、nearby）、run_python（code、timeout_sec）、run_shell（cmd、timeout_sec），
             讓純文字模式（v2.6.74）完成的自主任務也能存成技能、之後重播；stepOutline 補上這三種的顯示文字。
    v2.0.0 - 批次 7a。取代 index.html 內舊的「只有腳本 .js」NovaSkills，改成對標桌面版 v3.x 的統一技能格式（資料夾 Documents/NovaSkills/）：
@@ -114,6 +115,7 @@
             } catch (err) { fails.push(s.name + ': ' + (err.message || err)); }
         }
         manifest = out;
+        try { W.dispatchEvent(new Event('nova-skills-changed')); } catch (e) { /* ignore */ }
         if (!out.length && fails.length) lastLoadError = fails.join('；');
         else if (fails.length) console.warn('[NovaSkills] 部分技能載入失敗：', fails.join('；'));
         return out;
@@ -293,6 +295,6 @@
         getLastError: function () { return lastLoadError; }, getCount: function () { return manifest.length; },
         saveSkill: saveSkill, deleteSkill: deleteSkill, renameSkill: renameSkill, repairIndex: repairIndex, setLastValues: setLastValues,
         exportAll: exportAll, importAll: importAll, stepOutline: stepOutline, outline: outline,
-        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.0'
+        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.1'
     };
 })();

@@ -1,7 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.3.0
+   版本：v1.4.0
    版本紀錄：
+   v1.4.0 - App v2.6.81。側邊欄新增「技能範本」清單（對標桌面版 _novaRenderAutonomousTemplates）：桌面側邊欄與手機選單都有，可收合、顯示數量；
+            每個技能一列，點一下就執行（可重播技能會先跳參數表單、提示範本放進輸入框或交給自主任務、半成品查看內容），右邊 ⋮ 開操作選單（執行／參數／編輯／複製／改名／刪除）。
+            技能新增、刪除、改名、匯入或 /sc 之後自動更新（聽 nova-skills.js 的 'nova-skills-changed' 事件）。
    v1.3.0 - App v2.6.80。恢復 /sc：fromConversation(focus) 把「剛才的對話」整理成技能並顯示在技能管理。
             ① 若剛完成自主任務且有可重播步驟 → 詢問是否存成可重播技能（開原本的存成技能視窗，可挑步驟、設參數）；
             ② 否則讀目前對話最近的內容，請 AI 設計成「提示範本」（可選擇用一般對話或自主任務執行），預覽可改名稱／說明／內容再儲存；
@@ -570,6 +573,55 @@
             banner('✅ 已把這段對話存成技能「' + name + '」（' + (v.mode === 'autonomous' ? 'AI 自主任務' : '一般對話') + '）。可在技能管理執行、編輯、複製或設定。', [['🧰 開啟技能管理', function () { open(); }, true], ['略過']]);
         } catch (er) { toast('❌ 儲存失敗：' + er.message, 5000); }
     }
+
+    // ═══════════════ 側邊欄「技能範本」（桌面側邊欄＋手機選單，對標桌面版） ═══════════════
+    var SB_BADGE = { replay: ['可重播', '#164e63', '#67e8f9'], prompt: ['提示', '#3b0764', '#d8b4fe'], imported: ['匯入', '#3b0764', '#d8b4fe'], flow: ['流程', '#312e81', '#a5b4fc'], script: ['腳本', '#78350f', '#fbbf24'] };
+    function sbCollapsed() { return lsGet('nova_sb_skills_collapsed', '0') === '1'; }
+    function closeMobileMenuIfOpen() { try { var m = $('mobile-menu'); if (m && m.style.display !== 'none' && typeof W.toggleMobileMenu === 'function') W.toggleMobileMenu(); } catch (e) { /* ignore */ } }
+    function skillMenu(name) {
+        var e = S().get(name); if (!e) return;
+        var o = overlay('⋮ ' + name, 9400);
+        o.body.appendChild(mk('div', CSS.muted, (e.description || e.goal || '').slice(0, 160)));
+        var items = [[e.partial ? '👁 檢視內容' : '▶ 執行', function () { runSkill(name); }]];
+        if (e.type === 'replay' && !e.partial) items.push(['🧩 設定參數', function () { openParams(name); }]);
+        items.push(['✏️ 編輯', function () { editSkill(name); }], ['⧉ 複製', function () { cloneSkill(name); }], ['🏷 改名', function () { renameFlow(name); }],
+            ['🗑 刪除', async function () { if (await W.showConfirm('確定刪除技能「' + name + '」？無法復原。')) { try { await S().deleteSkill(name); toast('已刪除'); } catch (er) { toast('❌ ' + er.message, 4000); } } }],
+            ['🧰 開啟技能管理', function () { open(); }]);
+        items.forEach(function (it) { o.body.appendChild(btn(it[0], CSS.btn + 'width:100%;justify-content:flex-start;margin-top:8px;min-height:44px;', function () { o.close(); it[1](); })); });
+        o.foot.append(btn('關閉', CSS.btn + 'flex:1;', o.close));
+    }
+    function renderSidebar() {
+        var boxes = document.querySelectorAll('.nova-sb-skills'); if (!boxes.length || !S()) return;
+        var list = S().getManifest() || [], col = sbCollapsed();
+        boxes.forEach(function (box) {
+            box.textContent = '';
+            var head = mk('div', 'display:flex;align-items:center;justify-content:space-between;padding:8px;color:var(--nv-muted,#94a3b8);cursor:pointer;');
+            head.appendChild(mk('span', 'font-size:12px;font-weight:700;letter-spacing:.05em;', '技能範本' + (list.length ? ' (' + list.length + ')' : '')));
+            var right = mk('div', 'display:flex;align-items:center;gap:6px;');
+            right.appendChild(btn('🧰', 'background:transparent;border:0;color:inherit;font-size:15px;min-width:28px;min-height:28px;', function (ev) { ev.stopPropagation(); closeMobileMenuIfOpen(); open(); }));
+            right.appendChild(mk('span', 'font-size:12px;', col ? '▸' : '▾')); head.appendChild(right);
+            head.onclick = function () { lsSet('nova_sb_skills_collapsed', sbCollapsed() ? '0' : '1'); renderSidebar(); };
+            box.appendChild(head);
+            if (col) return;
+            var wrap = mk('div', 'display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto;-webkit-overflow-scrolling:touch;');
+            if (!list.length) wrap.appendChild(mk('div', 'color:var(--nv-muted,#64748b);font-size:12px;padding:4px 8px;', '還沒有技能（自主任務完成後按「存成技能」，或輸入 /sc）'));
+            list.forEach(function (t) {
+                var row = mk('div', 'display:flex;align-items:center;gap:4px;');
+                var b = mk('button', 'flex:1;min-width:0;display:flex;align-items:center;gap:6px;text-align:left;padding:7px 8px;border-radius:8px;background:var(--nv-card,#1e293b);color:var(--nv-text,#cbd5e1);font-size:13px;border:0;cursor:pointer;min-height:36px;');
+                b.title = (t.partial ? '半成品（點擊查看內容，不能直接執行）：' : '點擊執行：') + (t.goal || t.description || t.name);
+                b.appendChild(mk('span', 'color:#22c55e;flex:none;font-size:11px;', t.partial ? '📎' : '▶'));
+                b.appendChild(mk('span', 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;', t.description || t.name));
+                var bg = t.partial ? ['半成品', '#7c2d12', '#fdba74'] : (SB_BADGE[t.type] || ['', '', '']);
+                if (bg[0]) { var bd = mk('span', 'font-size:10px;font-weight:700;padding:1px 4px;border-radius:4px;flex:none;', bg[0]); bd.style.background = bg[1]; bd.style.color = bg[2]; b.appendChild(bd); }
+                b.onclick = function () { closeMobileMenuIfOpen(); runSkill(t.name); };
+                var m = mk('button', 'background:none;border:0;color:var(--nv-muted,#64748b);cursor:pointer;padding:4px 6px;font-size:16px;flex:none;min-height:36px;', '⋮');
+                m.onclick = function () { closeMobileMenuIfOpen(); skillMenu(t.name); };
+                row.append(b, m); wrap.appendChild(row);
+            });
+            box.appendChild(wrap);
+        });
+    }
+    W.addEventListener('nova-skills-changed', function () { try { renderSidebar(); } catch (e) { /* ignore */ } });
     function showPartial(name) {
         var e = S().get(name); if (!e) return; var info = e.partialInfo || {};
         var o = overlay('📎 半成品：' + name, 9400);
@@ -649,7 +701,7 @@
     }
     W.novaSkillRenderSettings = function () { if (S()) S().load().then(renderSettings); };
 
-    W.NovaSkillUI = { fromConversation: fromConversation, llm: llm, open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
+    W.NovaSkillUI = { renderSidebar: renderSidebar, fromConversation: fromConversation, llm: llm, open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
     W.openSkillManager = open;
-    if (S()) setTimeout(function () { S().load().then(renderSettings); }, 1200);
+    if (S()) setTimeout(function () { S().load().then(renderSettings).then(renderSidebar); }, 1200);
 })();
