@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.72';
+        const NOVA_APP_VERSION = '2.6.73';
         const NOVA_CHANGELOG = [
+            { v: '2.6.73', date: '2026-10-18', notes: [
+                '自主任務的「執行前規劃」現在會知道有哪些不用操作畫面的直達能力（網路搜尋 web_search、Python／指令 run_python／run_shell，依連網搜尋開關與 Termux 橋接是否設定而定），不再規劃出「開瀏覽器搜尋、開終端機 App」這類多餘步驟。',
+                '網路搜尋工具（web_search 的 Google 通道）回傳的來源：Google 的 vertexaisearch 轉址連結（很長、對模型沒有資訊量、浪費 token）改成只列網站名稱，一般連結照舊附上。'
+            ] },
             { v: '2.6.72', date: '2026-10-18', notes: [
                 '新增「Termux 橋接」：工具呼叫（一般對話）與自主任務（/ap）可以執行真正的 Python 與指令。新工具 run_python／run_shell／pip_install（新檔 nova-termux.js v1.0.0）；自主任務新增 run_python／run_shell 動作。Python 在 Termux 的原生環境執行（有網路、檔案系統、可 pip 安裝、可呼叫 termux-* 指令），橋接連不上時 run_python 自動退回 App 內建 Pyodide（Web Worker、有逾時）。預設每次執行前先問使用者，設定頁可改自動允許。',
                 'Termux 端：repo 新增 termux/（nova_bridge.py 只用標準函式庫、install.sh 一行安裝）。服務只監聽 127.0.0.1:7913，每個請求都要 Token，檢查 Host 與 Origin，逾時連子行程一起結束，輸出有上限。設定 → 🔌 工具 新增「Termux 橋接」卡片（網址、Token、自動允許、Pyodide 備援、測試連線、複製安裝指令）。'
@@ -8265,11 +8269,19 @@ ${elementsText}`;
                 const key = appState.keys.gemini;
                 if (!key) return ''; // 沒有 key 的話交給後面 decideNextAction 去丟出真正的錯誤，這裡先安靜跳過
                 try {
+                    // v2.6.73：讓規劃知道有哪些「不用操作畫面」的直達能力，避免規劃出「打開瀏覽器搜尋、打開終端機 App」這種多餘步驟
+                    const _canPy = !!window.NovaTermux, _hasTermux = !!(window.NovaTermux && window.NovaTermux.configured && window.NovaTermux.configured());
+                    const _capLines = [];
+                    if (appState.isSearchEnabled !== false) _capLines.push('・網路搜尋：可直接取得搜尋結果（web_search 動作），查資料不必開瀏覽器或搜尋 App、也不必操作畫面。');
+                    if (_canPy) _capLines.push(_hasTermux
+                        ? '・執行程式：可直接執行 Python 與 Termux 指令（run_python／run_shell 動作，有網路、可讀寫檔案、可用 termux-* 指令取得手機資料），計算、整理資料、存檔都不必開任何終端機 App。'
+                        : '・執行程式：可直接執行 Python（run_python 動作，僅限運算與文字處理，無網路與檔案），不必開任何終端機 App。');
+                    const _capNote = _capLines.length ? `\n\n你另外有以下可直接呼叫的能力（不需要操作手機畫面）。能用它們完成的部分，規劃時直接寫成一步，不要規劃成開 App 的步驟：\n${_capLines.join('\n')}` : '';
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: `你是手機自動化操作代理人。使用者的任務目標是：「${goal}」。在還沒看到目前手機畫面之前，先依你對常見手機/App 操作流程的知識，列出完成這個目標大概會需要哪些高層次步驟（例如：開啟哪個 App → 找到哪個功能 → 輸入什麼 → 送出），3～6 點即可，純文字條列，不要 JSON、不要 Markdown 符號、每點一行、不要長篇解釋。這份大綱只是給後續逐步操作時參考的整體方向，實際畫面若跟預期不同以實際截圖為準。` }] }],
+                            contents: [{ parts: [{ text: `你是手機自動化操作代理人。使用者的任務目標是：「${goal}」。在還沒看到目前手機畫面之前，先依你對常見手機/App 操作流程的知識，列出完成這個目標大概會需要哪些高層次步驟（例如：開啟哪個 App → 找到哪個功能 → 輸入什麼 → 送出），3～6 點即可，純文字條列，不要 JSON、不要 Markdown 符號、每點一行、不要長篇解釋。這份大綱只是給後續逐步操作時參考的整體方向，實際畫面若跟預期不同以實際截圖為準。` + _capNote }] }],
                             generationConfig: { temperature: 0.3 }
                         })
                     });
@@ -9865,7 +9877,14 @@ msg.files : (msg.file ? [msg.file] : []);
                     const text = parts.filter(function (x) { return !x.thought; }).map(function (x) { return x.text || ''; }).join('').trim();
                     if (!text) throw new Error('Google 搜尋沒有回傳文字');
                     const gm = (cand && cand.groundingMetadata) || {}, seen = {}, src = [];
-                    (gm.groundingChunks || []).forEach(function (c) { const w = c.web; if (w && w.uri && !seen[w.uri]) { seen[w.uri] = 1; src.push('- ' + (w.title || w.uri) + '：' + w.uri); } });
+                    // v2.6.73：Google 的來源連結是一長串 vertexaisearch 轉址（上百字元、對模型沒有資訊量，還浪費 token），這種只列網站名稱；一般連結照舊附上
+                    (gm.groundingChunks || []).forEach(function (c) {
+                        const w = c.web; if (!w || !w.uri) return;
+                        const isRedirect = /^https?:\/\/vertexaisearch\.cloud\.google\.com\//i.test(w.uri);
+                        const key2 = isRedirect ? (w.title || w.uri) : w.uri;
+                        if (seen[key2]) return; seen[key2] = 1;
+                        src.push(isRedirect ? '- ' + (w.title || '（未命名來源）') : '- ' + (w.title || w.uri) + '：' + w.uri);
+                    });
                     return '【Google 搜尋結果】\n' + text + (src.length ? '\n\n來源：\n' + src.slice(0, 8).join('\n') : '');
                 };
                 const _wsSerp = async function (q, nearby) {
