@@ -493,7 +493,7 @@
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.1.2"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.4.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.1.3"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.4.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.82';
+        const NOVA_APP_VERSION = '2.6.83';
         const NOVA_CHANGELOG = [
+            { v: '2.6.83', date: '2026-10-18', notes: [
+                '修正打開技能管理就顯示「無法讀取 skills.json … EACCES (Permission denied)」，技能看不到也存不了：Android 對 Documents 資料夾內既有檔案的讀取與覆寫常被拒絕。技能現在主要存在 App 私有資料夾（永遠可讀寫），Documents/NovaSkills 只當盡力鏡像；讀取時私有資料夾沒有才看 Documents（舊版技能會自動搬進私有資料夾）。匯入技能檔案也改存私有資料夾。（nova-skills.js v2.1.3，取代 v2.1.2 的備援機制）'
+            ] },
             { v: '2.6.82', date: '2026-10-18', notes: [
                 '修正技能「儲存參數／改名／編輯」出現「writeFile failed … EACCES (Permission denied)」：Android 的 Documents 資料夾常不允許直接覆寫已存在的技能檔。現在寫入失敗會先刪掉舊檔再寫，還是不行就改存到 App 私有資料夾（讀取、刪除時優先看那份），技能不會再因為權限問題存不了（nova-skills.js v2.1.2）。另外存成技能時，目標文字不再夾帶自動附上的定位座標。',
                 '設定裡的「本地技能」只保留一處：拿掉「一般與外觀 → 資料與備份」裡重複的「本地技能（NovaSkills）」區塊，統一放在「整合」分頁的「本地技能」卡片。原本那邊的「匯入技能檔案」「重新載入」搬到這張卡片，另加「技能管理」按鈕，並拿掉容易誤按的「清空全部」（要刪除請到技能管理或側邊欄技能範本逐一刪除）。技能新增、刪除、改名後，整合頁的勾選清單會即時更新。'
@@ -3439,7 +3442,7 @@ async function encodeMp3(audioBuffer) {
                     await CapFS.writeFile({
                         path: `NovaSkills/${file.name}`,
                         data: text,
-                        directory: 'DOCUMENTS',
+                        directory: 'DATA',   // v2.6.83：技能改存 App 私有資料夾（Documents 常 EACCES）
                         recursive: true,
                         encoding: 'utf8'
                     });
@@ -3472,6 +3475,7 @@ async function encodeMp3(audioBuffer) {
             try {
                 await CapFS.rmdir({ path: 'NovaSkills', directory: 'DOCUMENTS', recursive: true });
             } catch(e) {}
+            try { await CapFS.rmdir({ path: 'NovaSkills', directory: 'DATA', recursive: true }); } catch(e) {}
             if (typeof window.NovaSkills === 'object') {
                 await window.NovaSkills.load();
                 _renderNovaSkillsList();

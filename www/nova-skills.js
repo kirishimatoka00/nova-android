@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skills.js — NOVA Android 技能引擎（跟 index.html 放同一個資料夾 www/）
-   版本：v2.1.2
+   版本：v2.1.3
    版本紀錄：
+   v2.1.3 - App v2.6.83。修正技能管理打開就顯示「無法讀取 skills.json … EACCES (Permission denied)」：Android 對 Documents 內既有檔案的讀／寫常被拒絕。改成主要存在 App 私有資料夾（永遠可讀寫），
+            Documents 只當盡力鏡像；讀取時私有資料夾沒有才看 Documents（舊版技能自動搬進私有資料夾）。取代 v2.1.2 的 nova_skills_fallback 機制。repairIndex 也會看兩邊的資料夾。
    v2.1.2 - App v2.6.82。修正「儲存參數／改名／編輯」覆寫已存在的技能檔時出現 EACCES (Permission denied)：Android 的 Documents 資料夾對「已存在的檔案」常不允許直接覆寫
             （檔案是重灌前或另一個安裝建立的、或系統當成別人的檔案）。wr() 改成：① 先直接寫；② 失敗就先刪掉舊檔再寫；③ 還是不行就改寫到 App 私有資料夾（Directory.DATA／NovaSkills）並記在 nova_skills_fallback，
             rd()／rm() 會優先讀／刪私有資料夾那份，所以技能不會因為權限問題存不了、也不會讀到舊內容。
@@ -34,26 +36,25 @@
     var lock = Promise.resolve();
     function withLock(fn) { var run = lock.then(fn, fn); lock = run.catch(function () {}); return run; }
     function FS() { return W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem; }
-    // Android 的 Documents 常不允許覆寫已存在的檔案（EACCES）：先直接寫 → 刪掉再寫 → 改寫 App 私有資料夾（記在 nova_skills_fallback，讀／刪時優先看那份）
-    function fbGet() { try { return JSON.parse(localStorage.getItem('nova_skills_fallback') || '{}') || {}; } catch (e) { return {}; } }
-    function fbSet(o) { try { localStorage.setItem('nova_skills_fallback', JSON.stringify(o)); } catch (e) { /* ignore */ } }
+    // 儲存位置（v2.1.3）：主要存在 App 私有資料夾（Directory.DATA／NovaSkills，永遠讀寫得動）；
+    // 另外盡力鏡像一份到 Documents/NovaSkills（讓你能從檔案管理員看或備份；Android 常因權限（EACCES）拒絕覆寫／讀取，失敗就略過）。
+    // 讀取時先看私有資料夾，沒有再看 Documents（舊版技能），讀到就順手搬進私有資料夾。
     async function rd(path) {
-        if (fbGet()[path]) { try { var q = await FS().readFile({ path: DIR + '/' + path, directory: 'DATA', encoding: 'utf8' }); return q.data; } catch (e) { /* 私有那份讀不到就看 Documents */ } }
-        var r = await FS().readFile({ path: DIR + '/' + path, directory: 'DOCUMENTS', encoding: 'utf8' }); return r.data;
+        var full = DIR + '/' + path;
+        try { var q = await FS().readFile({ path: full, directory: 'DATA', encoding: 'utf8' }); return q.data; } catch (e) { /* 私有資料夾沒有 → 看 Documents（舊版） */ }
+        var r = await FS().readFile({ path: full, directory: 'DOCUMENTS', encoding: 'utf8' });
+        try { await FS().writeFile({ path: full, data: r.data, directory: 'DATA', recursive: true, encoding: 'utf8' }); } catch (e) { /* 搬不進去下次再試 */ }
+        return r.data;
     }
     async function wr(path, data) {
-        var opt = { path: DIR + '/' + path, data: data, recursive: true, encoding: 'utf8' }, fb = fbGet();
-        if (!fb[path]) {
-            try { await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); return; } catch (e1) {
-                try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); return; } catch (e2) { /* 改寫私有資料夾 */ }
-            }
-        }
-        await FS().writeFile(Object.assign({ directory: 'DATA' }, opt));
-        if (!fb[path]) { fb[path] = 1; fbSet(fb); }
+        var opt = { path: DIR + '/' + path, data: data, recursive: true, encoding: 'utf8' };
+        await FS().writeFile(Object.assign({ directory: 'DATA' }, opt));   // 這份一定要成功
+        try { await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); }   // 鏡像：失敗就先刪舊檔再寫，還是不行就算了
+        catch (e1) { try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); } catch (e2) { /* 無權限：只留私有那份 */ } }
     }
     async function rm(path) {
-        try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); } catch (e) { /* 檔案不存在就算了 */ }
-        var fb = fbGet(); if (fb[path]) { try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DATA' }); } catch (e) { /* ignore */ } delete fb[path]; fbSet(fb); }
+        ['DATA', 'DOCUMENTS'].forEach(function (d) { try { FS().deleteFile({ path: DIR + '/' + path, directory: d }).catch(function () {}); } catch (e) { /* ignore */ } });
+        await new Promise(function (r) { setTimeout(r, 30); });
     }
     function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
 
@@ -97,6 +98,7 @@
         try { var d = JSON.parse(await rd('skills.json')); return Array.isArray(d.skills) ? d.skills : []; }
         catch (e) {
             if (e && /not exist|ENOENT|no such file|does not exist|找不到/i.test(e.message || '')) return [];
+            if (e && /EACCES|Permission denied/i.test(e.message || '')) { console.warn('[NovaSkills] Documents 內舊的 skills.json 無權限讀取，當作沒有舊技能（新技能存在 App 私有資料夾）'); return []; }
             throw e;
         }
     }
@@ -227,7 +229,9 @@
     // 掃描資料夾：有 .md 但沒登記的技能補回索引
     async function repairIndex() {
         if (!FS()) return 0;
-        var files; try { files = (await FS().readdir({ path: DIR, directory: 'DOCUMENTS' })).files.map(function (f) { return f.name || f; }); } catch (e) { return 0; }
+        var files = [];
+        for (var di = 0, dirs = ['DATA', 'DOCUMENTS']; di < dirs.length; di++) { try { (await FS().readdir({ path: DIR, directory: dirs[di] })).files.forEach(function (f) { f = f.name || f; if (files.indexOf(f) < 0) files.push(f); }); } catch (e) { /* 這個位置沒有或沒權限 */ } }
+        if (!files.length) return 0;
         var added = 0;
         await withLock(async function () {
             var idx = []; try { idx = await readIndex(); } catch (e) { /* ignore */ }
@@ -316,6 +320,6 @@
         getLastError: function () { return lastLoadError; }, getCount: function () { return manifest.length; },
         saveSkill: saveSkill, deleteSkill: deleteSkill, renameSkill: renameSkill, repairIndex: repairIndex, setLastValues: setLastValues,
         exportAll: exportAll, importAll: importAll, stepOutline: stepOutline, outline: outline,
-        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.2'
+        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.3'
     };
 })();
