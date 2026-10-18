@@ -1283,6 +1283,7 @@
                                     <p class="text-[10px] text-slate-500 mt-1">執行中每一步都會即時顯示「正在執行：...」；達到最大回合數、單回合逾時，或 AI 判斷任務已完成／無法繼續時會自動停止。</p>
                                 </div>
                             </div>
+                            <div id="autotask-autoroute-box"></div>
                             <div class="flex items-center justify-between bg-slate-800/50 rounded-xl p-3 border border-slate-700">
                                 <div>
                                     <span id="autotask-status-dot" class="w-2 h-2 rounded-full bg-slate-600 inline-block mr-1"></span>
@@ -2245,8 +2246,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.74';
+        const NOVA_APP_VERSION = '2.6.75';
         const NOVA_CHANGELOG = [
+            { v: '2.6.75', date: '2026-10-18', notes: [
+                '一般對話新增「智慧分派：自主任務」（參考桌面版 NovaAutoRoute）：在對話框直接輸入需要連續動手的要求（開 App 做事、整理檔案、跑 Python／指令、取得手機資料…），AI 會自動判斷是否該交給 AI 自主任務，不必再輸入 /ap。純問答、寫作、查單一資訊仍走一般對話。',
+                '判斷流程：訊息要含「開啟／傳送／儲存／整理／執行／附近…」這類動手字眼才會送去判斷（省額度）→ 固定規則（「附近」＋放映／價格／整理等複合查詢直接判自主任務）→ 先問 Jev（有把握才採用）→ 退回一次輕量 Gemini 判斷（含是否需要操作畫面）。失敗或不確定一律照一般對話。簡報／生圖／排程／提醒類不搶。',
+                '判成自主任務後預設「每次先問我」（確定＝自主任務、取消＝一般對話）；也可選「不需要操作畫面時自動執行」（要操作畫面的仍會先問）。訊息含「附近／離我」且已有定位時，座標會附在任務目標後面。設定在「Agent 與自主任務」頁新增的「智慧分派：自主任務」，預設開啟。（nova-autoroute.js v1.1.0）'
+            ] },
             { v: '2.6.74', date: '2026-10-18', notes: [
                 '自主任務（/ap）改成「預設純文字模式、需要時自動升級」：一開始不截圖、不檢查 atx-agent／無障礙服務、不重啟 uiautomator，AI 只用文字判斷，直接用 web_search／run_python／run_shell／wait 完成任務（查資訊、運算、存檔、termux-* 指令都不再每回合截圖，也不再因為觸控服務沒開就整個中止）。',
                 '新增純文字判斷器與 need_screen 動作：任務真的要操作 App 畫面時（AI 回 need_screen，或直接下了 tap／text／key／open_app／open_url 等畫面動作），才做原本的前置檢查（atx／無障礙、重啟 uiautomator）並切換成畫面操作模式，之後每回合照舊截圖＋元件列表。切換不佔回合數；純文字模式下 done 必須在歷史紀錄的 result 裡有完成證據。',
@@ -6451,6 +6457,7 @@ return html;
                 if (rt) rt.value = appState.autoTaskSettings.roundTimeoutSec;
                 if (au) au.value = appState.autoTaskSettings.atxAgentUrl;
                 if (vl) vl.textContent = 'v' + NOVA_APP_VERSION;
+                try { const _arb = document.getElementById('autotask-autoroute-box'); if (_arb && window.NovaAutoRoute) NovaAutoRoute.renderSettings(_arb, 'autonomous'); } catch (e) {}
                 if (mr) mr.onchange = () => { appState.autoTaskSettings.maxRounds = parseInt(mr.value) || 10; localStorage.setItem('nova_autotask_max_rounds', appState.autoTaskSettings.maxRounds); };
                 if (rt) rt.onchange = () => { appState.autoTaskSettings.roundTimeoutSec = parseInt(rt.value) || 120; localStorage.setItem('nova_autotask_round_timeout', appState.autoTaskSettings.roundTimeoutSec); };
                 if (au) au.onchange = () => { appState.autoTaskSettings.atxAgentUrl = au.value.trim() || 'http://127.0.0.1:7912'; localStorage.setItem('nova_autotask_atx_url', appState.autoTaskSettings.atxAgentUrl); };
@@ -21023,7 +21030,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.0.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.1.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.1.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.1.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.0.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>
