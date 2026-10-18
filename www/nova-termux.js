@@ -1,7 +1,10 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-termux.js — NOVA Android「執行 Python／指令」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.1
+   版本：v1.0.2
    版本紀錄：
+   v1.0.2 - App v2.6.78。修正還原備份後設定卡片仍是空白的：還原只寫 localStorage，已建好的卡片沒更新，之後 syncFromDom 反而用空值蓋掉剛還原的 Token。
+            importCfg 沒有資料（舊備份檔沒有 termuxConfig）時，改成把 localStorage 目前的值刷新到卡片；syncFromDom 只在使用者實際輸入過（或 localStorage 沒有值）時才寫回，
+            卡片欄位空白但 localStorage 有值時不覆蓋。
    v1.0.1 - App v2.6.77。修正 Termux Token／網址沒進完整備份與快照：設定卡片原本只在欄位「失焦（change）」時才存到 localStorage，貼上 Token 後直接關設定或直接備份就沒存到；
             且改設定不會觸發 NOVA_Live.json 快照。現在：輸入時（input／change／blur）即存、2 秒後自動重寫快照；備份與快照時直接讀畫面上欄位的值存檔；
             備份新增專用欄位 termuxConfig（url／token／auto／pyodide），還原時寫回並更新設定卡片。新增 exportCfg()／importCfg()。
@@ -158,18 +161,20 @@
     function syncFromDom() {
         var u = D.getElementById('ntx-url'), t = D.getElementById('ntx-token'), a = D.getElementById('ntx-auto'), p = D.getElementById('ntx-pyo');
         if (!u || !t) return;
-        lsSet(K_URL, u.value.trim() || DEF_URL); lsSet(K_TOKEN, t.value.trim());
+        var tv = t.value.trim();
+        lsSet(K_URL, u.value.trim() || DEF_URL);
+        if (tv || !lsGet(K_TOKEN, '') || t.dataset.touched === '1') lsSet(K_TOKEN, tv);   // 卡片空白但儲存空間有值（剛還原、卡片還沒刷新）→ 不覆蓋
         if (a) lsSet(K_AUTO, a.checked ? '1' : '0'); if (p) lsSet(K_PYO, p.checked ? '1' : '0');
     }
     var snapTimer = null;
     function scheduleSnap() { clearTimeout(snapTimer); snapTimer = setTimeout(function () { try { if (typeof W._novaWalSnapshot === 'function') W._novaWalSnapshot(); } catch (e) { /* ignore */ } }, 2000); }
     function exportCfg() { syncFromDom(); var c = cfg(); return { url: c.url, token: c.token, auto: c.auto ? '1' : '0', pyodide: c.pyodide ? '1' : '0' }; }
     function importCfg(o) {
-        if (!o || typeof o !== 'object') return false;
+        o = (o && typeof o === 'object') ? o : {};
         if (o.url) lsSet(K_URL, String(o.url)); if (typeof o.token === 'string') lsSet(K_TOKEN, o.token);
         if (o.auto != null) lsSet(K_AUTO, String(o.auto) === '1' || o.auto === true ? '1' : '0'); if (o.pyodide != null) lsSet(K_PYO, String(o.pyodide) === '0' || o.pyodide === false ? '0' : '1');
         var c = cfg(), set = function (id, f) { var el = D.getElementById(id); if (el) f(el); };
-        set('ntx-url', function (el) { el.value = c.url; }); set('ntx-token', function (el) { el.value = c.token; });
+        set('ntx-url', function (el) { el.value = c.url; }); set('ntx-token', function (el) { el.value = c.token; el.dataset.touched = '0'; });
         set('ntx-auto', function (el) { el.checked = c.auto; }); set('ntx-pyo', function (el) { el.checked = c.pyodide; });
         return true;
     }
@@ -191,7 +196,7 @@
         var anchor = D.getElementById('fc-skill-list'); anchor = anchor && anchor.closest ? anchor.closest('.nv-card') : null;
         if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(card, anchor); else tab.appendChild(card);
         var save = function () { syncFromDom(); scheduleSnap(); };
-        ['ntx-url', 'ntx-token'].forEach(function (id) { ['input', 'change', 'blur'].forEach(function (ev) { D.getElementById(id).addEventListener(ev, save); }); });
+        ['ntx-url', 'ntx-token'].forEach(function (id) { ['input', 'change', 'blur'].forEach(function (ev) { D.getElementById(id).addEventListener(ev, function () { if (ev === 'input') D.getElementById(id).dataset.touched = '1'; save(); }); }); });
         ['ntx-auto', 'ntx-pyo'].forEach(function (id) { D.getElementById(id).addEventListener('change', save); });
         D.getElementById('ntx-test').onclick = async function () {
             save(); var st = D.getElementById('ntx-status'); st.textContent = '連線中…';
@@ -214,6 +219,6 @@
         var a = register(), b = injectCard();
         if ((!a || !b) && n < 40) setTimeout(function () { boot(n + 1); }, 500);
     }
-    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.0.1' };
+    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.0.2' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();
