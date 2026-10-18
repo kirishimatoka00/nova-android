@@ -2246,8 +2246,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.75';
+        const NOVA_APP_VERSION = '2.6.76';
         const NOVA_CHANGELOG = [
+            { v: '2.6.76', date: '2026-10-18', notes: [
+                '自主任務會自動把 NOVA 已知的定位（App 的 GPS／手動定位）附在任務目標後面，查「附近／離我最近」時 AI 直接用這組座標，不再自己猜位置或呼叫 termux-location。',
+                '自主任務裡 Termux／Python 指令實際失敗（非 0 退出碼、逾時）時，訊息改標「⚠️ 第 N 回合指令失敗」並附錯誤內容，不再一律顯示「✅ 執行成功」。',
+                'Termux 安裝腳本 install.sh 強化（見 termux/install.sh 版本紀錄）。'
+            ] },
             { v: '2.6.75', date: '2026-10-18', notes: [
                 '一般對話新增「智慧分派：自主任務」（參考桌面版 NovaAutoRoute）：在對話框直接輸入需要連續動手的要求（開 App 做事、整理檔案、跑 Python／指令、取得手機資料…），AI 會自動判斷是否該交給 AI 自主任務，不必再輸入 /ap。純問答、寫作、查單一資訊仍走一般對話。',
                 '判斷流程：訊息要含「開啟／傳送／儲存／整理／執行／附近…」這類動手字眼才會送去判斷（省額度）→ 固定規則（「附近」＋放映／價格／整理等複合查詢直接判自主任務）→ 先問 Jev（有把握才採用）→ 退回一次輕量 Gemini 判斷（含是否需要操作畫面）。失敗或不確定一律照一般對話。簡報／生圖／排程／提醒類不搶。',
@@ -8478,6 +8483,12 @@ ${elementsText ? '\n' + elementsText : ''}`;
                     try { if (await NovaSkillUI.tryMatchAndReplay(goal)) return; } catch (_) { /* 比對失敗就照原本流程 */ }
                 }
                 if (running) { addMessage('⚠️ 已有一個自主任務正在執行中，請先等它完成或逾時結束。', 'system'); return; }
+                // v2.6.75：把 NOVA 已知的定位（App 的 GPS／手動定位）附在任務目標後面，AI 查「附近」就不必自己猜位置或呼叫 termux-location
+                try {
+                    if (typeof goal === 'string' && !/【目前定位/.test(goal) && appState.lastLat && appState.lastLon && isFinite(+appState.lastLat) && isFinite(+appState.lastLon)) {
+                        goal += '\n\n【目前定位（NOVA 已知；判斷「附近／離我最近」以此為準，可直接用於 web_search（nearby:true）或 Python，不需要再呼叫 termux-location）】緯度 ' + (+appState.lastLat).toFixed(5) + '，經度 ' + (+appState.lastLon).toFixed(5);
+                    }
+                } catch (_) {}
                 running = true;
                 cancelRequested = false;
                 cuDisabledThisRun = false; try { if (window.NovaAutoCU) NovaAutoCU.reset(); } catch (_) {}   // v2.6.24
@@ -8913,7 +8924,11 @@ ${elementsText ? '\n' + elementsText : ''}`;
                                 const resultText = (stepResult === undefined || stepResult === null || stepResult === '')
                                     ? '(無回傳內容，但呼叫未回報錯誤)'
                                     : (typeof stepResult === 'string' ? stepResult : JSON.stringify(stepResult));
-                                addMessage(`✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
+                                // v2.6.75：Termux／Python 指令實際失敗（非 0 退出碼、逾時）時標示 ⚠️，不再一律顯示「執行成功」（動作本身有送出，所以仍不算軟失敗）
+                                const _cmdFailed = (rawAction && (rawAction.type === 'run_shell' || rawAction.type === 'run_python')) && /^【[^】]*】(執行失敗|⏱️)/.test(resultText);
+                                addMessage(_cmdFailed
+                                    ? `⚠️ 第 ${round} 回合指令失敗（指令已送出但沒有成功完成，AI 會看到錯誤內容並調整）\n\`\`\`\n${resultText}\n\`\`\``
+                                    : `✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
                                 history.push({ round, action: rawAction, result: resultText });
                                 try { const _st = await toSkillStep(rawAction, usedEl, hierarchyXml); if (_st) recorded.push(_st); } catch (_) { /* 記錄失敗不影響任務 */ }
                             }
@@ -21030,7 +21045,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.1.0"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.1.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.1.1"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.1.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.0.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>

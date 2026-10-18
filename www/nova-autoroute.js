@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════
    nova-autoroute.js — NOVA Android 一般對話「智慧分派」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.1.1
    版本紀錄：
+   v1.1.1 - App v2.6.76。定位改由 novaAutoTask.run 統一附加（所有自主任務都適用），這裡不再自己附加座標。
    v1.1.0 - App v2.6.75。新增「自主任務」這條路（參考桌面版 NovaAutoRoute／nova-jev.js routeTask）：一般對話送出的話，除了判斷要不要派專家，
             也判斷「是不是該交給 AI 自主任務（/ap）」。判斷流程：
             ① 便宜條件先擋（不是 / 指令、沒附檔案、非即時／口譯／翻譯模式、沒有正在跑的自主任務、不是簡報／生圖／排程／提醒／鬧鐘這類已有專屬流程的需求、
@@ -133,16 +134,6 @@
         }
     }
 
-    function goalWithLocation(text) {
-        var g = String(text).trim();
-        try {
-            if (NEARBY.test(g) && appState.lastLat && appState.lastLon) {
-                g += '\n\n【目前定位（以此為準判斷「附近／離我最近」，不要自行猜測位置，也不必再呼叫 termux-location）】緯度 ' + appState.lastLat + '，經度 ' + appState.lastLon;
-            }
-        } catch (e) { /* ignore */ }
-        return g;
-    }
-
     // 回傳 true＝這句話已被接手（呼叫端直接 return）；false＝照一般對話走
     async function run(text, input) {
         if (busy) return true;                 // 判斷中再按送出：吞掉，避免同一句送兩次
@@ -171,7 +162,7 @@
                 if (!window.novaAutoTask || typeof window.novaAutoTask.run !== 'function') return false;
                 clearInput(input);
                 addMessage('🤖 啟動 AI 自主任務：' + String(text).trim(), 'user');
-                window.novaAutoTask.run(goalWithLocation(text));   // 不 await：任務可能跑很久
+                window.novaAutoTask.run(String(text).trim());   // 定位由 novaAutoTask.run 自動附加（v2.6.76）   // 不 await：任務可能跑很久
                 return true;
             }
             return false;
