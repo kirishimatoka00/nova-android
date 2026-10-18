@@ -928,19 +928,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="flex items-center justify-between">
-                                    <div class="w-full">
-                                        <label class="block text-xs text-amber-400 font-bold flex items-center gap-1"><i class="ph-fill ph-puzzle-piece"></i> 本地技能（NovaSkills）</label>
-                                        <p class="text-[10px] text-slate-500 mt-1">⚠️ Android 安全限制：App 無法直接讀取「檔案管理員」中公開 Documents 資料夾的檔案。請用下方「匯入技能檔案」按鈕，選取 <code class="bg-slate-800 px-1 rounded">skills.json</code> 與對應的 <code class="bg-slate-800 px-1 rounded">.js</code> 檔（可一次多選），App 會自動複製到內部儲存空間並載入。⚠️ 技能擁有完整 App 權限，僅匯入信任的程式碼。</p>
-                                        <div id="nova-skills-list" class="mt-2 space-y-1 max-h-32 overflow-y-auto"></div>
-                                        <input type="file" id="nova-skills-import-input" accept=".json,.js" multiple class="hidden" onchange="window._novaSkillsImport && window._novaSkillsImport(event)">
-                                        <div class="flex gap-2 mt-2">
-                                            <button onclick="document.getElementById('nova-skills-import-input').click()" class="px-2 py-1 text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded-md">📥 匯入技能檔案</button>
-                                            <button onclick="window._novaSkillsReload && window._novaSkillsReload()" class="px-2 py-1 text-[10px] bg-amber-700 hover:bg-amber-600 text-white rounded-md">🔄 重新載入技能</button>
-                                            <button onclick="window._novaSkillsClear && window._novaSkillsClear()" class="px-2 py-1 text-[10px] bg-red-800 hover:bg-red-700 text-white rounded-md">🗑️ 清空全部</button>
-                                        </div>
-                                    </div>
-                                </div>
+                                <!-- v2.6.82：本地技能區塊已移到「整合」分頁（與工具呼叫的技能清單合併） -->
                                 <div class="flex items-center justify-between">
                                     <div class="w-full">
                                         <label class="block text-xs text-purple-400 font-bold flex items-center gap-1"><i class="ph-fill ph-image-square"></i> 圖片儲存（NOVA_Images）</label>
@@ -1221,7 +1209,14 @@
                                     <button type="button" class="nv-btn nv-primary" onclick="novaFcAddServer()">新增伺服器</button>
                                 </div>
                             </div>
-                            <div class="nv-card"><h4>本地技能</h4><div id="fc-skill-list"></div></div>
+                            <div class="nv-card"><h4>本地技能</h4><div id="fc-skill-list"></div>
+                                <input type="file" id="nova-skills-import-input" accept=".json,.js" multiple class="hidden" onchange="window._novaSkillsImport && window._novaSkillsImport(event)">
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                                    <button type="button" class="nv-btn" onclick="document.getElementById('nova-skills-import-input').click()">📥 匯入技能檔案</button>
+                                    <button type="button" class="nv-btn" onclick="window._novaSkillsReload && window._novaSkillsReload()">🔄 重新載入</button>
+                                    <button type="button" class="nv-btn" onclick="window.NovaSkillUI && NovaSkillUI.open()">🧰 技能管理</button>
+                                </div>
+                                <p class="nv-muted" style="margin-top:6px;">勾選＝讓 AI 在對話中可以呼叫。匯入技能檔案請同時選 skills.json 與對應的 .js 檔（可多選）；技能的新增、編輯、重播與刪除在「技能管理」或側邊欄「技能範本」。（Android 無法直接讀公開 Documents 資料夾，所以要用按鈕匯入。）</p></div>
                             <div class="nv-card"><h4>內建工具</h4><div id="fc-builtin-list"></div></div>
                             <div class="nv-card">
                                 <h4>Context Caching（明確快取）</h4>
@@ -2250,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.81';
+        const NOVA_APP_VERSION = '2.6.82';
         const NOVA_CHANGELOG = [
+            { v: '2.6.82', date: '2026-10-18', notes: [
+                '設定裡的「本地技能」只保留一處：拿掉「一般與外觀 → 資料與備份」裡重複的「本地技能（NovaSkills）」區塊，統一放在「整合」分頁的「本地技能」卡片。原本那邊的「匯入技能檔案」「重新載入」搬到這張卡片，另加「技能管理」按鈕，並拿掉容易誤按的「清空全部」（要刪除請到技能管理或側邊欄技能範本逐一刪除）。技能新增、刪除、改名後，整合頁的勾選清單會即時更新。'
+            ] },
             { v: '2.6.81', date: '2026-10-18', notes: [
                 '側邊欄新增「技能範本」清單（對標桌面版）：桌面側邊欄與手機選單都有，可收合、顯示數量。每個技能一列，點一下就執行（可重播技能先跳參數表單、提示範本放進輸入框或交給自主任務、半成品查看內容），右邊 ⋮ 開選單（執行／參數／編輯／複製／改名／刪除／開啟技能管理）。',
                 '技能新增、刪除、改名、匯入或 /sc 之後，清單會立刻更新（技能引擎載入完成時發出事件）。（nova-skills.js v2.1.1、nova-skill-ui.js v1.4.0）'
@@ -10251,6 +10249,7 @@ msg.files : (msg.file ? [msg.file] : []);
             if (desc) { const d = _fcEl('span', 'nv-muted', ' — ' + String(desc).replace(/\s+/g, ' ').slice(0, 80)); box.appendChild(d); }
             lab.appendChild(cb); lab.appendChild(box); return lab;
         }
+        window.addEventListener('nova-skills-changed', function () { try { if (typeof window.novaFcRenderSettings === 'function') window.novaFcRenderSettings(); } catch (e) {} });   // v2.6.82
         window.novaFcRenderSettings = function () {
             const auto = document.getElementById('fc-auto'); if (auto) auto.checked = window.novaFcCfg.auto();
             const cc = document.getElementById('fc-cache'); if (cc) cc.checked = window.novaFcCfg.cacheOn();
@@ -10263,7 +10262,7 @@ msg.files : (msg.file ? [msg.file] : []);
             if (sl) {
                 sl.textContent = '';
                 const ms = (typeof window.NovaSkills === 'object') ? window.NovaSkills.getManifest() : [];
-                if (!ms.length) sl.appendChild(_fcEl('div', 'nv-muted', '目前沒有已載入的本地技能（在「主要」分頁匯入技能檔，或對話中請 AI 建立）。'));
+                if (!ms.length) sl.appendChild(_fcEl('div', 'nv-muted', '目前沒有已載入的本地技能（可用下方「匯入技能檔案」，或輸入 /sc 把對話存成技能）。'));
                 ms.forEach(function (s) { sl.appendChild(_fcCheckRow('skill:' + s.name, s.name, s.description)); });
             }
             // MCP
