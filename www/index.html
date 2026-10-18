@@ -2245,8 +2245,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.73';
+        const NOVA_APP_VERSION = '2.6.74';
         const NOVA_CHANGELOG = [
+            { v: '2.6.74', date: '2026-10-18', notes: [
+                '自主任務（/ap）改成「預設純文字模式、需要時自動升級」：一開始不截圖、不檢查 atx-agent／無障礙服務、不重啟 uiautomator，AI 只用文字判斷，直接用 web_search／run_python／run_shell／wait 完成任務（查資訊、運算、存檔、termux-* 指令都不再每回合截圖，也不再因為觸控服務沒開就整個中止）。',
+                '新增純文字判斷器與 need_screen 動作：任務真的要操作 App 畫面時（AI 回 need_screen，或直接下了 tap／text／key／open_app／open_url 等畫面動作），才做原本的前置檢查（atx／無障礙、重啟 uiautomator）並切換成畫面操作模式，之後每回合照舊截圖＋元件列表。切換不佔回合數；純文字模式下 done 必須在歷史紀錄的 result 裡有完成證據。',
+                '例外：判斷器設為 Computer Use、接手技能重播失敗的任務，仍直接從畫面操作模式開始（保留 autoTaskSettings.textFirst === false 可關閉純文字優先）。'
+            ] },
             { v: '2.6.73', date: '2026-10-18', notes: [
                 '自主任務的「執行前規劃」現在會知道有哪些不用操作畫面的直達能力（網路搜尋 web_search、Python／指令 run_python／run_shell，依連網搜尋開關與 Termux 橋接是否設定而定），不再規劃出「開瀏覽器搜尋、開終端機 App」這類多餘步驟。',
                 '網路搜尋工具（web_search 的 Google 通道）回傳的來源：Google 的 vertexaisearch 轉址連結（很長、對模型沒有資訊量、浪費 token）改成只列網站名稱，一般連結照舊附上。'
@@ -8177,7 +8182,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             async function decideNextAction(goal, history, screenshotB64, elementsText, imgW, imgH) {
                 // v2.6.24（批次 5a）：判斷器可選「Gemini Computer Use」；失敗時依設定退回原本的提示詞判斷器
                 const _st = appState.autoTaskSettings || {};
-                if (_st.judge === 'cu' && window.NovaAutoCU && !cuDisabledThisRun) {
+                const textMode = !screenshotB64;   // v2.6.74：純文字模式（沒有截圖）不走 Computer Use，用文字判斷器
+                if (!textMode && _st.judge === 'cu' && window.NovaAutoCU && !cuDisabledThisRun) {
                     try {
                         const fg = (typeof elementsText === 'string' && (elementsText.match(/前景 App 套件名稱：([\w.]+)/) || [])[1]) || '';
                         return await NovaAutoCU.decide({
@@ -8193,7 +8199,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                 }
                 const key = appState.keys.gemini;
                 if (!key) throw new Error('尚未設定 Gemini API Key，無法進行自主任務畫面判斷');
-                const sysPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
+                const visionPrompt = `你是手機自動化操作代理人。你的任務目標是：「${goal}」。
 你會看到目前手機畫面的截圖，以及一份「畫面元件列表」（從系統的 UI 階層直接讀出來的真實元件，包含文字/描述/id 跟中心座標，這份清單的座標是裝置真實觸控座標，不是截圖像素，非常精準）。請判斷下一步該做的「單一」動作，並只回傳 JSON（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
 {"type":"tap_element","index":元件列表中的編號,"say":"這一步在做什麼（給使用者看的一句話）"}
 {"type":"tap","x":0.000～1.000之間的小數,"y":0.000～1.000之間的小數,"say":"..."}
@@ -8227,12 +8233,32 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 畫面元件列表（優先從這裡找目標，用 tap_element 的 index 指定）：
 ${elementsText}`;
 
+                // v2.6.74：純文字模式判斷器——不截圖、不讀畫面，只用直達動作（搜尋／Python／指令）完成任務；
+                // 真的需要操作 App 畫面時回傳 need_screen，程式才會啟用 uiautomator、開始每回合截圖。
+                const _webOn = appState.isSearchEnabled !== false;
+                const textPrompt = `你是手機自動化代理人。你的任務目標是：「${goal}」。
+目前是「純文字模式」：你看不到手機畫面，也不需要看——能用下面的直達動作完成的事，就直接做。請判斷下一步該做的「單一」動作，並只回傳一個 JSON 物件（不要有任何其他文字、不要 Markdown code block），格式如下其中一種：
+${_webOn ? '{"type":"web_search","query":"搜尋關鍵字","nearby":true或false,"say":"這一步在做什麼（給使用者看的一句話）"}\n' : ''}{"type":"run_python","code":"完整的 Python 程式碼（用 print 輸出結果）","timeout_sec":60,"say":"..."}
+{"type":"run_shell","cmd":"要在 Termux 執行的指令","timeout_sec":60,"say":"..."}
+{"type":"wait","ms":毫秒數,"say":"..."}
+{"type":"need_screen","say":"為什麼一定要操作手機畫面（例如要開啟並操作某個 App、點按鈕、傳訊息、讀取只有畫面上才看得到的內容）"}
+{"type":"done","say":"任務完成的說明，並把使用者要的完整答案或結果寫在這裡"}
+{"type":"fail","say":"任務無法完成的原因"}
+⚠️ 你的整個回覆從第一個字到最後一個字都必須是那一個 JSON 物件本身，不能在前後加任何其他文字，否則整個動作作廢。
+⚠️ 能不看畫面完成的事，一律不要回 need_screen：查資訊（天氣、新聞、價格、場次、營業時間、附近的店）${_webOn ? '用 web_search（與位置有關時 nearby 設 true；結果不夠就換關鍵字再搜）' : ''}；計算、整理資料、解析文字、呼叫 API、讀寫檔案，用 run_python；取得手機資料（電量、定位、簡訊等）用 run_shell 執行 termux-* 指令（需要 Termux 橋接與 Termux:API）。每次要寫完整程式（不保留上次的變數），輸出會出現在下方歷史紀錄的 result。沒有設定 Termux 橋接時 run_shell 不能用，run_python 只剩內建 Pyodide（沒有網路與檔案）。執行前使用者可能會被詢問是否允許，被拒絕就改用其他方式。
+⚠️ 只有任務本質上就是要操作某個 App 的畫面（開 App、點按鈕、輸入、傳訊息、拍照、讀取畫面上才有的內容）時，才回 need_screen；程式會立刻切換成「畫面操作模式」，之後每回合會附上截圖與畫面元件列表。
+⚠️ 回傳 type:"done" 之前，必須在下方歷史紀錄的 result 裡看到明確的完成證據（例如搜尋確實回了資料、程式輸出了預期結果、檔案已寫入並列在變動檔案清單裡），不能只因為沒有錯誤就假設成功；證據不足就先做一個能確認現況的動作（例如用 run_python 讀回檔案內容）。
+如果歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個動作沒有生效，請換個方式，不要原樣重複。
+已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
+${elementsText ? '\n' + elementsText : ''}`;
+                const sysPrompt = textMode ? textPrompt : visionPrompt;
+
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{
-                            parts: [
+                            parts: textMode ? [{ text: sysPrompt }] : [
                                 { text: sysPrompt },
                                 { inline_data: { mime_type: 'image/jpeg', data: screenshotB64 } }
                             ]
@@ -8497,38 +8523,52 @@ ${elementsText}`;
                 setStatus(`執行中（0/${maxRounds} 回合）`, null);
 
                 try {
-                    // v2.6.24：無障礙模式先檢查服務狀態，給出明確的下一步
-                    if (accActive()) {
-                        const _ir = await atxFetch('/info');
-                        if (!_ir.ok) {
-                            addMessage('❌ 無障礙服務無法使用：' + (await _ir.text()) + '\n\n請到「設定 → AI 自主任務」按「開啟無障礙服務」，在系統清單裡打開 NOVA 後再試；或把執行器改回 atx-agent。', 'system');
-                            setStatus('❌ 無障礙服務未啟用', false);
-                            running = false; hideFloatingStopButton();
-                            return;
+                    // v2.6.74：畫面操作模式的前置檢查（原本每個任務一開始都會做）。改成「需要操作畫面時才做」：
+                    // 預設純文字模式（不截圖、不連 atx-agent／無障礙服務、不重啟 uiautomator），AI 回 need_screen 或下了
+                    // 畫面動作（tap／text／open_app…）時才呼叫這裡切換。回傳 false 代表前置檢查失敗（訊息與狀態已處理，呼叫端直接結束任務）。
+                    const enterScreenMode = async function () {
+                        // v2.6.24：無障礙模式先檢查服務狀態，給出明確的下一步
+                        if (accActive()) {
+                            const _ir = await atxFetch('/info');
+                            if (!_ir.ok) {
+                                addMessage('❌ 無障礙服務無法使用：' + (await _ir.text()) + '\n\n請到「設定 → AI 自主任務」按「開啟無障礙服務」，在系統清單裡打開 NOVA 後再試；或把執行器改回 atx-agent。', 'system');
+                                setStatus('❌ 無障礙服務未啟用', false);
+                                running = false; hideFloatingStopButton();
+                                return false;
+                            }
                         }
-                    }
-                    // 先確認 atx-agent 是否可連線
-                    try {
-                        const infoRes = await atxFetch('/info');
-                        if (!infoRes.ok) throw new Error('HTTP ' + infoRes.status);
-                    } catch (e) {
-                        addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install "setuptools<70.0.0" "uiautomator2<3.0" && python -m uiautomator2 init（注意：uiautomator2 3.0+ 已移除 atx-agent，務必安裝 2.x 版本），確認服務已啟動後再試一次。', 'system');
-                        setStatus('❌ 尚未連線', false);
-                        running = false;
-                        return;
-                    }
+                        // 先確認 atx-agent 是否可連線
+                        try {
+                            const infoRes = await atxFetch('/info');
+                            if (!infoRes.ok) throw new Error('HTTP ' + infoRes.status);
+                        } catch (e) {
+                            addMessage('❌ 無法連線到 uiautomator2 服務（atx-agent）。請先在 Termux 執行：pkg install python -y && pip install "setuptools<70.0.0" "uiautomator2<3.0" && python -m uiautomator2 init（注意：uiautomator2 3.0+ 已移除 atx-agent，務必安裝 2.x 版本），確認服務已啟動後再試一次。', 'system');
+                            setStatus('❌ 尚未連線', false);
+                            running = false;
+                            return false;
+                        }
 
-                    // 已知問題：atx-agent 底層的 uiautomator instrumentation session 有時會變成「假活著」
-                    // （HTTP 服務仍在回應，但底層 session 已 stale/斷線），這時 click/swipe 等操作
-                    // 會不管座標多正確，一律靜靜回傳 false（不會丟出錯誤，很難察覺）。
-                    // 官方文件建議的修復方式是強制重啟 uiautomator session：DELETE /uiautomator。
-                    // 每次任務開始前先做一次，是低成本、高機率解決「座標明明對但點擊全部失敗」的方法。
-                    try {
-                        await atxFetch('/uiautomator', { method: 'DELETE' });
-                        await new Promise(r => setTimeout(r, 1500)); // 重啟需要一點時間
-                        addMessage('🔄 已重啟 uiautomator 觸控服務（修正已知的 session 失效問題，可能是先前點擊全部失敗的原因）', 'system');
-                    } catch (resetErr) {
-                        console.warn('uiautomator reset failed', resetErr);
+                        // 已知問題：atx-agent 底層的 uiautomator instrumentation session 有時會變成「假活著」
+                        // （HTTP 服務仍在回應，但底層 session 已 stale/斷線），這時 click/swipe 等操作
+                        // 會不管座標多正確，一律靜靜回傳 false（不會丟出錯誤，很難察覺）。
+                        // 官方文件建議的修復方式是強制重啟 uiautomator session：DELETE /uiautomator。
+                        // 進入畫面操作模式時先做一次，是低成本、高機率解決「座標明明對但點擊全部失敗」的方法。
+                        try {
+                            await atxFetch('/uiautomator', { method: 'DELETE' });
+                            await new Promise(r => setTimeout(r, 1500)); // 重啟需要一點時間
+                            addMessage('🔄 已重啟 uiautomator 觸控服務（修正已知的 session 失效問題，可能是先前點擊全部失敗的原因）', 'system');
+                        } catch (resetErr) {
+                            console.warn('uiautomator reset failed', resetErr);
+                        }
+                        return true;
+                    };
+                    // 畫面操作模式的起點：Computer Use 判斷器本身就是看圖的、設定關掉「純文字優先」、或接手技能重播失敗的任務，都直接從畫面模式開始。
+                    let screenMode = (settings.judge === 'cu') || settings.textFirst === false || !!opts.fromReplay || !!opts.forceScreen;
+                    const SCREEN_ONLY_TYPES = ['tap', 'tap_element', 'long_press', 'swipe', 'text', 'key', 'open_app', 'open_url'];
+                    if (screenMode) {
+                        if (!(await enterScreenMode())) return;
+                    } else {
+                        addMessage('🧠 純文字模式：不截圖、不啟用觸控服務，先用搜尋／Python／指令直接完成；真的需要操作畫面時會自動切換成畫面操作模式。', 'system');
                     }
 
                     for (let round = 1; round <= maxRounds; round++) {
@@ -8543,12 +8583,12 @@ ${elementsText}`;
                         const roundStart = Date.now();
 
                         try {
-                            const shot = await getScreenshotBase64();
+                            const shot = screenMode ? await getScreenshotBase64() : null;   // v2.6.74：純文字模式不截圖
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
 
                             // 要求：直接把這一回合 AI 實際看到的截圖顯示在聊天室裡，讓使用者能親眼核對
                             // 手機畫面到底有沒有真的反應，而不是只能相信「沒有錯誤」這種間接訊號。
-                            addMessage(`📸 第 ${round}/${maxRounds} 回合截圖（AI 依此畫面判斷下一步）`, 'system', null, [],
+                            if (shot) addMessage(`📸 第 ${round}/${maxRounds} 回合截圖（AI 依此畫面判斷下一步）`, 'system', null, [],
                                 { category: 'image', data: 'data:image/jpeg;base64,' + shot.b64, name: `ap_round${round}.jpg` });
 
                             // 畫面變化偵測：這回合的截圖如果跟上一回合幾乎一模一樣，但上一回合執行的是
@@ -8556,9 +8596,9 @@ ${elementsText}`;
                             // WebView 內元素點不到等），必須明確告訴 AI，不能讓它以為上一步成功了就繼續往下走。
                             let screenUnchangedNote = '';
                             let currentShotHash = null;
-                            let decisionShotB64 = shot.b64; // 預設用原圖；偵測到上次點擊疑似落空時才換成有標記的版本
+                            let decisionShotB64 = shot ? shot.b64 : null; // 預設用原圖；偵測到上次點擊疑似落空時才換成有標記的版本（純文字模式為 null）
                             try {
-                                currentShotHash = await computeImageHash(shot.b64);
+                                currentShotHash = shot ? await computeImageHash(shot.b64) : null;
                                 if (lastShotHash && lastActionExpectedChange) {
                                     const diff = hashDiff(lastShotHash, currentShotHash);
                                     if (diff <= SCREEN_UNCHANGED_THRESHOLD) {
@@ -8599,7 +8639,9 @@ ${elementsText}`;
                             let currentElements = [];
                             let elementsText = '（本回合沒有拿到有效的畫面元件清單）';
                             let hierarchyXml = '';
-                            try {
+                            if (!screenMode) {
+                                elementsText = '';   // v2.6.74：純文字模式沒有畫面元件清單
+                            } else try {
                                 hierarchyXml = await getHierarchyDump();
                                 currentElements = parseHierarchyElements(hierarchyXml);
                                 elementsText = formatElementsForPrompt(currentElements);
@@ -8627,7 +8669,7 @@ ${elementsText}`;
                             // 對應 app_current()：讓 AI 知道系統回報的真正前景 App，減少單靠截圖誤判、
                             // 反覆重新開啟同一個 App 的狀況。
                             let appInfoNote = '';
-                            const fgApp = await getCurrentForegroundApp();
+                            const fgApp = screenMode ? await getCurrentForegroundApp() : null;
                             if (fgApp) {
                                 elementsText = `目前系統回報的前景 App 套件名稱：${fgApp.package}（如果這跟任務目標的 App 不一致，代表畫面可能已經跳出目標 App，優先考慮用 open_app 或 key back 處理，不要單靠截圖判斷）\n\n` + elementsText;
                             }
@@ -8641,11 +8683,27 @@ ${elementsText}`;
                             }
 
                             if (taskPlan) {
-                                elementsText = `【原本規劃的大致步驟，僅供參考方向，實際請以這回合截圖為準】\n${taskPlan}\n\n` + elementsText;
+                                elementsText = (screenMode ? `【原本規劃的大致步驟，僅供參考方向，實際請以這回合截圖為準】\n${taskPlan}\n\n` : `【原本規劃的大致步驟，僅供參考方向；能用搜尋／Python／指令完成的部分不必操作畫面】\n${taskPlan}\n\n`) + elementsText;
                             }
 
-                            const rawAction = await decideNextAction(goal, history, decisionShotB64, elementsText, shot.width, shot.height);
+                            const rawAction = await decideNextAction(goal, history, decisionShotB64, elementsText, shot ? shot.width : null, shot ? shot.height : null);
                             if (roundTimedOut) throw new Error('__ROUND_TIMEOUT__');
+
+                            // v2.6.74：純文字模式 → 畫面操作模式的自動升級。AI 明說 need_screen、或直接下了畫面動作（點擊／輸入／開 App…）時，
+                            // 才做前置檢查（atx／無障礙服務、重啟 uiautomator）並從下一回合開始截圖。已在畫面模式卻回 need_screen 則當成無效動作。
+                            if (rawAction.type === 'need_screen' || (!screenMode && SCREEN_ONLY_TYPES.includes(rawAction.type))) {
+                                if (screenMode) {
+                                    history.push({ round, action: rawAction, result: 'FAILED: 目前已是畫面操作模式，不需要 need_screen；請直接用 tap_element／tap／text／key／open_app 等動作操作畫面。' });
+                                } else {
+                                    addMessage(`🖥️ 第 ${round} 回合：${rawAction.say || '這個任務需要操作手機畫面'}\n已切換成畫面操作模式（啟用觸控服務，之後每回合會截圖）。`, 'system');
+                                    if (!(await enterScreenMode())) { clearTimeout(roundTimer); return; }
+                                    screenMode = true;
+                                    round--;   // 切換本身不佔用回合數（只會發生一次，不會無限循環）
+                                    history.push({ round: round + 1, action: rawAction, result: '已切換成畫面操作模式：從下一回合起會附上截圖與畫面元件列表，請依畫面操作。' });
+                                }
+                                clearTimeout(roundTimer);
+                                continue;
+                            }
 
                             let action = rawAction;
                             let scaleNote = '';
@@ -8819,7 +8877,7 @@ ${elementsText}`;
                                 stuckStreak++;
                                 // 連續 2 次以上動作沒生效，極可能是 uiautomator session 又壞掉了，
                                 // 不要傻傻再試第 3、4 次相同座標——直接重啟 session 再繼續。
-                                if (consecutiveSoftFails >= 2) {
+                                if (consecutiveSoftFails >= 2 && screenMode) {   // v2.6.74：純文字模式沒有觸控服務可重啟
                                     try {
                                         await atxFetch('/uiautomator', { method: 'DELETE' });
                                         await new Promise(r => setTimeout(r, 1500));
