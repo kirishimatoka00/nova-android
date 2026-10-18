@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.71';
+        const NOVA_APP_VERSION = '2.6.72';
         const NOVA_CHANGELOG = [
+            { v: '2.6.72', date: '2026-10-18', notes: [
+                '新增「Termux 橋接」：工具呼叫（一般對話）與自主任務（/ap）可以執行真正的 Python 與指令。新工具 run_python／run_shell／pip_install（新檔 nova-termux.js v1.0.0）；自主任務新增 run_python／run_shell 動作。Python 在 Termux 的原生環境執行（有網路、檔案系統、可 pip 安裝、可呼叫 termux-* 指令），橋接連不上時 run_python 自動退回 App 內建 Pyodide（Web Worker、有逾時）。預設每次執行前先問使用者，設定頁可改自動允許。',
+                'Termux 端：repo 新增 termux/（nova_bridge.py 只用標準函式庫、install.sh 一行安裝）。服務只監聽 127.0.0.1:7913，每個請求都要 Token，檢查 Host 與 Origin，逾時連子行程一起結束，輸出有上限。設定 → 🔌 工具 新增「Termux 橋接」卡片（網址、Token、自動允許、Pyodide 備援、測試連線、複製安裝指令）。'
+            ] },
             { v: '2.6.71', date: '2026-10-18', notes: [
                 'web_search／read_webpage 加入 Firecrawl（設定 → 主要 的 Firecrawl Key，原本只給深度研究用）：搜尋順序為 Google → SerpApi → Firecrawl，說「用 firecrawl 查」可指定；讀網頁先直接讀，讀不到（動態網頁、被擋）自動改用 Firecrawl 抓 markdown，也可指定強制使用。API 先試 v2、404 再退 v1，有原生 HTTP 就走原生。'
             ] },
@@ -8033,6 +8037,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     case 'open_app': return action.activity
                         ? `shell: am start -n ${action.package}/${action.activity}`
                         : `shell: monkey -p ${action.package} -c android.intent.category.LAUNCHER 1`;
+                    case 'run_python': return `在 Termux／Pyodide 執行 Python（${String(action.code || '').split('\n').length} 行）`;
+                    case 'run_shell': return `在 Termux 執行指令：${String(action.cmd || action.command || '').slice(0, 120)}`;
                     case 'web_search': return `網路搜尋：${action.query || ''}${action.nearby ? '（帶入定位）' : ''}　（不操作畫面，直接取得搜尋結果）`;
                     case 'open_url': return `shell: am start -a android.intent.action.VIEW -d "${action.url || ''}"　（繞過網頁內搜尋框，直接組網址開啟，避開 WebView 內元件常點不到的問題）`;
                     case 'wait': return `等待 ${action.ms || 1000}ms`;
@@ -8140,6 +8146,13 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                         const escapedUrl = action.url.replace(/"/g, '\\"');
                         return shellExec(`am start -a android.intent.action.VIEW -d "${escapedUrl}"`);
                     }
+                    case 'run_python':   // v2.6.72：在 Termux（或 Pyodide 備援）執行 Python／指令；失敗與拒絕都是軟失敗，回報給 AI
+                    case 'run_shell': {
+                        if (!window.NovaTermux) throw Object.assign(new Error('執行功能尚未載入'), { soft: true });
+                        if (action.type === 'run_python' && !action.code) throw Object.assign(new Error('run_python 動作缺少 code 參數'), { soft: true });
+                        if (action.type === 'run_shell' && !(action.cmd || action.command)) throw Object.assign(new Error('run_shell 動作缺少 cmd 參數'), { soft: true });
+                        return String(await window.NovaTermux.agentRun(action.type === 'run_python' ? 'python' : 'shell', action)).slice(0, 4000);
+                    }
                     case 'web_search': {   // v2.6.70：不用操作畫面，直接取得網路搜尋結果（結果會進歷史紀錄，下一回合可用）
                         if (!action.query) throw new Error('web_search 動作缺少 query 參數');
                         const _wr = await window.novaWebSearch(String(action.query), action.nearby === true);
@@ -8187,6 +8200,8 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"open_app","package":"套件名稱","say":"..."}
 {"type":"open_url","url":"完整網址（含 https://）","say":"..."}
 {"type":"web_search","query":"搜尋關鍵字","nearby":true或false,"say":"..."}
+{"type":"run_python","code":"完整的 Python 程式碼（用 print 輸出結果）","timeout_sec":60,"say":"..."}
+{"type":"run_shell","cmd":"要在 Termux 執行的指令","timeout_sec":60,"say":"..."}
 {"type":"wait","ms":毫秒數,"say":"..."}
 {"type":"done","say":"任務已完成的說明"}
 {"type":"fail","say":"任務無法完成的原因"}
@@ -8199,6 +8214,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 重要：type:"text" 是把文字打進「目前已取得焦點的輸入框」，所以務必先點擊該輸入框（優先用 tap_element 指到那個輸入框；確認它已顯示游標/鍵盤彈出），下一回合才用 type:"text" 輸入文字，不要在同一回合同時做兩件事。
 重要：執行 type:"text" 之後，下一回合請先仔細看新的截圖，確認輸入框裡真的出現了你要打的文字，才可以接著用 type:"key" 按 Enter 送出搜尋。如果輸入框看起來還是空的，代表文字可能沒有真的輸入成功，請重新點擊該輸入框、再重新輸入一次文字，不要直接按 Enter。
 ⚠️ 如果任務只是「查資訊」（電影場次、天氣、價格、營業時間、附近的店…），不要用瀏覽器一步一步點：直接用 type:"web_search"（與位置有關時 nearby 設 true）取得結果，結果會出現在下方歷史紀錄的 result 裡；資料足夠就回傳 type:"done"，並把完整答案（具體名稱、時間、地點）寫在 say 欄位。搜尋結果不夠再換關鍵字搜一次，仍不夠才開瀏覽器。
+⚠️ 需要計算、整理資料、解析文字、呼叫 API、讀寫檔案、或用 termux-* 指令取得手機資料（簡訊、定位等）時，用 type:"run_python"／"run_shell" 直接執行，比操作畫面快且準；每次要寫完整程式（不保留上次的變數），輸出結果會出現在歷史紀錄的 result。沒有設定 Termux 橋接時 run_shell 不能用，run_python 只剩內建 Pyodide（沒有網路與檔案）。執行前使用者可能會被詢問是否允許，被拒絕就改用其他方式。
 如果下方歷史紀錄中某一步的 result 開頭是 "FAILED"，代表那個動作沒有生效，請仔細觀察這次截圖跟畫面元件列表，重新選一個更精準的目標，不要重複點擊幾乎相同的位置。
 已經執行過的步驟歷史：${JSON.stringify(history.slice(-6))}
 ⚠️ 極重要：回傳 type:"done" 之前，必須在這一回合拿到的「最新截圖」裡親眼看到明確的完成證據（例如：你要送出的訊息真的以對話泡泡的形式出現在畫面上、頁面已經跳轉到預期的結果頁、輸入框裡確實顯示你要的文字等），不能只因為前幾回合的指令沒有回傳錯誤就假設任務成功——之前已經發生過好幾次「指令沒報錯」但畫面上其實什麼都沒發生的案例（點擊沒點到、文字沒真的打進去），所以「沒有錯誤」≠「有效果」。如果這次截圖看不出明確的完成證據，請不要回傳 done，改成先做一個能幫助你確認現況的動作（例如再點一次同一個地方、或用 wait 等一下再截圖看看），並在 say 欄位具體描述你在截圖上看到的證據是什麼。
@@ -20979,7 +20995,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.0"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
