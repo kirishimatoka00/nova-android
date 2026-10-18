@@ -1,7 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.79。① 純文字模式的自主任務（搜尋／Python／Termux 指令）完成後也會出現「💾 存成技能」（nova-skills.js v2.1.0 新增 web_search／run_python／run_shell 步驟）；
+            ② 參數化可偵測「搜尋字」（web_search 的 query）；③ 新增設定「任務成功後自動存成技能（不詢問）」（對標桌面版自動技能學習，預設關閉），
+            存好後用 AI 取名並顯示通知；④ 對外多一個 llm（重播純文字技能後用來整理結果）。
    v1.1.0 - 批次 7b。存半成品視窗加「⚡ Jev 建議取消冗餘步驟」（Jev 開啟且 partial 開關開才顯示）。
    v1.0.0 - 批次 7a。對標桌面版「技能」功能（nova-skill-params.js／nova-skill-clone.js 的手機版重寫；桌面版以 Python／Windows 步驟為主，手機版改以手機操作步驟為主）：
             ① 技能管理頁（全螢幕）：搜尋、分類（可重播／提示範本／組裝流程／腳本／半成品）、每個技能有 執行／參數／編輯／複製／改名／刪除；
@@ -26,7 +29,8 @@
         match: function () { return lsGet('nova_skill_match', '1') === '1'; },
         auto: function () { return lsGet('nova_skill_auto_replay', '0') === '1'; },
         offerSave: function () { return lsGet('nova_skill_offer_save', '1') === '1'; },
-        offerPartial: function () { return lsGet('nova_skill_offer_partial', '1') === '1'; }
+        offerPartial: function () { return lsGet('nova_skill_offer_partial', '1') === '1'; },
+        autoSave: function () { return lsGet('nova_skill_auto_save', '0') === '1'; }
     };
     function toast(m, d) { if (typeof W.showToast === 'function') W.showToast(m, d || 3000); }
 
@@ -123,6 +127,7 @@
                 out.push({ step: i, field: field, value: value, label: label, kind: kindOf(value), goalHit: value.length >= 2 && g.indexOf(value.toLowerCase()) >= 0 });
             };
             if (st.type === 'text') push('text', st.text, '輸入文字');
+            else if (st.type === 'web_search') push('query', st.query, '搜尋字');
             else if (st.type === 'open_url') {
                 try {
                     var u = new URL(st.url); u.searchParams.forEach(function (v, k) { if (v && v.length < 80 && !/^(hl|gl|ie|oe|source|sa|ved|client|sclient|authuser)$/i.test(k)) push('url', v, '網址參數 ' + k); });
@@ -141,6 +146,7 @@
             p.cands.forEach(function (c) {
                 var st = steps[c.step]; if (!st) return;
                 if (c.field === 'url') { var enc = encodeURIComponent(p.value); var url = String(st.url); if (url.indexOf(enc) >= 0) st.url = url.split(enc).join('{{' + p.name + '@u}}'); else if (url.indexOf(p.value) >= 0) st.url = url.split(p.value).join('{{' + p.name + '@u}}'); }
+                else if (c.field === 'query') st.query = String(st.query).split(p.value).join('{{' + p.name + '}}');
                 else if (c.field === 'text') {
                     if (st.type === 'tap_el') { if (st.text === p.value) st.text = '{{' + p.name + '}}'; }
                     else st.text = String(st.text).split(p.value).join('{{' + p.name + '}}');
@@ -451,6 +457,7 @@
     // ═══════════════ 任務結束：存成技能／半成品 ═══════════════
     function onTaskEnd(run) {
         if (!run || !run.steps || !run.steps.length) return;
+        if (run.status === 'done' && opt.autoSave() && !run.saved) { autoSaveRun(run); return; }
         if (run.status === 'done' && opt.offerSave()) {
             banner('✅ 任務完成（' + run.steps.length + ' 步）。要把這次的操作存成技能嗎？下次可以直接重播，不用再讓 AI 一步步判斷。', [['💾 存成技能', function () { saveLastRun(); }, true], ['略過']]);
         } else if (run.status !== 'done' && run.steps.length >= 2 && opt.offerPartial()) {
@@ -460,6 +467,15 @@
     async function suggestSkillName(goal) {
         try { var t = await llm('把這個手機任務取一個英文 snake_case 技能名稱（小寫字母／數字／底線、以字母開頭、不超過 30 字元），只回名稱本身：「' + goal + '」'); t = t.replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '').toLowerCase().slice(0, 30); if (/^[a-z]/.test(t)) return t; } catch (e) { /* 用預設 */ }
         return 'skill_' + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '');
+    }
+    // 任務成功後自動存成技能（設定開啟時；不問，存好後通知）
+    async function autoSaveRun(lr) {
+        try {
+            var nm = await suggestSkillName(lr.goal); while (S().get(nm)) nm += '_2';
+            await S().saveSkill(nm, 'replay', { description: lr.goal, goal: lr.goal }, '', lr.steps);
+            lr.saved = true; refreshMgr();
+            toast('✅ 已自動存成技能「' + nm + '」（共 ' + lr.steps.length + ' 步；到技能管理可改名、設定參數）', 5000);
+        } catch (er) { toast('⚠️ 自動存成技能失敗：' + er.message + '（可手動存）', 5000); banner('任務完成，但自動存成技能失敗。要手動存嗎？', [['💾 存成技能', function () { saveLastRun(); }, true], ['略過']]); }
     }
     async function saveLastRun() {
         var lr = W.novaAutoTask && W.novaAutoTask.getLastRun && W.novaAutoTask.getLastRun();
@@ -579,6 +595,7 @@
         el.appendChild(btn('🧰 開啟技能管理', CSS.btnP + 'width:100%;margin-bottom:12px;', open));
         [['nova_skill_match', '1', '/ap 執行前先比對技能', '比對到相似的已存技能時，詢問要不要直接重播（比 AI 一步步判斷快、省額度）'],
          ['nova_skill_auto_replay', '0', '比對到就直接重播（不詢問）', '開啟後不再跳確認；失敗時仍會問要不要讓 AI 接手'],
+         ['nova_skill_auto_save', '0', '任務成功後自動存成技能（不詢問）', '開啟後完成的自主任務會直接存成技能（AI 取名），不再跳出「存成技能」按鈕；想先挑步驟、設參數請維持關閉'],
          ['nova_skill_offer_save', '1', '任務成功後提示「存成技能」', '自主任務完成時，底部出現存成技能的按鈕'],
          ['nova_skill_offer_partial', '1', '任務失敗後提示「存成半成品」', '至少做對 2 步時才提示']].forEach(function (t) {
             var row = mk('label', 'display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--nv-line,#1e293b);'); var cb = mk('input'); cb.type = 'checkbox'; cb.checked = lsGet(t[0], t[1]) === '1'; cb.style.cssText = 'width:20px;height:20px;flex:none;margin-top:2px;'; cb.onchange = function () { lsSet(t[0], cb.checked ? '1' : '0'); };
@@ -587,7 +604,7 @@
     }
     W.novaSkillRenderSettings = function () { if (S()) S().load().then(renderSettings); };
 
-    W.NovaSkillUI = { open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
+    W.NovaSkillUI = { llm: llm, open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
     W.openSkillManager = open;
     if (S()) setTimeout(function () { S().load().then(renderSettings); }, 1200);
 })();

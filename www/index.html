@@ -493,7 +493,7 @@
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.0.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.1.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.1.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.2.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -2246,8 +2246,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.78';
+        const NOVA_APP_VERSION = '2.6.79';
         const NOVA_CHANGELOG = [
+            { v: '2.6.79', date: '2026-10-18', notes: [
+                '自主任務完成後可以存成技能的範圍擴大到「純文字模式」的任務：之前只有操作畫面的步驟會被記錄，用 web_search／run_python／run_shell 完成的任務（查資訊、運算、Termux 指令）因為沒有可記錄的步驟，完成後不會出現「存成技能」。現在這三種步驟也會記錄（失敗的指令不記），技能新增 web_search／run_python／run_shell 三種步驟型別。',
+                '重播純文字技能時，每個搜尋／Python／指令步驟的輸出會顯示在對話裡，重播完用 AI 依原本目標整理成最後答覆；指令失敗（非 0 退出碼）會中斷並詢問是否讓 AI 接手。參數化可以把「搜尋字」變成每次可填的欄位。',
+                '設定 → 技能 新增「任務成功後自動存成技能（不詢問）」（對標桌面版自動技能學習，預設關閉）：開啟後完成的任務直接存成技能並通知；關閉時維持原本底部的「💾 存成技能」按鈕可挑步驟、設參數。（nova-skills.js v2.1.0、nova-skill-ui.js v1.2.0）'
+            ] },
             { v: '2.6.78', date: '2026-10-18', notes: [
                 '修正還原備份後 Termux 設定卡片仍是空的（Token 看起來沒還原）：還原時值其實寫進了儲存空間，但已開著的設定卡片沒有更新，之後備份或按「測試連線」時反而用畫面上的空值蓋掉。現在還原後（新舊備份檔都一樣）會立刻把網址、Token 等刷新到卡片；備份、快照時若卡片欄位是空的、儲存空間卻有值，以儲存空間為準，不再被空欄位蓋掉（nova-termux.js v1.0.2）。'
             ] },
@@ -8398,6 +8403,10 @@ ${elementsText ? '\n' + elementsText : ''}`;
                     case 'open_app': return { type: 'open_app', package: a.package, activity: a.activity || undefined, say };
                     case 'open_url': return { type: 'open_url', url: a.url, say };
                     case 'wait': return { type: 'wait', ms: Math.min(a.ms || 1000, 5000) };
+                    // v2.6.79：純文字模式的步驟也能存成技能（搜尋／Python／Termux 指令）
+                    case 'web_search': return a.query ? { type: 'web_search', query: String(a.query), nearby: a.nearby === true || undefined, say } : null;
+                    case 'run_python': return a.code ? { type: 'run_python', code: String(a.code), timeout_sec: a.timeout_sec || undefined, say } : null;
+                    case 'run_shell': return (a.cmd || a.command) ? { type: 'run_shell', cmd: String(a.cmd || a.command), timeout_sec: a.timeout_sec || undefined, say } : null;
                     default: return null;
                 }
             }
@@ -8463,11 +8472,20 @@ ${elementsText ? '\n' + elementsText : ''}`;
                 const steps = (entry.steps || []).map(s => applyStepParams(s, values));
                 if (!opts.silent) addMessage('▶️ 重播技能「' + (entry.name || '') + '」（共 ' + steps.length + ' 步）' + (values && Object.keys(values).length ? '\n參數：' + Object.keys(values).map(k => k + '=' + values[k]).join('、') : ''), 'system');
                 let done = 0, err = null;
+                const outputs = [];   // v2.6.79：搜尋／Python／指令步驟的輸出，重播完後整理成結果
                 try {
                     for (let i = 0; i < steps.length; i++) {
                         if (cancelRequested) { addMessage('⏹ 技能重播已由使用者中斷（完成 ' + done + '/' + steps.length + ' 步）。', 'system'); setStatus('⏹ 已由使用者中斷', false); return { ok: false, error: '使用者中斷', done }; }
                         setStatus('重播技能（' + (i + 1) + '/' + steps.length + '）', null);
-                        try { await execSkillStep(steps[i]); }
+                        try {
+                            const _r = await execSkillStep(steps[i]);
+                            if (steps[i].type === 'web_search' || steps[i].type === 'run_python' || steps[i].type === 'run_shell') {
+                                const _t = String(_r == null ? '' : _r);
+                                if (/^【[^】]*】(執行失敗|⏱️)/.test(_t)) throw new Error('指令執行失敗：' + _t.slice(0, 300));
+                                outputs.push({ step: i + 1, kind: steps[i].type, text: _t.slice(0, 3500) });
+                                if (!opts.silent) addMessage('📄 第 ' + (i + 1) + ' 步輸出：\n```\n' + _t.slice(0, 1200) + '\n```', 'system');
+                            }
+                        }
                         catch (e) { err = '第 ' + (i + 1) + ' 步（' + (window.NovaSkills ? NovaSkills.stepOutline(steps[i]) : steps[i].type) + '）失敗：' + e.message; break; }
                         done++;
                         await new Promise(r => setTimeout(r, steps[i].type === 'open_app' || steps[i].type === 'open_url' ? 2000 : 900));
@@ -8475,6 +8493,13 @@ ${elementsText ? '\n' + elementsText : ''}`;
                 } finally { running = false; hideFloatingStopButton(); }
                 if (!err) {
                     if (!opts.silent) addMessage('✅ 技能「' + (entry.name || '') + '」重播完成（' + done + ' 步）。', 'ai');
+                    // 有搜尋／Python／指令輸出時，用 AI 依原本目標整理成最後的答覆（純文字技能的「結果」）
+                    if (!opts.silent && outputs.length && entry.goal && window.NovaSkillUI && NovaSkillUI.llm && appState.keys.gemini) {
+                        try {
+                            const _sum = await NovaSkillUI.llm('使用者的任務目標：' + String(entry.goal).replace(/\n\n【目前定位[\s\S]*$/, '') + '\n\n以下是技能重播時各步驟的輸出：\n' + outputs.map(o => '【第 ' + o.step + ' 步 ' + o.kind + '】\n' + o.text).join('\n\n') + '\n\n請用繁體中文，依輸出內容直接回答任務目標（簡潔、不編造輸出裡沒有的資訊）。', false);
+                            if (_sum) addMessage(_sum, 'ai');
+                        } catch (_) { /* 整理失敗不影響重播結果，輸出已顯示在上方 */ }
+                    }
                     setStatus('✅ 技能重播完成', true);
                     return { ok: true, done };
                 }
@@ -8941,7 +8966,7 @@ ${elementsText ? '\n' + elementsText : ''}`;
                                     ? `⚠️ 第 ${round} 回合指令失敗（指令已送出但沒有成功完成，AI 會看到錯誤內容並調整）\n\`\`\`\n${resultText}\n\`\`\``
                                     : `✅ 第 ${round} 回合執行成功\n\`\`\`\n${resultText}\n\`\`\``, 'system');
                                 history.push({ round, action: rawAction, result: resultText });
-                                try { const _st = await toSkillStep(rawAction, usedEl, hierarchyXml); if (_st) recorded.push(_st); } catch (_) { /* 記錄失敗不影響任務 */ }
+                                try { const _st = _cmdFailed ? null : await toSkillStep(rawAction, usedEl, hierarchyXml); if (_st) recorded.push(_st); } catch (_) { /* 記錄失敗不影響任務 */ }
                             }
                             clearTimeout(roundTimer);
 

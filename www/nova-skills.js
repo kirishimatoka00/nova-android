@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skills.js — NOVA Android 技能引擎（跟 index.html 放同一個資料夾 www/）
-   版本：v2.0.0
+   版本：v2.1.0
    版本紀錄：
+   v2.1.0 - App v2.6.79。replay 新增三種「不用操作畫面」的步驟：web_search（query、nearby）、run_python（code、timeout_sec）、run_shell（cmd、timeout_sec），
+            讓純文字模式（v2.6.74）完成的自主任務也能存成技能、之後重播；stepOutline 補上這三種的顯示文字。
    v2.0.0 - 批次 7a。取代 index.html 內舊的「只有腳本 .js」NovaSkills，改成對標桌面版 v3.x 的統一技能格式（資料夾 Documents/NovaSkills/）：
             ① 登記檔 skills.json＋每個技能一個定義檔：script（<name>.js＋.md，舊版相容）／prompt（提示範本，.md）／imported（匯入文件，.md）／
                replay（可重播的手機操作紀錄，<name>.replay.json＋.md）／flow（組裝流程，<name>.flow.json＋.md）。
@@ -19,7 +21,7 @@
     var W = window;
     var NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
     var TYPES = ['script', 'prompt', 'imported', 'replay', 'flow'];
-    var STEP_TYPES = ['tap_el', 'tap', 'long_press', 'swipe', 'text', 'key', 'open_app', 'open_url', 'wait', 'shell'];
+    var STEP_TYPES = ['tap_el', 'tap', 'long_press', 'swipe', 'text', 'key', 'open_app', 'open_url', 'wait', 'shell', 'web_search', 'run_python', 'run_shell'];
     var DIR = 'NovaSkills';
 
     var registry = {};          // script 技能：name → fn
@@ -59,6 +61,9 @@
             case 'open_app': return '開啟 App ' + s.package;
             case 'open_url': return '開網址 ' + String(s.url || '').slice(0, 60);
             case 'wait': return '等待 ' + (s.ms || 1000) + 'ms';
+            case 'web_search': return '搜尋「' + String(s.query || '').slice(0, 40) + '」' + (s.nearby ? '（附近）' : '');
+            case 'run_python': return '執行 Python（' + String(s.code || '').split('\n').length + ' 行）' + String(s.code || '').replace(/\s+/g, ' ').slice(0, 30);
+            case 'run_shell': return 'Termux 指令 ' + String(s.cmd || s.command || '').slice(0, 50);
             case 'shell': return 'shell ' + String(s.command || '').slice(0, 50);
             default: return s.type + ' ' + JSON.stringify(s).slice(0, 50);
         }
@@ -288,6 +293,6 @@
         getLastError: function () { return lastLoadError; }, getCount: function () { return manifest.length; },
         saveSkill: saveSkill, deleteSkill: deleteSkill, renameSkill: renameSkill, repairIndex: repairIndex, setLastValues: setLastValues,
         exportAll: exportAll, importAll: importAll, stepOutline: stepOutline, outline: outline,
-        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.0.0'
+        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.0'
     };
 })();
