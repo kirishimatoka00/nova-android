@@ -1,7 +1,12 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.4.0
+   版本：v1.5.0
    版本紀錄：
+   v1.5.0 - App v2.6.84。技能參數更容易辨識與填寫：
+            ① 設定參數：搜尋字與較長的輸入文字會自動「拆成片段」候選（例如「高鐵 台北 雲林 時刻表」→ 台北、雲林…各一個），不用把整句都當成一個變數；
+              每個候選顯示「原本的值」與它所在的步驟（值用醒目標記），並可按「✂️ 自選一段文字」手動指定要換成變數的字（搜尋字、輸入文字、網址、指令、Python 都能選）；
+              「顯示名稱」（中文，例：出發站）變成主要欄位，英文代號改成自動產生（可展開修改）；第一次開啟且還沒有參數時，自動請 AI 建議哪些要變數與中文名稱。
+            ② 執行前的填寫表單：每個欄位顯示中文名稱、「原本的值：…」與用在哪一步，日期用日期選擇器；可選項目用下拉。
    v1.4.0 - App v2.6.81。側邊欄新增「技能範本」清單（對標桌面版 _novaRenderAutonomousTemplates）：桌面側邊欄與手機選單都有，可收合、顯示數量；
             每個技能一列，點一下就執行（可重播技能會先跳參數表單、提示範本放進輸入框或交給自主任務、半成品查看內容），右邊 ⋮ 開操作選單（執行／參數／編輯／複製／改名／刪除）。
             技能新增、刪除、改名、匯入或 /sc 之後自動更新（聽 nova-skills.js 的 'nova-skills-changed' 事件）。
@@ -133,8 +138,17 @@
                 if (out.some(function (c) { return c.value === value && c.step === i && c.field === field; })) return;
                 out.push({ step: i, field: field, value: value, label: label, kind: kindOf(value), goalHit: value.length >= 2 && g.indexOf(value.toLowerCase()) >= 0 });
             };
-            if (st.type === 'text') push('text', st.text, '輸入文字');
-            else if (st.type === 'web_search') push('query', st.query, '搜尋字');
+            var segs = function (field, value, label) {   // 較長、含空白或標點的字串 → 拆成片段候選
+                value = String(value == null ? '' : value);
+                if (value.length < 4) return;
+                var seen = {}; value.split(/[\s,，、;；|/]+/).forEach(function (t) {
+                    t = t.trim(); if (t.length < 2 || t === value || seen[t] || COMMON_UI.test(t)) return; seen[t] = 1;
+                    var v = t; if (out.some(function (c) { return c.value === v && c.step === i && c.field === field; })) return;
+                    out.push({ step: i, field: field, value: v, label: label + '中的片段', kind: kindOf(v), seg: true, whole: value, goalHit: v.length >= 2 && g.indexOf(v.toLowerCase()) >= 0 });
+                });
+            };
+            if (st.type === 'text') { push('text', st.text, '輸入文字'); segs('text', st.text, '輸入文字'); }
+            else if (st.type === 'web_search') { push('query', st.query, '整句搜尋字'); segs('query', st.query, '搜尋字'); }
             else if (st.type === 'open_url') {
                 try {
                     var u = new URL(st.url); u.searchParams.forEach(function (v, k) { if (v && v.length < 80 && !/^(hl|gl|ie|oe|source|sa|ved|client|sclient|authuser)$/i.test(k)) push('url', v, '網址參數 ' + k); });
@@ -153,7 +167,7 @@
             p.cands.forEach(function (c) {
                 var st = steps[c.step]; if (!st) return;
                 if (c.field === 'url') { var enc = encodeURIComponent(p.value); var url = String(st.url); if (url.indexOf(enc) >= 0) st.url = url.split(enc).join('{{' + p.name + '@u}}'); else if (url.indexOf(p.value) >= 0) st.url = url.split(p.value).join('{{' + p.name + '@u}}'); }
-                else if (c.field === 'query') st.query = String(st.query).split(p.value).join('{{' + p.name + '}}');
+                else if (c.field === 'query' || c.field === 'cmd' || c.field === 'code') st[c.field] = String(st[c.field]).split(p.value).join('{{' + p.name + '}}');
                 else if (c.field === 'text') {
                     if (st.type === 'tap_el') { if (st.text === p.value) st.text = '{{' + p.name + '}}'; }
                     else st.text = String(st.text).split(p.value).join('{{' + p.name + '}}');
@@ -164,35 +178,62 @@
     }
 
     // 參數編輯器（entry 是技能；回傳後存檔）
+    // 把值在步驟文字裡標示出來（醒目），讓人一眼看出「這個變數會換掉哪一段」
+    function highlightIn(parent, text, value) {
+        text = String(text || ''); var i = value ? text.indexOf(value) : -1;
+        if (i < 0) { parent.appendChild(document.createTextNode(text)); return; }
+        parent.appendChild(document.createTextNode(text.slice(0, i)));
+        parent.appendChild(mk('mark', 'background:#facc15;color:#111827;border-radius:4px;padding:0 3px;font-weight:700;', value));
+        parent.appendChild(document.createTextNode(text.slice(i + value.length)));
+    }
+    function stepWhere(steps, c) {   // 候選所在步驟的簡短描述（含原文）
+        var st = steps[c.step] || {};
+        var txt = c.field === 'query' ? st.query : c.field === 'url' ? st.url : c.field === 'cmd' ? st.cmd : c.field === 'code' ? st.code : (st.text || '');
+        var kind = { web_search: '搜尋', text: '輸入', open_url: '開網址', tap_el: '點選', run_shell: 'Termux 指令', run_python: 'Python' }[st.type] || st.type;
+        return { kind: kind, text: String(txt || '').replace(/\s+/g, ' ').slice(0, 140) };
+    }
     async function openParams(name, preset) {
         var e = S().get(name); if (!e || e.type !== 'replay') { toast('只有「可重播」技能可以設定參數'); return; }
         var raw = unparam(e.steps, e.params), cands = detect(raw, e.goal), existing = (e.params || []).slice();
         // 已存在的參數 → 對應的候選（用預設值比對）
-        var rows = cands.map(function (c, i) {
+        var rows = cands.map(function (c) {
             var ex = existing.find(function (p) { return String(p.default) === c.value; });
-            return { c: c, on: !!ex || (!existing.length && c.goalHit), name: ex ? ex.name : '', label: ex ? ex.label : '', type: ex ? ex.type : (c.kind === '數字' ? 'number' : c.kind === '日期' ? 'date' : 'text'), choices: ex ? (ex.choices || '') : '' };
+            return { c: c, on: !!ex, name: ex ? ex.name : '', label: ex ? ex.label : '', type: ex ? ex.type : (c.kind === '數字' ? 'number' : c.kind === '日期' ? 'date' : 'text'), choices: ex ? (ex.choices || '') : '' };
         });
+        // 已存在參數但偵測不到候選（例如自選的片段）→ 補一列
+        existing.forEach(function (p) { if (!rows.some(function (r) { return r.on && r.name === p.name; })) {
+            var hit = null; raw.forEach(function (st, si) { ['query', 'text', 'url', 'cmd', 'code'].forEach(function (f) { if (!hit && typeof st[f] === 'string' && p.default && st[f].indexOf(String(p.default)) >= 0) hit = { step: si, field: f }; }); });
+            if (hit) rows.push({ c: { step: hit.step, field: hit.field, value: String(p.default), label: '已設定的參數', kind: '文字', custom: true }, on: true, name: p.name, label: p.label, type: p.type, choices: (p.choices || []).join ? p.choices.join(',') : '' });
+        } });
         if (preset) preset.forEach(function (idx) { if (rows[idx]) rows[idx].on = true; });
         var o = overlay('🧩 參數：' + name, 9300);
-        o.body.appendChild(mk('div', CSS.muted + 'margin-bottom:8px;', '勾選「每次執行可能不同」的值（例如搜尋字、要點的人名、日期）。執行時會跳出表單讓你填，不用重新教 AI。目標：' + (e.goal || '')));
+        o.body.appendChild(mk('div', CSS.muted + 'margin-bottom:8px;', '勾選「每次執行可能不同」的值。執行時會跳出表單，用你取的中文名稱讓你填，不用重新教 AI。'));
+        o.body.appendChild(mk('div', CSS.muted + 'margin-bottom:8px;', '任務目標：' + String(e.goal || '').replace(/\n\n【目前定位[\s\S]*$/, '')));
         var list = mk('div'); o.body.appendChild(list);
+        var autoN = 0;
         function draw() {
             list.textContent = '';
-            if (!rows.length) list.appendChild(mk('div', CSS.muted, '這個技能的步驟裡沒有偵測到可參數化的值（輸入文字／網址搜尋字／點選的項目）。'));
-            rows.forEach(function (r, i) {
-                var card = mk('div', CSS.card), top = mk('label', 'display:flex;gap:8px;align-items:flex-start;min-height:40px;');
-                var cb = mk('input'); cb.type = 'checkbox'; cb.checked = r.on; cb.style.cssText = 'width:20px;height:20px;margin-top:2px;flex:none;';
-                cb.onchange = function () { r.on = cb.checked; if (r.on && !r.name) r.name = suggestName(r.c, rows.filter(function (x) { return x.on && x !== r && x.name && x.name.indexOf(suggestName(r.c, 0)) === 0; }).length); draw(); };
-                var tx = mk('div', 'flex:1;min-width:0;'); tx.appendChild(mk('div', 'font-size:14px;word-break:break-all;', r.c.value));
-                tx.appendChild(mk('div', CSS.muted, '第 ' + (r.c.step + 1) + ' 步・' + r.c.label + '・' + r.c.kind + (r.c.goalHit ? '・與任務目標吻合' : '')));
+            if (!rows.length) list.appendChild(mk('div', CSS.muted, '沒有偵測到可參數化的值。可以按上方「✂️ 自選一段文字」，自己指定步驟裡要換成變數的字。'));
+            rows.forEach(function (r) {
+                var card = mk('div', CSS.card + (r.on ? 'border-color:var(--nv-accent,#3b82f6);' : '')), top = mk('label', 'display:flex;gap:10px;align-items:flex-start;min-height:40px;');
+                var cb = mk('input'); cb.type = 'checkbox'; cb.checked = r.on; cb.style.cssText = 'width:22px;height:22px;margin-top:2px;flex:none;';
+                cb.onchange = function () { r.on = cb.checked; draw(); };
+                var tx = mk('div', 'flex:1;min-width:0;');
+                var val = mk('div', 'font-size:16px;font-weight:700;word-break:break-all;', '「' + r.c.value + '」'); tx.appendChild(val);
+                var w = stepWhere(raw, r.c), ctx = mk('div', CSS.muted + 'margin-top:3px;word-break:break-all;');
+                ctx.appendChild(document.createTextNode('第 ' + (r.c.step + 1) + ' 步（' + w.kind + '）：')); highlightIn(ctx, w.text, r.c.value); tx.appendChild(ctx);
+                if (r.c.goalHit) tx.appendChild(mk('div', 'font-size:11px;color:#22c55e;margin-top:2px;', '✔ 出現在任務目標裡，很可能每次不同'));
                 top.append(cb, tx); card.appendChild(top);
                 if (r.on) {
-                    var g = mk('div', 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;');
-                    var nm = mk('input', CSS.fld); nm.placeholder = '參數名稱（英文）'; nm.value = r.name || ''; nm.oninput = function () { r.name = nm.value.replace(/[^a-zA-Z0-9_]/g, ''); };
-                    var lb = mk('input', CSS.fld); lb.placeholder = '顯示名稱（例：收件人）'; lb.value = r.label || ''; lb.oninput = function () { r.label = lb.value; };
-                    var ty = mk('select', CSS.fld); [['text', '文字'], ['number', '數字'], ['date', '日期'], ['choice', '選項']].forEach(function (x) { ty.appendChild(new Option(x[1], x[0])); }); ty.value = r.type; ty.onchange = function () { r.type = ty.value; draw(); };
-                    g.append(nm, lb, ty); card.appendChild(g);
-                    if (r.type === 'choice') { var ch = mk('input', CSS.fld + 'margin-top:8px;'); ch.placeholder = '選項（用逗號分隔）'; ch.value = r.choices; ch.oninput = function () { r.choices = ch.value; }; card.appendChild(ch); }
+                    card.appendChild(mk('div', 'font-size:12px;font-weight:600;margin:10px 0 4px;', '這個值代表什麼？（執行時表單上顯示的名稱）'));
+                    var lb = mk('input', CSS.fld); lb.placeholder = '例：出發站、搜尋關鍵字、收件人'; lb.value = r.label || ''; lb.oninput = function () { r.label = lb.value; }; card.appendChild(lb);
+                    var row2 = mk('div', 'display:flex;gap:8px;margin-top:8px;align-items:center;');
+                    row2.appendChild(mk('span', CSS.muted, '格式'));
+                    var ty = mk('select', CSS.fld + 'flex:1;'); [['text', '文字'], ['number', '數字'], ['date', '日期'], ['choice', '固定幾個選項']].forEach(function (x) { ty.appendChild(new Option(x[1], x[0])); }); ty.value = r.type; ty.onchange = function () { r.type = ty.value; draw(); };
+                    row2.appendChild(ty); card.appendChild(row2);
+                    if (r.type === 'choice') { var ch = mk('input', CSS.fld + 'margin-top:8px;'); ch.placeholder = '選項用逗號分隔，例：台北,台中,高雄'; ch.value = r.choices; ch.oninput = function () { r.choices = ch.value; }; card.appendChild(ch); }
+                    var adv = mk('details', 'margin-top:8px;'); adv.appendChild(mk('summary', CSS.muted + 'cursor:pointer;', '進階：英文代號' + (r.name ? '（' + r.name + '）' : '（自動產生）')));
+                    var nm = mk('input', CSS.fld + 'margin-top:6px;'); nm.placeholder = '留空會自動產生'; nm.value = r.name || ''; nm.oninput = function () { r.name = nm.value.replace(/[^a-zA-Z0-9_]/g, ''); }; adv.appendChild(nm); card.appendChild(adv);
                 }
                 list.appendChild(card);
             });
@@ -201,26 +242,39 @@
         var aiBtn = btn('🤖 請 AI 建議', CSS.btn, async function () {
             aiBtn.disabled = true; aiBtn.textContent = '分析中…';
             try {
-                var r = await llm('手機自動化技能：目標「' + (e.goal || '') + '」。下列是步驟中出現的值，請判斷每個值「下次執行時是否可能不同（應該變成參數）」。\n' + rows.map(function (x, i) { return i + ': ' + JSON.stringify(x.c.value) + '（' + x.c.label + '）'; }).join('\n') + '\n只回 JSON：{"params":[{"i":索引,"name":"英文參數名","label":"中文顯示名"}]}', true);
-                (r.params || []).forEach(function (p) { var row = rows[p.i]; if (row) { row.on = true; row.name = String(p.name || '').replace(/[^a-zA-Z0-9_]/g, '') || row.name; row.label = p.label || row.label; } });
+                var r = await llm('手機自動化技能：目標「' + String(e.goal || '').replace(/\n\n【目前定位[\s\S]*$/, '') + '」。下列是步驟中出現的值，請判斷每個值「下次執行時是否可能不同（應該變成參數）」。例如搜尋字裡的地點／日期／人名／關鍵字要變成參數；「時刻表」「車次」這類固定用語、按鈕文字不要。\n' + rows.map(function (x, i) { return i + ': ' + JSON.stringify(x.c.value) + '（' + x.c.label + '；原文：' + JSON.stringify(stepWhere(raw, x.c).text) + '）'; }).join('\n') + '\n只回 JSON：{"params":[{"i":索引,"label":"給使用者看的中文名稱，要具體，例如「出發站」「目的站」「日期」「搜尋關鍵字」，不要寫「參數1」","type":"text|number|date"}]}。只列出應該變成參數的。', true);
+                (r.params || []).forEach(function (p) { var row = rows[p.i]; if (row) { row.on = true; row.label = p.label || row.label; if (p.type === 'number' || p.type === 'date' || p.type === 'text') row.type = p.type; } });
                 draw(); toast('AI 已建議（可自行調整）');
             } catch (er) { toast('❌ AI 建議失敗：' + er.message, 4000); }
             aiBtn.disabled = false; aiBtn.textContent = '🤖 請 AI 建議';
         });
-        var tools = mk('div', 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;'); tools.appendChild(aiBtn);
+        var pickBtn = btn('✂️ 自選一段文字', CSS.btn, async function () {
+            var v = await ask('自選要換成變數的文字', [{ key: 't', label: '貼上或輸入步驟裡的一段文字', hint: '必須和步驟裡的文字完全一樣', placeholder: '例：雲林' }], '加入');
+            if (!v || !v.t.trim()) return; var t = v.t.trim(), hit = null;
+            raw.forEach(function (st, si) { if (hit) return; ['query', 'text', 'url', 'cmd', 'code'].forEach(function (f) { if (!hit && typeof st[f] === 'string' && st[f].indexOf(t) >= 0 && !(st.type === 'tap_el')) hit = { step: si, field: f }; }); });
+            if (!hit) { toast('步驟裡找不到「' + t + '」（要和原文完全一樣，包含大小寫）', 4500); return; }
+            if (rows.some(function (r) { return r.c.value === t && r.c.step === hit.step && r.c.field === hit.field; })) { toast('這段文字已經在清單裡'); return; }
+            rows.unshift({ c: { step: hit.step, field: hit.field, value: t, label: '自選片段', kind: kindOf(t), custom: true }, on: true, name: '', label: '', type: 'text', choices: '' });
+            draw(); toast('已加入，請取一個名稱');
+        });
+        var tools = mk('div', 'display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;'); tools.append(aiBtn, pickBtn);
         if (W.NovaJev && W.NovaJev.isOn && W.NovaJev.isOn('params') && W.NovaJev.suggestParams) {
             var jb = btn('⚡ Jev 建議', CSS.btn, async function () {
                 jb.disabled = true;
-                try { var res = await W.NovaJev.suggestParams(rows.map(function (x) { return x.c; }), e.goal); (res || []).forEach(function (on, i) { if (rows[i] && on !== null) { rows[i].on = !!on; if (on && !rows[i].name) rows[i].name = suggestName(rows[i].c, i); } }); draw(); toast('⚡ Jev 已建議'); } catch (er) { toast('Jev 建議失敗：' + er.message); }
+                try { var res = await W.NovaJev.suggestParams(rows.map(function (x) { return x.c; }), e.goal); (res || []).forEach(function (on, i) { if (rows[i] && on !== null) rows[i].on = !!on; }); draw(); toast('⚡ Jev 已建議（請補上中文名稱）'); } catch (er) { toast('Jev 失敗：' + er.message); }
                 jb.disabled = false;
             }); tools.appendChild(jb);
         }
         o.body.insertBefore(tools, list);
+        // 第一次設定（還沒有任何參數）→ 自動請 AI 建議，使用者只要確認
+        if (!existing.length && rows.length && W.appState && appState.keys && appState.keys.gemini) setTimeout(function () { if (aiBtn.isConnected) aiBtn.click(); }, 150);
         o.foot.append(btn('取消', CSS.btn, o.close), btn('儲存參數', CSS.btnP + 'flex:1;', async function () {
             var on = rows.filter(function (r) { return r.on; }), names = {};
             for (var i = 0; i < on.length; i++) {
-                var r = on[i]; if (!r.name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(r.name)) { toast('每個勾選的參數都要有英文名稱（不能以數字開頭）'); return; }
-                if (names[r.name] && names[r.name].c.value !== r.c.value) { toast('參數名稱「' + r.name + '」重複了'); return; } names[r.name] = r;
+                var r = on[i];
+                if (!String(r.label || '').trim()) { toast('每個勾選的值都要取一個名稱（例：出發站），執行時才知道要填什麼', 4500); return; }
+                if (!r.name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(r.name)) { do { autoN++; r.name = 'v' + autoN; } while (on.some(function (x) { return x !== r && x.name === r.name; })); }
+                if (names[r.name] && names[r.name].c.value !== r.c.value) { toast('代號「' + r.name + '」重複了，請到進階修改'); return; } names[r.name] = r;
             }
             // 同名同值 → 合併成一個參數（多個出現處）
             var byName = {}; on.forEach(function (r) { var p = byName[r.name] || (byName[r.name] = { name: r.name, value: r.c.value, label: r.label, type: r.type, choices: r.choices, cands: [] }); p.cands.push({ step: r.c.step, field: r.c.field }); });
@@ -250,11 +304,14 @@
                 } catch (er) { toast('❌ AI 填入失敗：' + er.message, 4000); }
                 aiB.disabled = false;
             }); aiRow.append(aiIn, aiB); o.body.appendChild(aiRow);
+            var rawSteps = unparam(entry.steps || [], entry.params);
             params.forEach(function (p) {
-                o.body.appendChild(lab(p.label || p.name, p.name));
+                var L = lab(p.label || p.name); L.style.fontSize = '14px'; L.style.fontWeight = '700'; o.body.appendChild(L);
+                var where = ''; (entry.steps || []).some(function (st, si) { return ['query', 'text', 'url', 'cmd', 'code'].some(function (f) { if (typeof st[f] === 'string' && (st[f].indexOf('{{' + p.name + '}}') >= 0 || st[f].indexOf('{{' + p.name + '@u}}') >= 0)) { where = '用在第 ' + (si + 1) + ' 步（' + ({ web_search: '搜尋', text: '輸入', open_url: '開網址', run_shell: '指令', run_python: 'Python' }[st.type] || st.type) + '）'; return true; } return false; }); });
+                o.body.appendChild(mk('div', CSS.muted + 'margin:-2px 0 6px;', '原本的值：「' + (p.default == null ? '' : p.default) + '」' + (where ? '・' + where : '') + (p.type === 'date' ? '・請選日期' : p.type === 'number' ? '・請填數字' : '')));
                 var el;
                 if (p.type === 'choice') { el = mk('select', CSS.fld); (p.choices || []).forEach(function (c) { el.appendChild(new Option(c, c)); }); }
-                else { el = mk('input', CSS.fld); el.type = p.type === 'number' ? 'text' : (p.type === 'date' ? 'date' : 'text'); if (p.type === 'number') el.inputMode = 'decimal'; }
+                else { el = mk('input', CSS.fld); el.type = p.type === 'number' ? 'text' : (p.type === 'date' ? 'date' : 'text'); if (p.type === 'number') el.inputMode = 'decimal'; el.placeholder = String(p.default == null ? '' : p.default); }
                 el.value = (p.name in last) ? last[p.name] : (p.default == null ? '' : p.default); inputs[p.name] = el; o.body.appendChild(el);
             });
             o.foot.append(btn('取消', CSS.btn, o.close), btn('▶ 開始', CSS.btnP + 'flex:1;', function () {

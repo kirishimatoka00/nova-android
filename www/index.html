@@ -493,7 +493,7 @@
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.1.3"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.4.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.1.3"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.5.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.83';
+        const NOVA_APP_VERSION = '2.6.84';
         const NOVA_CHANGELOG = [
+            { v: '2.6.84', date: '2026-10-18', notes: [
+                '技能「參數」更容易辨識與填寫。設定參數：搜尋字與較長的輸入文字會自動拆成片段候選（例如「高鐵 台北 雲林 時刻表」→ 台北、雲林各一個），不必把整句當一個變數；每個候選顯示原本的值與它所在的步驟（值用黃底標示）；新增「✂️ 自選一段文字」可手動指定要換掉的字（搜尋字、輸入、網址、指令、Python 都可以）；「顯示名稱」（中文，例：出發站）改成主要欄位，英文代號自動產生（進階可改）；第一次設定時自動請 AI 建議哪些要變數、並取中文名稱。',
+                '執行前的填寫表單：每個欄位顯示中文名稱、「原本的值」與用在哪一步，日期用日期選擇器，欄位也會顯示原本的值當提示。（nova-skill-ui.js v1.5.0）'
+            ] },
             { v: '2.6.83', date: '2026-10-18', notes: [
                 '修正打開技能管理就顯示「無法讀取 skills.json … EACCES (Permission denied)」，技能看不到也存不了：Android 對 Documents 資料夾內既有檔案的讀取與覆寫常被拒絕。技能現在主要存在 App 私有資料夾（永遠可讀寫），Documents/NovaSkills 只當盡力鏡像；讀取時私有資料夾沒有才看 Documents（舊版技能會自動搬進私有資料夾）。匯入技能檔案也改存私有資料夾。（nova-skills.js v2.1.3，取代 v2.1.2 的備援機制）'
             ] },
