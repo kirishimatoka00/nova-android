@@ -1,7 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skills.js — NOVA Android 技能引擎（跟 index.html 放同一個資料夾 www/）
-   版本：v2.1.1
+   版本：v2.1.2
    版本紀錄：
+   v2.1.2 - App v2.6.82。修正「儲存參數／改名／編輯」覆寫已存在的技能檔時出現 EACCES (Permission denied)：Android 的 Documents 資料夾對「已存在的檔案」常不允許直接覆寫
+            （檔案是重灌前或另一個安裝建立的、或系統當成別人的檔案）。wr() 改成：① 先直接寫；② 失敗就先刪掉舊檔再寫；③ 還是不行就改寫到 App 私有資料夾（Directory.DATA／NovaSkills）並記在 nova_skills_fallback，
+            rd()／rm() 會優先讀／刪私有資料夾那份，所以技能不會因為權限問題存不了、也不會讀到舊內容。
    v2.1.1 - App v2.6.81。每次載入完技能清單（儲存、刪除、改名、匯入後都會重新載入）發出 window 事件 'nova-skills-changed'，讓側邊欄「技能範本」清單即時更新。
    v2.1.0 - App v2.6.79。replay 新增三種「不用操作畫面」的步驟：web_search（query、nearby）、run_python（code、timeout_sec）、run_shell（cmd、timeout_sec），
             讓純文字模式（v2.6.74）完成的自主任務也能存成技能、之後重播；stepOutline 補上這三種的顯示文字。
@@ -31,9 +34,27 @@
     var lock = Promise.resolve();
     function withLock(fn) { var run = lock.then(fn, fn); lock = run.catch(function () {}); return run; }
     function FS() { return W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem; }
-    async function rd(path) { var r = await FS().readFile({ path: DIR + '/' + path, directory: 'DOCUMENTS', encoding: 'utf8' }); return r.data; }
-    async function wr(path, data) { await FS().writeFile({ path: DIR + '/' + path, data: data, directory: 'DOCUMENTS', recursive: true, encoding: 'utf8' }); }
-    async function rm(path) { try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); } catch (e) { /* 檔案不存在就算了 */ } }
+    // Android 的 Documents 常不允許覆寫已存在的檔案（EACCES）：先直接寫 → 刪掉再寫 → 改寫 App 私有資料夾（記在 nova_skills_fallback，讀／刪時優先看那份）
+    function fbGet() { try { return JSON.parse(localStorage.getItem('nova_skills_fallback') || '{}') || {}; } catch (e) { return {}; } }
+    function fbSet(o) { try { localStorage.setItem('nova_skills_fallback', JSON.stringify(o)); } catch (e) { /* ignore */ } }
+    async function rd(path) {
+        if (fbGet()[path]) { try { var q = await FS().readFile({ path: DIR + '/' + path, directory: 'DATA', encoding: 'utf8' }); return q.data; } catch (e) { /* 私有那份讀不到就看 Documents */ } }
+        var r = await FS().readFile({ path: DIR + '/' + path, directory: 'DOCUMENTS', encoding: 'utf8' }); return r.data;
+    }
+    async function wr(path, data) {
+        var opt = { path: DIR + '/' + path, data: data, recursive: true, encoding: 'utf8' }, fb = fbGet();
+        if (!fb[path]) {
+            try { await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); return; } catch (e1) {
+                try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); await FS().writeFile(Object.assign({ directory: 'DOCUMENTS' }, opt)); return; } catch (e2) { /* 改寫私有資料夾 */ }
+            }
+        }
+        await FS().writeFile(Object.assign({ directory: 'DATA' }, opt));
+        if (!fb[path]) { fb[path] = 1; fbSet(fb); }
+    }
+    async function rm(path) {
+        try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DOCUMENTS' }); } catch (e) { /* 檔案不存在就算了 */ }
+        var fb = fbGet(); if (fb[path]) { try { await FS().deleteFile({ path: DIR + '/' + path, directory: 'DATA' }); } catch (e) { /* ignore */ } delete fb[path]; fbSet(fb); }
+    }
     function clone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
 
     // ── .md（frontmatter＋內文） ──
@@ -295,6 +316,6 @@
         getLastError: function () { return lastLoadError; }, getCount: function () { return manifest.length; },
         saveSkill: saveSkill, deleteSkill: deleteSkill, renameSkill: renameSkill, repairIndex: repairIndex, setLastValues: setLastValues,
         exportAll: exportAll, importAll: importAll, stepOutline: stepOutline, outline: outline,
-        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.1'
+        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.2'
     };
 })();
