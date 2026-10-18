@@ -493,7 +493,7 @@
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.1.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.2.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.1.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.3.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -2246,8 +2246,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.79';
+        const NOVA_APP_VERSION = '2.6.80';
         const NOVA_CHANGELOG = [
+            { v: '2.6.80', date: '2026-10-18', notes: [
+                '恢復 /sc：把剛才的對話封裝成技能，並顯示在技能管理。原因：/sc 原本是把一段「請建立技能」的文字丟進一般對話流程，之後設定「一般對話自動使用工具」開啟時，這句話被工具迴圈接走、技能建立指令沒生效，所以 /sc 沒反應。現在 /sc 由技能系統直接處理，不再經過一般對話。',
+                '用法：先完成一段對話或自主任務，再輸入 /sc（後面可接要聚焦的內容，如「/sc 只要查天氣那段」）。剛完成自主任務就詢問是否存成可重播技能；否則 AI 讀最近對話整理成提示範本技能（可選一般對話或 AI 自主任務執行），預覽可改名稱／說明／內容，存好後底部「🧰 開啟技能管理」。（nova-skill-ui.js v1.3.0）'
+            ] },
             { v: '2.6.79', date: '2026-10-18', notes: [
                 '自主任務完成後可以存成技能的範圍擴大到「純文字模式」的任務：之前只有操作畫面的步驟會被記錄，用 web_search／run_python／run_shell 完成的任務（查資訊、運算、Termux 指令）因為沒有可記錄的步驟，完成後不會出現「存成技能」。現在這三種步驟也會記錄（失敗的指令不記），技能新增 web_search／run_python／run_shell 三種步驟型別。',
                 '重播純文字技能時，每個搜尋／Python／指令步驟的輸出會顯示在對話裡，重播完用 AI 依原本目標整理成最後答覆；指令失敗（非 0 退出碼）會中斷並詢問是否讓 AI 接手。參數化可以把「搜尋字」變成每次可填的欄位。',
@@ -16733,11 +16737,13 @@ window.startMultiAgentResearch = async function() {
                 }
                 // /img：強制當作圖片生成需求（旗標由 fetchAIResponse 讀取後清除）
                 if (_lc.startsWith('/img ')) { text = text.substring(5).trim(); appState._novaForceImgIntent = true; }
-                // /sc：把剛才的對話與成果封裝成技能（不 return，繼續走一般對話流程，下方技能建立判斷式會被強制啟用）
+                // /sc：把剛才的對話與成果封裝成技能（v2.6.80：改由技能系統直接處理，顯示在技能管理；不再走一般對話流程，避免被「一般對話自動使用工具」的迴圈搶走）
                 if (_lc === '/sc' || _lc.startsWith('/sc ')) {
                     const _scFocus = text.length > 3 ? text.slice(3).trim() : '';
-                    text = '請分析我們剛剛的對話內容以及剛完成的任務或產出的結果，' + (_scFocus ? ('特別聚焦於：' + _scFocus + '，') : '') + '將其設計、封裝成一個可重複使用的 NOVA 技能。';
-                    appState._novaForceSkillCreate = true;
+                    input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                    if (window.NovaSkillUI && typeof NovaSkillUI.fromConversation === 'function') { await NovaSkillUI.fromConversation(_scFocus); }
+                    else addMessage('⚠️ 技能系統尚未載入，請稍後再試。', 'system');
+                    return;
                 }
                 // /ppt：拿掉前綴，改寫成「幫我製作一份簡報」，走既有簡報意圖判斷
                 if (_lc === '/ppt' || _lc.startsWith('/ppt ')) {

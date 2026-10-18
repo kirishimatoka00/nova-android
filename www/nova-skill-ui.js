@@ -1,7 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.2.0
+   版本：v1.3.0
    版本紀錄：
+   v1.3.0 - App v2.6.80。恢復 /sc：fromConversation(focus) 把「剛才的對話」整理成技能並顯示在技能管理。
+            ① 若剛完成自主任務且有可重播步驟 → 詢問是否存成可重播技能（開原本的存成技能視窗，可挑步驟、設參數）；
+            ② 否則讀目前對話最近的內容，請 AI 設計成「提示範本」（可選擇用一般對話或自主任務執行），預覽可改名稱／說明／內容再儲存；
+            ③ 存好後底部提示「🧰 開啟技能管理」。取代舊的 skill_create 流程（舊流程在「一般對話自動使用工具」開啟時會被工具迴圈搶走，造成 /sc 沒反應）。
    v1.2.0 - App v2.6.79。① 純文字模式的自主任務（搜尋／Python／Termux 指令）完成後也會出現「💾 存成技能」（nova-skills.js v2.1.0 新增 web_search／run_python／run_shell 步驟）；
             ② 參數化可偵測「搜尋字」（web_search 的 query）；③ 新增設定「任務成功後自動存成技能（不詢問）」（對標桌面版自動技能學習，預設關閉），
             存好後用 AI 取名並顯示通知；④ 對外多一個 llm（重播純文字技能後用來整理結果）。
@@ -525,6 +529,47 @@
             } catch (er) { toast('❌ 儲存失敗：' + er.message, 5000); }
         }));
     }
+
+    // ═══════════════ /sc：把剛才的對話封裝成技能 ═══════════════
+    async function fromConversation(focus) {
+        if (!S()) { toast('技能系統尚未載入'); return; }
+        try { await S().load(); } catch (e) { /* ignore */ }
+        var lr = W.novaAutoTask && W.novaAutoTask.getLastRun && W.novaAutoTask.getLastRun();
+        if (lr && lr.steps && lr.steps.length && lr.status === 'done' && !lr.saved) {
+            var useRun = await W.showConfirm('剛才的自主任務「' + String(lr.goal || '').replace(/\n\n【目前定位[\s\S]*$/, '').slice(0, 60) + '」有 ' + lr.steps.length + ' 個可重播的步驟。\n\n按「確定」＝存成可重播技能（可挑步驟、設參數）\n按「取消」＝改用這段對話的內容，讓 AI 整理成提示範本技能');
+            if (useRun) { saveLastRun(); return; }
+        }
+        var A = W.appState || {}, msgs = (A.messages || []).filter(function (m) { return m.sessionId === A.currentSessionId && (m.sender === 'user' || m.sender === 'ai') && m.text; }).slice(-24);
+        // 最後一則若是 /sc 本身，不算
+        if (msgs.length && /^\s*\/sc\b/i.test(String(msgs[msgs.length - 1].text))) msgs.pop();
+        if (!msgs.length) { toast('這個對話還沒有內容可以整理成技能'); return; }
+        var convo = msgs.map(function (m) { return (m.sender === 'user' ? '使用者' : 'AI') + '：' + String(m.text).slice(0, 900); }).join('\n\n');
+        toast('🛠 AI 正在把對話整理成技能…', 2500);
+        var r;
+        try {
+            r = await llm('你是 NOVA（手機 AI 助理）的技能設計師。請把下面這段對話裡「做成功的事」封裝成一個可重複使用的技能。' + (focus ? '使用者特別要求聚焦：' + focus + '。' : '') + '\n\n'
+                + '技能是一份「提示範本」：之後使用者執行它，這份內容會被當成任務指令交給 AI。請寫成完整、獨立、不依賴這次對話上下文的指令；每次可能不同的部分（地點、關鍵字、對象、日期…）用「【請填入：說明】」標示。保留這次對話中驗證有效的做法、資料來源、格式要求、注意事項。\n'
+                + 'execMode：若這件事要在手機上實際動手（開 App、點按、執行 Python／Termux 指令、整理檔案）用 "autonomous"（會用 AI 自主任務執行）；若只是問答、查資料、寫作、分析，用 "general"（放進輸入框送出一般對話）。\n\n'
+                + '只輸出 JSON：{"name":"英文 snake_case 名稱（小寫字母／數字／底線、字母開頭、30 字內）","description":"一句話說明用途（繁體中文）","execMode":"general|autonomous","prompt":"完整的提示範本（繁體中文）"}\n\n對話內容：\n<<<\n' + convo + '\n>>>', true);
+        } catch (er) { toast('❌ AI 整理失敗：' + er.message, 5000); return; }
+        if (!r || !r.prompt) { toast('❌ AI 沒有產出技能內容，請再試一次或補充 /sc 後面的說明'); return; }
+        var nm = String(r.name || '').replace(/[^a-zA-Z0-9_]/g, '_').replace(/^[^a-zA-Z_]+/, '').slice(0, 30) || ('skill_' + new Date().toISOString().slice(5, 16).replace(/[-:T]/g, ''));
+        while (S().get(nm)) nm += '_2';
+        var v = await ask('🛠 對話封裝成技能（預覽，可修改）', [
+            { key: 'name', label: '名稱', hint: '英文字母／數字／底線，不能以數字開頭', value: nm },
+            { key: 'desc', label: '說明', value: r.description || '' },
+            { key: 'mode', label: '執行方式', type: 'select', options: [['general', '一般對話（放進輸入框）'], ['autonomous', 'AI 自主任務（手機上實際動手）']], value: r.execMode === 'autonomous' ? 'autonomous' : 'general' },
+            { key: 'body', label: '提示範本內容', type: 'area', value: r.prompt }
+        ], '儲存為技能');
+        if (!v) return;
+        try {
+            var name = v.name.trim(); if (S().get(name)) { toast('已有同名技能，請換名稱'); return; }
+            await S().saveSkill(name, 'prompt', { description: v.desc, execMode: v.mode }, v.body);
+            refreshMgr();
+            toast('✅ 已存成技能「' + name + '」');
+            banner('✅ 已把這段對話存成技能「' + name + '」（' + (v.mode === 'autonomous' ? 'AI 自主任務' : '一般對話') + '）。可在技能管理執行、編輯、複製或設定。', [['🧰 開啟技能管理', function () { open(); }, true], ['略過']]);
+        } catch (er) { toast('❌ 儲存失敗：' + er.message, 5000); }
+    }
     function showPartial(name) {
         var e = S().get(name); if (!e) return; var info = e.partialInfo || {};
         var o = overlay('📎 半成品：' + name, 9400);
@@ -604,7 +649,7 @@
     }
     W.novaSkillRenderSettings = function () { if (S()) S().load().then(renderSettings); };
 
-    W.NovaSkillUI = { llm: llm, open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
+    W.NovaSkillUI = { fromConversation: fromConversation, llm: llm, open: open, openParams: openParams, runSkill: runSkill, onTaskEnd: onTaskEnd, tryMatchAndReplay: tryMatchAndReplay, planningHints: planningHints, saveLastRun: saveLastRun, renderSettings: renderSettings, _detect: detect, _applyParams: applyParamsToSteps, _unparam: unparam };
     W.openSkillManager = open;
     if (S()) setTimeout(function () { S().load().then(renderSettings); }, 1200);
 })();
