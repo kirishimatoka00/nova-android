@@ -1,14 +1,17 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-termux.js — NOVA Android「執行 Python／指令」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.0.1
    版本紀錄：
+   v1.0.1 - App v2.6.77。修正 Termux Token／網址沒進完整備份與快照：設定卡片原本只在欄位「失焦（change）」時才存到 localStorage，貼上 Token 後直接關設定或直接備份就沒存到；
+            且改設定不會觸發 NOVA_Live.json 快照。現在：輸入時（input／change／blur）即存、2 秒後自動重寫快照；備份與快照時直接讀畫面上欄位的值存檔；
+            備份新增專用欄位 termuxConfig（url／token／auto／pyodide），還原時寫回並更新設定卡片。新增 exportCfg()／importCfg()。
    v1.0.0 - App v2.6.72。讓工具呼叫（一般對話）與自主任務（/ap）能執行真正的 Python 與指令：
             ① Termux 橋接（主要）：把程式碼送到 Termux 裡的 nova_bridge.py（repo 的 termux/ 資料夾，install.sh 一行安裝）執行，
                原生 Python、可 pip 安裝、有網路與檔案系統、可呼叫 termux-* 指令；輸出、退出碼、新增或修改的檔案都會回傳。
             ② Pyodide 備援：橋接沒設定或連不上時，改在 App 內建的 Pyodide（Web Worker，有逾時）執行；只能做運算與文字處理，沒有網路與檔案。
             工具：run_python、run_shell、pip_install（後兩者只有設了橋接才出現）。預設每次執行前先問使用者，設定頁可改成自動允許。
             設定頁「🔌 工具」分頁新增「Termux 橋接」卡片：網址、Token、自動允許、Pyodide 備援、測試連線、安裝指令。
-   對外：window.NovaTermux = { configured, ping, runPython, runShell, pipInstall, agentRun, version }
+   對外：window.NovaTermux = { configured, ping, runPython, runShell, pipInstall, agentRun, exportCfg, importCfg, version }
    依賴：window.novaFcRegistry（index.html）、可選 window.showConfirm／showToast
    ═════════════════════════════════════════════════════════════════ */
 (function () {
@@ -150,6 +153,27 @@
         return true;
     }
 
+    /* ───────── 備份／快照 ───────── */
+    // 把設定卡片上目前的值寫進 localStorage（欄位還沒失焦也一樣）；卡片還沒建立就什麼都不做
+    function syncFromDom() {
+        var u = D.getElementById('ntx-url'), t = D.getElementById('ntx-token'), a = D.getElementById('ntx-auto'), p = D.getElementById('ntx-pyo');
+        if (!u || !t) return;
+        lsSet(K_URL, u.value.trim() || DEF_URL); lsSet(K_TOKEN, t.value.trim());
+        if (a) lsSet(K_AUTO, a.checked ? '1' : '0'); if (p) lsSet(K_PYO, p.checked ? '1' : '0');
+    }
+    var snapTimer = null;
+    function scheduleSnap() { clearTimeout(snapTimer); snapTimer = setTimeout(function () { try { if (typeof W._novaWalSnapshot === 'function') W._novaWalSnapshot(); } catch (e) { /* ignore */ } }, 2000); }
+    function exportCfg() { syncFromDom(); var c = cfg(); return { url: c.url, token: c.token, auto: c.auto ? '1' : '0', pyodide: c.pyodide ? '1' : '0' }; }
+    function importCfg(o) {
+        if (!o || typeof o !== 'object') return false;
+        if (o.url) lsSet(K_URL, String(o.url)); if (typeof o.token === 'string') lsSet(K_TOKEN, o.token);
+        if (o.auto != null) lsSet(K_AUTO, String(o.auto) === '1' || o.auto === true ? '1' : '0'); if (o.pyodide != null) lsSet(K_PYO, String(o.pyodide) === '0' || o.pyodide === false ? '0' : '1');
+        var c = cfg(), set = function (id, f) { var el = D.getElementById(id); if (el) f(el); };
+        set('ntx-url', function (el) { el.value = c.url; }); set('ntx-token', function (el) { el.value = c.token; });
+        set('ntx-auto', function (el) { el.checked = c.auto; }); set('ntx-pyo', function (el) { el.checked = c.pyodide; });
+        return true;
+    }
+
     /* ───────── 設定頁卡片 ───────── */
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]; }); }
     function injectCard() {
@@ -166,8 +190,8 @@
             '<div id="ntx-status" class="nv-muted" style="min-height:18px;"></div></div>';
         var anchor = D.getElementById('fc-skill-list'); anchor = anchor && anchor.closest ? anchor.closest('.nv-card') : null;
         if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(card, anchor); else tab.appendChild(card);
-        var save = function () { lsSet(K_URL, D.getElementById('ntx-url').value.trim() || DEF_URL); lsSet(K_TOKEN, D.getElementById('ntx-token').value.trim()); lsSet(K_AUTO, D.getElementById('ntx-auto').checked ? '1' : '0'); lsSet(K_PYO, D.getElementById('ntx-pyo').checked ? '1' : '0'); };
-        ['ntx-url', 'ntx-token'].forEach(function (id) { D.getElementById(id).addEventListener('change', save); });
+        var save = function () { syncFromDom(); scheduleSnap(); };
+        ['ntx-url', 'ntx-token'].forEach(function (id) { ['input', 'change', 'blur'].forEach(function (ev) { D.getElementById(id).addEventListener(ev, save); }); });
         ['ntx-auto', 'ntx-pyo'].forEach(function (id) { D.getElementById(id).addEventListener('change', save); });
         D.getElementById('ntx-test').onclick = async function () {
             save(); var st = D.getElementById('ntx-status'); st.textContent = '連線中…';
@@ -190,6 +214,6 @@
         var a = register(), b = injectCard();
         if ((!a || !b) && n < 40) setTimeout(function () { boot(n + 1); }, 500);
     }
-    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, installCommand: INSTALL_CMD, version: '1.0.0' };
+    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.0.1' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();

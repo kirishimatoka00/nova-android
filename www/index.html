@@ -2246,8 +2246,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.76';
+        const NOVA_APP_VERSION = '2.6.77';
         const NOVA_CHANGELOG = [
+            { v: '2.6.77', date: '2026-10-18', notes: [
+                '修正 Termux 橋接的網址與 Token 沒進完整備份與本地快照：設定卡片原本只在欄位失焦時才存檔，貼上 Token 後直接關設定或直接備份就沒存到，而且改設定也不會觸發 NOVA_Live.json 快照。現在輸入時就存、2 秒後自動更新快照，備份時直接讀畫面上的值。',
+                '完整備份與快照新增專用欄位 termuxConfig（網址、Token、執行前免詢問、Pyodide 備援），還原時寫回並更新設定卡片（nova-termux.js v1.0.1）。'
+            ] },
             { v: '2.6.76', date: '2026-10-18', notes: [
                 '自主任務會自動把 NOVA 已知的定位（App 的 GPS／手動定位）附在任務目標後面，查「附近／離我最近」時 AI 直接用這組座標，不再自己猜位置或呼叫 termux-location。',
                 '自主任務裡 Termux／Python 指令實際失敗（非 0 退出碼、逾時）時，訊息改標「⚠️ 第 N 回合指令失敗」並附錯誤內容，不再一律顯示「✅ 執行成功」。',
@@ -3651,6 +3655,7 @@ async function encodeMp3(audioBuffer) {
                     memoryData: (window.NovaMemory ? await NovaMemory.exportAll().catch(() => null) : null),   // v2.6.25：AI 記憶（IndexedDB）
                     privateMemoryData: (window.NovaMemoryPrivate ? await NovaMemoryPrivate.exportAll().catch(() => null) : null),   // v2.6.62：私密記憶（獨立資料庫，還原時也只回私密庫）
                     privateSessions: (window.NovaPrivate ? NovaPrivate.list() : []),
+                    termuxConfig: (window.NovaTermux && NovaTermux.exportCfg ? NovaTermux.exportCfg() : undefined),   // v2.6.77：Termux 橋接 網址／Token
                     aiThoughts: localStorage.getItem('nova_thoughts_v1') || undefined,   // v2.6.64：AI 思考
                     projectsMeta: localStorage.getItem('nova_projects_v1') || undefined,   // v2.6.64：專案視窗資料
                     expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
@@ -3787,6 +3792,7 @@ async function encodeMp3(audioBuffer) {
                     if (data.keys.aws_region) localStorage.setItem('nova_key_aws_region', data.keys.aws_region);
                 }
                 if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) {} }   // v2.6.39
+                if (data.termuxConfig && window.NovaTermux && NovaTermux.importCfg) { try { NovaTermux.importCfg(data.termuxConfig); } catch (e) {} }   // v2.6.77
                 if (data.doc)    { appState.docMonitorUrl = data.doc;    localStorage.setItem('nova_doc_url',    data.doc); }
                 if (data.drive)  { appState.driveUrl      = data.drive;  localStorage.setItem('nova_drive_url',  data.drive); }
                 if (data.corsProxy) { appState.corsProxyUrl = data.corsProxy; localStorage.setItem('nova_cors_proxy_url', data.corsProxy); }
@@ -6808,6 +6814,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                 notes: appState.notes || [],
                 todos: appState.todos || [],
                 audioRecords: (window.NovaBackupExt ? NovaBackupExt.stripAudio(appState.audioRecords) : (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; })),   // v2.6.39：連分段音檔一併剝除，保留 AI 分析／摘要
+                termuxConfig: (window.NovaTermux && NovaTermux.exportCfg ? NovaTermux.exportCfg() : undefined),   // v2.6.77：Termux 橋接 網址／Token
                 ...(window.NovaBackupExt ? await NovaBackupExt.extraFields() : {}),   // v2.6.39：所有 nova_／cal_ 設定＋AI 記憶＋模型／主題
             };
 
@@ -6944,6 +6951,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                 try {
                     // 1. 還原系統設定與金鑰
                     if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) { console.warn(e); } }   // v2.6.39：全部設定頁參數
+                    if (data.termuxConfig && window.NovaTermux && NovaTermux.importCfg) { try { NovaTermux.importCfg(data.termuxConfig); } catch (e) { console.warn(e); } }   // v2.6.77：Termux 橋接
                     if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }
                     if (data.privateMemoryData && window.NovaMemoryPrivate) { try { await NovaMemoryPrivate.importAll(data.privateMemoryData); } catch (e) {} }
                     if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
@@ -21094,7 +21102,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.0"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.1"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
