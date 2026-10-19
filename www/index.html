@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.85';
+        const NOVA_APP_VERSION = '2.6.86';
         const NOVA_CHANGELOG = [
+            { v: '2.6.86', date: '2026-10-19', notes: [
+                '修正「技能在重新安裝後無法回復」。原因：v2.6.83 起技能存在 App 私有資料夾，解除安裝時會一起被清掉，而完整備份／快照沒有包含技能。現在完整備份與自動快照都含 skillsData（全部技能），還原時寫回（已存在同名的技能不覆蓋）。注意：重裝「之前」做的備份沒有技能，那些技能無法找回，需重建；之後請重做一次完整備份。'
+            ] },
             { v: '2.6.85', date: '2026-10-19', notes: [
                 '修正「沒有錄音卻一直顯示『NOVA 120 SSP — 錄音中』通知」。原因：前景服務的「借用計數」若漏掉歸還（例如上傳中被中斷），或錄音停止後服務沒被收掉，通知就永遠留著。JS 端新增定時檢查（開啟後 4 秒、之後每分鐘）：確認原生錄音／WebView 錄音／翻譯／持續聆聽都沒在進行就收掉服務，借用超過 15 分鐘自動歸零。',
                 '原生端（RecordingForegroundService，需重新打包 APK 才生效）：錄音停止後 12 分鐘沒人收就自動結束；一般保活 6 小時自動結束；把 App 從最近工作清掉且沒在錄音時直接收掉通知。'
@@ -3704,6 +3707,7 @@ async function encodeMp3(audioBuffer) {
                     privateMemoryData: (window.NovaMemoryPrivate ? await NovaMemoryPrivate.exportAll().catch(() => null) : null),   // v2.6.62：私密記憶（獨立資料庫，還原時也只回私密庫）
                     privateSessions: (window.NovaPrivate ? NovaPrivate.list() : []),
                     termuxConfig: (window.NovaTermux && NovaTermux.exportCfg ? NovaTermux.exportCfg() : undefined),   // v2.6.77：Termux 橋接 網址／Token
+                    skillsData: (window.NovaSkills && NovaSkills.exportAll ? await NovaSkills.exportAll().catch(() => undefined) : undefined),   // v2.6.86：技能（私有儲存，重裝會消失，所以要進備份）
                     aiThoughts: localStorage.getItem('nova_thoughts_v1') || undefined,   // v2.6.64：AI 思考
                     projectsMeta: localStorage.getItem('nova_projects_v1') || undefined,   // v2.6.64：專案視窗資料
                     expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
@@ -3841,6 +3845,7 @@ async function encodeMp3(audioBuffer) {
                 }
                 if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) {} }   // v2.6.39
                 if (window.NovaTermux && NovaTermux.importCfg) { try { NovaTermux.importCfg(data.termuxConfig || {}); } catch (e) {} }   // v2.6.77
+                if (data.skillsData && window.NovaSkills && NovaSkills.importAll) { try { var _sn = await NovaSkills.importAll(data.skillsData); if (_sn) console.log('[NOVA] 還原技能 ' + _sn + ' 個'); } catch (e) { console.warn('技能還原失敗', e); } }   // v2.6.86
                 if (data.doc)    { appState.docMonitorUrl = data.doc;    localStorage.setItem('nova_doc_url',    data.doc); }
                 if (data.drive)  { appState.driveUrl      = data.drive;  localStorage.setItem('nova_drive_url',  data.drive); }
                 if (data.corsProxy) { appState.corsProxyUrl = data.corsProxy; localStorage.setItem('nova_cors_proxy_url', data.corsProxy); }
@@ -6863,6 +6868,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                 todos: appState.todos || [],
                 audioRecords: (window.NovaBackupExt ? NovaBackupExt.stripAudio(appState.audioRecords) : (appState.audioRecords || []).map(r => { const {audioData, ...rest} = r; return rest; })),   // v2.6.39：連分段音檔一併剝除，保留 AI 分析／摘要
                 termuxConfig: (window.NovaTermux && NovaTermux.exportCfg ? NovaTermux.exportCfg() : undefined),   // v2.6.77：Termux 橋接 網址／Token
+                    skillsData: (window.NovaSkills && NovaSkills.exportAll ? await NovaSkills.exportAll().catch(() => undefined) : undefined),   // v2.6.86：技能（私有儲存，重裝會消失，所以要進備份）
                 ...(window.NovaBackupExt ? await NovaBackupExt.extraFields() : {}),   // v2.6.39：所有 nova_／cal_ 設定＋AI 記憶＋模型／主題
             };
 
@@ -7000,6 +7006,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                     // 1. 還原系統設定與金鑰
                     if (data.lsSettings && window.NovaBackupExt) { try { NovaBackupExt.applyLs(data.lsSettings); } catch (e) { console.warn(e); } }   // v2.6.39：全部設定頁參數
                     if (window.NovaTermux && NovaTermux.importCfg) { try { NovaTermux.importCfg(data.termuxConfig || {}); } catch (e) { console.warn(e); } }   // v2.6.77：Termux 橋接
+                if (data.skillsData && window.NovaSkills && NovaSkills.importAll) { try { var _sn = await NovaSkills.importAll(data.skillsData); if (_sn) console.log('[NOVA] 還原技能 ' + _sn + ' 個'); } catch (e) { console.warn('技能還原失敗', e); } }   // v2.6.86
                     if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }
                     if (data.privateMemoryData && window.NovaMemoryPrivate) { try { await NovaMemoryPrivate.importAll(data.privateMemoryData); } catch (e) {} }
                     if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
