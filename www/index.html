@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.84';
+        const NOVA_APP_VERSION = '2.6.85';
         const NOVA_CHANGELOG = [
+            { v: '2.6.85', date: '2026-10-19', notes: [
+                '修正「沒有錄音卻一直顯示『NOVA 120 SSP — 錄音中』通知」。原因：前景服務的「借用計數」若漏掉歸還（例如上傳中被中斷），或錄音停止後服務沒被收掉，通知就永遠留著。JS 端新增定時檢查（開啟後 4 秒、之後每分鐘）：確認原生錄音／WebView 錄音／翻譯／持續聆聽都沒在進行就收掉服務，借用超過 15 分鐘自動歸零。',
+                '原生端（RecordingForegroundService，需重新打包 APK 才生效）：錄音停止後 12 分鐘沒人收就自動結束；一般保活 6 小時自動結束；把 App 從最近工作清掉且沒在錄音時直接收掉通知。'
+            ] },
             { v: '2.6.84', date: '2026-10-18', notes: [
                 '技能「參數」更容易辨識與填寫。設定參數：搜尋字與較長的輸入文字會自動拆成片段候選（例如「高鐵 台北 雲林 時刻表」→ 台北、雲林各一個），不必把整句當一個變數；每個候選顯示原本的值與它所在的步驟（值用黃底標示）；新增「✂️ 自選一段文字」可手動指定要換掉的字（搜尋字、輸入、網址、指令、Python 都可以）；「顯示名稱」（中文，例：出發站）改成主要欄位，英文代號自動產生（進階可改）；第一次設定時自動請 AI 建議哪些要變數、並取中文名稱。',
                 '執行前的填寫表單：每個欄位顯示中文名稱、「原本的值」與用在哪一步，日期用日期選擇器，欄位也會顯示原本的值當提示。（nova-skill-ui.js v1.5.0）'
@@ -2854,11 +2858,28 @@
 
         // v2.6.47：前景服務「借用計數」——錄音結束後若要自動上傳雲端，先不關服務，避免螢幕關閉時上傳因背景網路限制而失敗
         window._novaFgsHold = 0;
-        window.novaFgsAcquire = function () { window._novaFgsHold++; };
+        window._novaFgsHoldT = [];
+        window.novaFgsAcquire = function () { window._novaFgsHold++; window._novaFgsHoldT.push(Date.now()); };
         window.novaFgsRelease = function () {
             window._novaFgsHold = Math.max(0, window._novaFgsHold - 1);
             if (!window._novaFgsHold) { try { if (!window._nativeRecActive && !(mediaRecorder && mediaRecorder.state !== 'inactive') && appState.translateMode === 'off' && !appState.isContinuous) stopRecordingForegroundService(); } catch (e) {} }
         };
+        // v2.6.85：「沒有錄音卻顯示錄音中」——定時檢查：真的沒在錄（原生／WebView／翻譯／持續聆聽都沒有）就把前景服務收掉；
+        //          借用計數超過 15 分鐘還沒歸還視為漏掉，自動歸零（以前計數漏掉就永遠收不掉通知）
+        async function novaFgsWatchdog() {
+            try {
+                if (!(window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android')) return;
+                var now = Date.now(); window._novaFgsHoldT = (window._novaFgsHoldT || []).filter(function (t) { return now - t < 15 * 60 * 1000; });
+                window._novaFgsHold = window._novaFgsHoldT.length;
+                if (window._novaFgsHold > 0 || window._nativeRecActive) return;
+                if (typeof mediaRecorder !== 'undefined' && mediaRecorder && mediaRecorder.state !== 'inactive') return;
+                if (appState.translateMode !== 'off' || appState.isContinuous) return;
+                var RS = Capacitor.Plugins && Capacitor.Plugins.RecordingService; if (!RS) return;
+                if (RS.getRecStatus) { var st = await RS.getRecStatus(); if (st && st.recording) return; }
+                await RS.stopService();
+            } catch (e) {}
+        }
+        setTimeout(novaFgsWatchdog, 4000); setInterval(novaFgsWatchdog, 60 * 1000);
         async function stopRecordingForegroundService() {
             if (window._novaFgsHold > 0) return;
             try {

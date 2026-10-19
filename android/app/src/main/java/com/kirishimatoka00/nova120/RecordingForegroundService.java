@@ -7,7 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 import androidx.core.app.NotificationCompat;
 
@@ -19,6 +21,28 @@ public class RecordingForegroundService extends Service {
     public  static final String ACTION_STOP  = "ACTION_STOP_RECORDING";
     public  static final String ACTION_START_REC = "ACTION_START_NATIVE_REC";   // v2.6.49：原生錄音
     public  static final String ACTION_STOP_REC  = "ACTION_STOP_NATIVE_REC";
+
+    // v2.6.85：沒有在錄音卻一直顯示「錄音中」的防呆——錄音停止後 12 分鐘內若沒人收服務，就自己收掉
+    private final Handler idleH = new Handler(Looper.getMainLooper());
+    private final Runnable idleStop = new Runnable() {
+        @Override public void run() {
+            if (NativeRecorder.get(RecordingForegroundService.this).isRecording()) { idleH.postDelayed(this, 60 * 1000L); return; }
+            stopForeground(true);
+            stopSelf();
+        }
+    };
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {   // 使用者把 App 從最近工作清掉：沒在錄音就不要留通知
+        if (!NativeRecorder.get(this).isRecording()) { stopForeground(true); stopSelf(); }
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
+    public void onDestroy() {
+        idleH.removeCallbacks(idleStop);
+        super.onDestroy();
+    }
 
     // ── 建立服務時先建立 Notification Channel（Android 8+ 必要）
     @Override
@@ -33,6 +57,7 @@ public class RecordingForegroundService extends Service {
         // v2.6.49：停止原生錄音（服務保持前景，讓 App 之後還能在背景完成處理與上傳；之後由 ACTION_STOP 收掉）
         if (intent != null && ACTION_STOP_REC.equals(intent.getAction())) {
             NativeRecorder.get(this).stop();
+            idleH.removeCallbacks(idleStop); idleH.postDelayed(idleStop, 12 * 60 * 1000L);
             return START_NOT_STICKY;
         }
 
@@ -44,6 +69,7 @@ public class RecordingForegroundService extends Service {
             return START_NOT_STICKY;
         }
 
+        idleH.removeCallbacks(idleStop);
         // 點擊通知返回 App
         Intent openApp = new Intent(this, MainActivity.class);
         openApp.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -65,6 +91,10 @@ public class RecordingForegroundService extends Service {
                 .build();
 
         startForeground(NOTIF_ID, notification);
+        if (!(intent != null && ACTION_START_REC.equals(intent.getAction())) && !NativeRecorder.get(this).isRecording()) {
+            // 一般保活（WebView 錄音／翻譯／持續聆聽）：萬一 JS 忘了收，6 小時後自動收掉
+            idleH.postDelayed(idleStop, 6 * 60 * 60 * 1000L);
+        }
 
         // v2.6.49：要求開始原生錄音（先 startForeground 再開麥克風，Android 12+ 才允許在背景持續使用麥克風）
         if (intent != null && ACTION_START_REC.equals(intent.getAction())) {
