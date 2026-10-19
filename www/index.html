@@ -493,7 +493,7 @@
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
     <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.1.3"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.5.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-skills.js?v=2.2.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.6.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -1210,7 +1210,7 @@
                                 </div>
                             </div>
                             <div class="nv-card"><h4>本地技能</h4><div id="fc-skill-list"></div>
-                                <input type="file" id="nova-skills-import-input" accept=".json,.js" multiple class="hidden" onchange="window._novaSkillsImport && window._novaSkillsImport(event)">
+                                <input type="file" id="nova-skills-import-input" accept=".json,.js,.md,.markdown,.txt" multiple class="hidden" onchange="window._novaSkillsImport && window._novaSkillsImport(event)">
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
                                     <button type="button" class="nv-btn" onclick="document.getElementById('nova-skills-import-input').click()">📥 匯入技能檔案</button>
                                     <button type="button" class="nv-btn" onclick="window._novaSkillsReload && window._novaSkillsReload()">🔄 重新載入</button>
@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.86';
+        const NOVA_APP_VERSION = '2.6.87';
         const NOVA_CHANGELOG = [
+            { v: '2.6.87', date: '2026-10-19', notes: [
+                '技能可以用 MD 檔當來源：技能管理與「整合 → 匯入技能檔案」都能直接選 .md（也可 .json，可一次多選）。MD 格式完整（frontmatter＋「## 任務目標／## 參數／## 步驟」，步驟用程式碼區塊，Python／指令直接放原始碼），也能手寫簡寫：- 搜尋「…」／- 輸入「…」／- 開網址 …；步驟裡的 {{變數}} 沒定義會自動補成參數；沒有 frontmatter 的 .md 直接變成提示範本（檔名當技能名稱）。',
+                '技能產生時的 .md 不再只是摘要（舊版沒有參數／目標，Python 被截斷，無法匯入），改成完整可還原的格式；新增「匯出全部技能（MD）」與每個技能的「📄 匯出成 MD 檔」（Documents/NOVA/skills_md/）；只有 .md 沒有 .json 的技能也能直接載入。（nova-skills.js v2.2.0、nova-skill-ui.js v1.6.0）'
+            ] },
             { v: '2.6.86', date: '2026-10-19', notes: [
                 '修正「技能在重新安裝後無法回復」。原因：v2.6.83 起技能存在 App 私有資料夾，解除安裝時會一起被清掉，而完整備份／快照沒有包含技能。現在完整備份與自動快照都含 skillsData（全部技能），還原時寫回（已存在同名的技能不覆蓋）。注意：重裝「之前」做的備份沒有技能，那些技能無法找回，需重建；之後請重做一次完整備份。'
             ] },
@@ -3457,7 +3461,12 @@ async function encodeMp3(audioBuffer) {
             let successCount = 0;
             let errCount = 0;
             for (const file of files) {
-                if (!/\.(json|js)$/i.test(file.name)) continue;
+                if (!/\.(json|js|md|markdown|txt)$/i.test(file.name)) continue;
+                if (/\.(md|markdown|txt)$/i.test(file.name)) {   // v2.6.87：.md 技能（完整格式，或任何一份 Markdown 當提示範本）
+                    try { const r = await window.NovaSkills.importMd(await file.text(), file.name, { overwrite: false }); if (r.ok) successCount++; else if (r.skipped) showToast('「' + r.name + '」已存在，略過'); else { errCount++; showToast('⚠️ ' + file.name + '：' + (r.warnings || []).join('；')); } if (r.ok && r.warnings && r.warnings.length) showToast('⚠️ ' + file.name + '：' + r.warnings.join('；'), 6000); }
+                    catch (er2) { console.error(er2); errCount++; }
+                    continue;
+                }
                 try {
                     const text = await new Promise((resolve, reject) => {
                         const reader = new FileReader();

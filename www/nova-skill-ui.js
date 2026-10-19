@@ -2,6 +2,7 @@
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
    版本：v1.5.0
    版本紀錄：
+   v1.6.0 - App v2.6.87。匯入技能可直接選 .md（也可 .json、可一次選多個）並回報略過／失敗／看不懂的步驟；新增「匯出全部技能（MD）」與每個技能選單的「📄 匯出成 MD 檔」（存到 Documents/NOVA/skills_md/）。
    v1.5.0 - App v2.6.84。技能參數更容易辨識與填寫：
             ① 設定參數：搜尋字與較長的輸入文字會自動「拆成片段」候選（例如「高鐵 台北 雲林 時刻表」→ 台北、雲林…各一個），不用把整句都當成一個變數；
               每個候選顯示「原本的值」與它所在的步驟（值用醒目標記），並可按「✂️ 自選一段文字」手動指定要換成變數的字（搜尋字、輸入文字、網址、指令、Python 都能選）；
@@ -363,7 +364,8 @@
             ['新增組裝流程（依序執行多個技能）', function () { newFlow(); }],
             ['把最近一次自主任務存成技能', function () { saveLastRun(); }],
             ['匯出全部技能（JSON）', function () { exportSkills(); }],
-            ['匯入技能（JSON）', function () { importSkills(); }],
+            ['匯入技能（MD／JSON，可多選）', function () { importSkills(); }],
+            ['匯出全部技能（MD，一個技能一個檔）', function () { exportMdAll(); }],
             ['修復索引（找回有檔案但沒登記的技能）', async function () { var n = await S().repairIndex(); toast(n ? '已找回 ' + n + ' 個技能' : '沒有需要修復的項目'); refreshMgr(); }],
             ['重新載入', async function () { await S().load(); refreshMgr(); toast('已重新載入'); }]
         ]);
@@ -437,12 +439,39 @@
             if (CapFS) { await CapFS.writeFile({ path: 'NOVA/' + fn, data: text, directory: 'DOCUMENTS', recursive: true, encoding: 'utf8' }); toast('✅ 已匯出到 Documents/NOVA/' + fn + '（' + data.skills.length + ' 個技能）', 4500); }
         } catch (er) { toast('❌ 匯出失敗：' + er.message, 4000); }
     }
-    function importSkills() {
-        var f = mk('input'); f.type = 'file'; f.accept = '.json,application/json';
+    function importSkills() {   // v1.6.0：JSON（匯出檔）與 MD（單一技能）都可以，可一次選多個
+        var f = mk('input'); f.type = 'file'; f.multiple = true; f.accept = '.json,.md,.markdown,.txt,application/json,text/markdown,text/plain';
         f.onchange = async function () {
-            if (!f.files[0]) return;
-            try { var d = JSON.parse(await f.files[0].text()); var n = await S().importAll(d, { overwrite: false }); toast('✅ 已匯入 ' + n + ' 個技能（同名的略過）', 4000); refreshMgr(); } catch (er) { toast('❌ 匯入失敗：' + er.message, 4000); }
+            var files = [].slice.call(f.files || []); if (!files.length) return;
+            var ok = [], skipped = [], failed = [], warns = [];
+            for (var i = 0; i < files.length; i++) {
+                var fl = files[i];
+                try {
+                    var txt = await fl.text();
+                    if (/\.json$/i.test(fl.name)) { var n = await S().importAll(JSON.parse(txt), { overwrite: false }); for (var k = 0; k < n; k++) ok.push(fl.name); }
+                    else {
+                        var r = await S().importMd(txt, fl.name, { overwrite: false });
+                        if (r.ok) ok.push(r.name); else if (r.skipped) skipped.push(r.name); else failed.push(fl.name);
+                        (r.warnings || []).forEach(function (w) { warns.push(fl.name + '：' + w); });
+                    }
+                } catch (er) { failed.push(fl.name + '（' + er.message + '）'); }
+            }
+            refreshMgr();
+            var msg = '✅ 匯入 ' + ok.length + ' 個' + (skipped.length ? '；同名略過：' + skipped.join('、') : '') + (failed.length ? '；失敗：' + failed.join('、') : '');
+            toast(msg, 6000);
+            if (warns.length) { var o = overlay('匯入提醒', 9600); o.body.appendChild(mk('div', CSS.muted + 'white-space:pre-wrap;word-break:break-all;', msg + '\n\n' + warns.join('\n'))); o.foot.append(btn('知道了', CSS.btnP + 'flex:1;', o.close)); }
         }; f.click();
+    }
+    async function writeDocFile(rel, text) {   // 寫到 Documents/NOVA/…；已存在的檔案常 EACCES → 先刪再寫
+        var CapFS = W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem; if (!CapFS) throw new Error('僅 Android App 支援');
+        var o = { path: rel, data: text, directory: 'DOCUMENTS', recursive: true, encoding: 'utf8' };
+        try { await CapFS.writeFile(o); } catch (e1) { await CapFS.deleteFile({ path: rel, directory: 'DOCUMENTS' }); await CapFS.writeFile(o); }
+    }
+    async function exportMdOne(name) {
+        try { var r = await S().exportMd(name); await writeDocFile('NOVA/skills_md/' + r.filename, r.text); toast('✅ 已匯出到 Documents/NOVA/skills_md/' + r.filename, 4500); } catch (er) { toast('❌ 匯出失敗：' + er.message, 4000); }
+    }
+    async function exportMdAll() {
+        try { var all = await S().exportAllMd(); for (var i = 0; i < all.length; i++) await writeDocFile('NOVA/skills_md/' + all[i].filename, all[i].text); toast('✅ 已匯出 ' + all.length + ' 個 .md 到 Documents/NOVA/skills_md/', 4500); } catch (er) { toast('❌ 匯出失敗：' + er.message, 4000); }
     }
 
     // ═══════════════ 複製／編輯 ═══════════════
@@ -641,7 +670,7 @@
         o.body.appendChild(mk('div', CSS.muted, (e.description || e.goal || '').slice(0, 160)));
         var items = [[e.partial ? '👁 檢視內容' : '▶ 執行', function () { runSkill(name); }]];
         if (e.type === 'replay' && !e.partial) items.push(['🧩 設定參數', function () { openParams(name); }]);
-        items.push(['✏️ 編輯', function () { editSkill(name); }], ['⧉ 複製', function () { cloneSkill(name); }], ['🏷 改名', function () { renameFlow(name); }],
+        items.push(['✏️ 編輯', function () { editSkill(name); }], ['📄 匯出成 MD 檔', function () { exportMdOne(name); }], ['⧉ 複製', function () { cloneSkill(name); }], ['🏷 改名', function () { renameFlow(name); }],
             ['🗑 刪除', async function () { if (await W.showConfirm('確定刪除技能「' + name + '」？無法復原。')) { try { await S().deleteSkill(name); toast('已刪除'); } catch (er) { toast('❌ ' + er.message, 4000); } } }],
             ['🧰 開啟技能管理', function () { open(); }]);
         items.forEach(function (it) { o.body.appendChild(btn(it[0], CSS.btn + 'width:100%;justify-content:flex-start;margin-top:8px;min-height:44px;', function () { o.close(); it[1](); })); });

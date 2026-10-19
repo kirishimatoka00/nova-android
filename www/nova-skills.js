@@ -2,6 +2,11 @@
    nova-skills.js — NOVA Android 技能引擎（跟 index.html 放同一個資料夾 www/）
    版本：v2.1.3
    版本紀錄：
+   v2.2.0 - App v2.6.87。技能可以用 .md 檔當來源（除了 JSON）。① 新的完整 MD 格式（frontmatter＋「## 任務目標／## 參數／## 步驟」，步驟用程式碼區塊，Python／指令直接放原始碼，
+            也可手寫簡寫：- 搜尋「…」／- 輸入「…」／- 開網址 …）；saveSkill 產生的 .md 不再只是摘要（舊版 Python 被截斷、沒有參數與目標），而是可完整還原。
+            ② importMd(text, 檔名)：任何 .md 都能匯入（有 type 就照 type；沒有就依內容判斷：有「## 步驟」→ 可重播，否則 → 提示範本；沒有 frontmatter 時用檔名當技能名稱）；
+            步驟裡出現但沒定義的 {{變數}} 自動補成參數；看不懂／被截斷的步驟略過並回報。exportMd／exportAllMd 匯出。
+            ③ load()：技能只有 .md 沒有 .replay.json／.flow.json 時直接從 .md 讀（把 .md 放進資料夾＋「修復索引」就能用）。
    v2.1.3 - App v2.6.83。修正技能管理打開就顯示「無法讀取 skills.json … EACCES (Permission denied)」：Android 對 Documents 內既有檔案的讀／寫常被拒絕。改成主要存在 App 私有資料夾（永遠可讀寫），
             Documents 只當盡力鏡像；讀取時私有資料夾沒有才看 Documents（舊版技能自動搬進私有資料夾）。取代 v2.1.2 的 nova_skills_fallback 機制。repairIndex 也會看兩邊的資料夾。
    v2.1.2 - App v2.6.82。修正「儲存參數／改名／編輯」覆寫已存在的技能檔時出現 EACCES (Permission denied)：Android 的 Documents 資料夾對「已存在的檔案」常不允許直接覆寫
@@ -121,14 +126,21 @@
                     registry[s.name] = new Function('args', 'nova', 'return (async () => { ' + js + ' })();');   // ⚠️ 等同執行任意程式碼，只放信任的技能
                     e.parameters = s.parameters || { type: 'object', properties: {} };
                 } else if (type === 'replay') {
-                    var r = JSON.parse(await rd(s.name + '.replay.json'));
+                    var r;
+                    try { r = JSON.parse(await rd(s.name + '.replay.json')); }
+                    catch (je) {   // v2.2.0：沒有 .replay.json 但有完整的 .md → 直接從 .md 讀（把 .md 丟進資料夾就能用）
+                        var pm = parseSkillMd(await rd(s.name + '.md'), s.name + '.md'); if (pm.type !== 'replay' || !pm.payload.length) throw je;
+                        r = { goal: pm.meta.goal, steps: pm.payload, params: pm.meta.params };
+                    }
                     e.goal = r.goal || e.description; e.steps = Array.isArray(r.steps) ? r.steps : [];
                     if (Array.isArray(r.params) && r.params.length) e.params = r.params;
                     if (r.partial) { e.partial = true; e.partialInfo = r.partialInfo || null; }
                     if (r.lastValues) e.lastValues = r.lastValues;
                     e.parameters = paramsSchema(e.params);
                 } else if (type === 'flow') {
-                    var f = JSON.parse(await rd(s.name + '.flow.json'));
+                    var f;
+                    try { f = JSON.parse(await rd(s.name + '.flow.json')); }
+                    catch (je) { var pf = parseSkillMd(await rd(s.name + '.md'), s.name + '.md'); if (pf.type !== 'flow' || !pf.payload.length) throw je; f = { steps: pf.payload }; }
                     e.steps = Array.isArray(f.steps) ? f.steps : []; e.parameters = { type: 'object', properties: {} };
                 } else {
                     var md = parseMd(await rd(s.name + '.md'));
@@ -171,14 +183,14 @@
             if (meta.lastValues) rj.lastValues = meta.lastValues;
             if (meta.partial) { rj.partial = true; if (meta.partialInfo) rj.partialInfo = meta.partialInfo; entry.partial = true; }
             await wr(name + '.replay.json', JSON.stringify(rj, null, 2));
-            await wr(name + '.md', buildMd({ type: 'replay', description: entry.description, createdAt: createdAt }, body || ('（可重播的手機操作紀錄，共 ' + steps.length + ' 步）\n\n' + outline(steps))));
+            await wr(name + '.md', buildMd({ name: name, type: 'replay', description: entry.description, createdAt: createdAt }, body || replayBody(name, entry.description, rj.goal, rj.params, steps)));
         } else if (type === 'flow') {
             var items = Array.isArray(payload) ? payload : (payload && payload.steps);
             if (!Array.isArray(items) || !items.length) throw new Error('組裝流程不可為空（至少要有一個項目）');
             var bad2 = items.find(function (s) { return !s || (s.blockKind === 'skill' ? !s.skillName : STEP_TYPES.indexOf(s.type) < 0); });
             if (bad2) throw new Error('項目格式不合法：必須是 {blockKind:"skill", skillName} 或手機操作步驟');
             await wr(name + '.flow.json', JSON.stringify({ description: entry.description || name, steps: items }, null, 2));
-            await wr(name + '.md', buildMd({ type: 'flow', description: entry.description, createdAt: createdAt }, body || ('（組裝流程，共 ' + items.length + ' 項）\n\n' + items.map(function (s, i) { return (i + 1) + '. ' + (s.blockKind === 'skill' ? '[技能] ' + s.skillName : stepOutline(s)); }).join('\n'))));
+            await wr(name + '.md', buildMd({ name: name, type: 'flow', description: entry.description, createdAt: createdAt }, body || replayBody(name, entry.description, '', null, items, 'flow')));
         } else if (type === 'script') {
             if (typeof payload !== 'string' || !payload.trim()) throw new Error('技能程式碼不可為空');
             await wr(name + '.js', payload);
@@ -271,6 +283,141 @@
         return n;
     }
 
+    // ═══════════ 技能 MD 格式（v2.2.0）═══════════
+    // 一個技能 = 一個 .md 檔，可手寫、可在電腦編輯、也是匯出格式；匯入時完整還原（不像舊版只是摘要）。
+    //   ---  frontmatter：name／type／description／createdAt／execMode  ---
+    //   ## 任務目標        （replay 的目標文字）
+    //   ## 參數            一行一個：- 代號 | 顯示名稱 | text／number／date／choice | 預設值 | 選項1,選項2
+    //   ## 步驟            每步一個程式碼區塊（```json 步驟物件、```python／```bash 直接放程式碼），
+    //                      或手寫簡寫：- 搜尋「關鍵字」／- 輸入「文字」／- 開網址 https://…／- 點「按鈕」／- 等待 1000／- 按鍵 BACK／- 開啟 App 套件名／- 技能：名稱（組裝流程）
+    //   prompt／imported 技能：整份內文就是提示內容（沒有 frontmatter 也可以，檔名當技能名稱）。
+    function mdFence(s, lang) { var f = '```'; s = String(s == null ? '' : s); while (s.indexOf(f) >= 0) f += '`'; return f + (lang || '') + '\n' + s + '\n' + f; }
+    function oneLine(s, n) { return String(s || '').replace(/\s+/g, ' ').trim().slice(0, n || 50); }
+    function stepToMd(s, i) {
+        var head = '### ' + (i + 1) + '. ' + (s.blockKind === 'skill' ? '技能 ' + s.skillName : oneLine(stepOutline(s), 50)), keys = Object.keys(s);
+        if (s.type === 'run_python' && keys.every(function (k) { return k === 'type' || k === 'code' || k === 'timeout_sec'; }))
+            return head + '\n' + mdFence(s.code, 'python' + (s.timeout_sec ? ' timeout=' + s.timeout_sec : ''));
+        if (s.type === 'run_shell' && s.cmd != null && keys.every(function (k) { return k === 'type' || k === 'cmd' || k === 'timeout_sec'; }))
+            return head + '\n' + mdFence(s.cmd, 'bash' + (s.timeout_sec ? ' timeout=' + s.timeout_sec : ''));
+        return head + '\n' + mdFence(JSON.stringify(s), 'json');
+    }
+    function paramLine(p) { return '- ' + [p.name, p.label || p.name, p.type || 'text', p.default == null ? '' : String(p.default).replace(/\s*\n\s*/g, ' '), (p.choices || []).join(',')].map(function (x) { return String(x).replace(/\|/g, '／'); }).join(' | ').replace(/( \| )+$/, ''); }
+    function replayBody(name, desc, goal, params, steps, kind) {
+        var t = ['# ' + (desc ? oneLine(desc, 60) : name), ''];
+        if (kind !== 'flow') { t.push('## 任務目標', '', String(goal || desc || name).replace(/\r/g, ''), ''); }
+        if (params && params.length) { t.push('## 參數', '', '（代號用在步驟裡的 {{代號}}；{{代號@u}} 表示網址編碼）', ''); params.forEach(function (p) { t.push(paramLine(p)); }); t.push(''); }
+        t.push(kind === 'flow' ? '## 流程' : '## 步驟', ''); (steps || []).forEach(function (s, i) { t.push(stepToMd(s, i), ''); });
+        return t.join('\n');
+    }
+    function splitSections(body) {   // → {title, secs:[{name, lines}]}（程式碼區塊內的 # 不算標題）
+        var lines = String(body || '').replace(/\r/g, '').split('\n'), secs = [], cur = { name: '', lines: [] }, title = '', fence = null;
+        lines.forEach(function (l) {
+            var f = /^(`{3,})/.exec(l);
+            if (fence) { if (f && f[1].length >= fence && /^`+\s*$/.test(l)) fence = null; cur.lines.push(l); return; }
+            if (f) { fence = f[1].length; cur.lines.push(l); return; }
+            var h2 = /^##\s+(.+?)\s*$/.exec(l), h1 = /^#\s+(.+?)\s*$/.exec(l);
+            if (h2) { secs.push(cur); cur = { name: h2[1], lines: [] }; } else if (h1 && !title && !secs.length && !cur.lines.some(function (x) { return x.trim(); })) title = h1[1]; else cur.lines.push(l);
+        });
+        secs.push(cur); return { title: title, secs: secs };
+    }
+    function shorthandStep(t) {   // 手寫簡寫 → 步驟（認不得回傳 null）
+        var m; t = t.trim();
+        if ((m = /^(?:搜尋|search)\s*[:：]?\s*[「"“]([\s\S]*?)[」"”]\s*(（附近）|\(nearby\)|（nearby）)?\s*$/i.exec(t)) || (m = /^(?:搜尋|search)\s*[:：]\s*([\s\S]+?)\s*(（附近）|\(nearby\))?\s*$/i.exec(t))) return m[2] ? { type: 'web_search', query: m[1], nearby: true } : { type: 'web_search', query: m[1] };
+        if ((m = /^(?:輸入|text)\s*[:：]?\s*[「"“]([\s\S]*?)[」"”]\s*$/i.exec(t)) || (m = /^(?:輸入|text)\s*[:：]\s*([\s\S]+)$/i.exec(t))) return { type: 'text', text: m[1] };
+        if ((m = /^(?:開啟網址|開網址|open_url)\s*[:：]?\s*(\S+)\s*$/i.exec(t))) return { type: 'open_url', url: m[1] };
+        if ((m = /^(?:點選|點擊|點|tap)\s*[:：]?\s*[「"“]([\s\S]*?)[」"”]\s*$/i.exec(t)) || (m = /^(?:點選|點擊|點|tap)\s*[:：]\s*([\s\S]+)$/i.exec(t))) return { type: 'tap_el', text: m[1] };
+        if ((m = /^(?:等待|wait)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(ms|毫秒|秒|s)?\s*$/i.exec(t))) return { type: 'wait', ms: Math.round(+m[1] * (/^(秒|s)$/i.test(m[2] || '') ? 1000 : 1)) };
+        if ((m = /^(?:按鍵|key)\s*[:：]?\s*(\S+)\s*$/i.exec(t))) return { type: 'key', key: m[1] };
+        if ((m = /^(?:開啟\s*App|open_app)\s*[:：]?\s*(\S+)\s*$/i.exec(t))) return { type: 'open_app', package: m[1] };
+        if ((m = /^(?:Termux\s*指令|指令|shell)\s*[:：]\s*([\s\S]+)$/i.exec(t))) return { type: 'run_shell', cmd: m[1] };
+        if ((m = /^(?:\[技能\]|技能)\s*[:：]?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*$/.exec(t))) return { blockKind: 'skill', skillName: m[1], mode: 'prompt' };
+        return null;
+    }
+    function parseSteps(lines, warnings) {
+        var steps = [], i = 0, n = 0;
+        while (i < lines.length) {
+            var l = lines[i], f = /^(`{3,})\s*([\w+-]*)\s*(.*)$/.exec(l);
+            if (f) {
+                var len = f[1].length, lang = f[2].toLowerCase(), info = f[3] || '', buf = []; i++;
+                while (i < lines.length && !(new RegExp('^`{' + len + ',}\\s*$').test(lines[i]))) buf.push(lines[i++]); i++; n++;
+                var txt = buf.join('\n'), tm = /timeout(?:_sec)?\s*=\s*(\d+)/.exec(info), st = null;
+                try {
+                    if (lang === 'python' || lang === 'py') { st = { type: 'run_python', code: txt }; if (tm) st.timeout_sec = +tm[1]; }
+                    else if (/^(bash|sh|shell|termux)$/.test(lang)) { st = { type: 'run_shell', cmd: txt }; if (tm) st.timeout_sec = +tm[1]; }
+                    else { st = JSON.parse(txt); }
+                } catch (e) { warnings.push('第 ' + n + ' 個區塊不是正確的 JSON，已略過：' + e.message); continue; }
+                if (!st || (st.blockKind !== 'skill' && STEP_TYPES.indexOf(st.type) < 0)) { warnings.push('第 ' + n + ' 個區塊的 type 不合法，已略過'); continue; }
+                steps.push(st); continue;
+            }
+            i++;
+            var m = /^\s*(?:[-*+]|\d+[.)])\s+(.+?)\s*$/.exec(l); if (!m) continue; n++;
+            var sh = shorthandStep(m[1]);
+            if (sh) steps.push(sh); else warnings.push('第 ' + n + ' 項「' + oneLine(m[1], 30) + '」看不懂（內容可能被截斷），已略過；請改成程式碼區塊或簡寫格式');
+        }
+        return steps;
+    }
+    function parseParams(lines) {
+        var out = [];
+        lines.forEach(function (l) {
+            var m = /^\s*[-*+]\s+(.+?)\s*$/.exec(l); if (!m) return;
+            var c = m[1].split('|').map(function (x) { return x.trim(); }); if (!NAME_RE.test(c[0] || '')) return;
+            var ty = ['text', 'number', 'date', 'choice'].indexOf((c[2] || '').toLowerCase()) >= 0 ? c[2].toLowerCase() : 'text', p = { name: c[0], label: c[1] || c[0], type: ty, default: c[3] || '' };
+            if (c[4]) { p.choices = c[4].split(/[,，]/).map(function (x) { return x.trim(); }).filter(Boolean); if (ty === 'text') p.type = 'choice'; }
+            out.push(p);
+        });
+        return out;
+    }
+    function nameFromFile(fn, hint) {
+        var b = String(fn || '').split(/[\\/]/).pop().replace(/\.(md|markdown|txt)$/i, '').replace(/^[0-9a-f]{8}-(?=.)/, '').replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+        if (!b) b = 'skill_' + Date.now().toString(36); if (!/^[a-zA-Z_]/.test(b)) b = 's_' + b; return b;
+    }
+    // 解析 .md → { name, type, meta, body, payload, warnings }
+    function parseSkillMd(text, filename) {
+        text = String(text || '').replace(/^﻿/, ''); var md = parseMd(text), fm = md.fm, warnings = [];
+        var sp = splitSections(md.body), sec = function (re) { return sp.secs.find(function (s) { return re.test(s.name); }); };
+        var stepsSec = sec(/^(步驟|steps|流程|flow)/i), goalSec = sec(/^(任務目標|目標|goal)/i), parSec = sec(/^(參數|params|parameters)/i);
+        var type = TYPES.indexOf(fm.type) >= 0 ? fm.type : null;
+        var steps = stepsSec ? parseSteps(stepsSec.lines, warnings) : [];
+        if (!stepsSec && (fm.type === 'replay' || fm.type === 'flow')) steps = parseSteps(md.body.replace(/\r/g, '').split('\n'), warnings);   // 舊版 v2.6.7x 產生的摘要型 .md（只有編號清單）
+        if (!type) type = steps.length ? (steps.every(function (s) { return s.blockKind === 'skill'; }) && /流程|flow/i.test(stepsSec.name) ? 'flow' : 'replay') : (/```(js|javascript)/.test(md.body) ? 'script' : 'prompt');
+        var name = fm.name && NAME_RE.test(fm.name.trim()) ? fm.name.trim() : nameFromFile(filename);
+        var desc = String(fm.description || '').replace(/\s*【目前定位[\s\S]*$/, '').trim() || sp.title || oneLine(md.body.replace(/^#.*$/m, ''), 60) || name;
+        var r = { name: name, type: type, warnings: warnings, meta: { description: desc, createdAt: +fm.createdAt || Date.now(), execMode: fm.execMode } };
+        if (type === 'replay') {
+            var goal = goalSec ? goalSec.lines.join('\n').trim() : ''; r.meta.goal = goal || desc;
+            r.meta.params = parSecToParams(parSec, steps); r.payload = steps; r.body = '';
+            if (!steps.length) warnings.push('沒有讀到任何步驟（要有「## 步驟」區段）');
+        } else if (type === 'flow') { r.payload = steps; r.body = ''; if (!steps.length) warnings.push('沒有讀到任何流程項目'); }
+        else if (type === 'script') {
+            var cm = /```(?:js|javascript)\s*\n([\s\S]*?)\n```/.exec(md.body); r.payload = cm ? cm[1] : ''; r.body = ''; if (!r.payload) warnings.push('script 技能需要一個 ```js 程式碼區塊');
+        } else { r.body = md.body.replace(/^\s+|\s+$/g, ''); r.payload = ''; if (!r.body) warnings.push('內容是空的'); }
+        return r;
+    }
+    function parSecToParams(parSec, steps) {   // 有定義的用定義；步驟裡出現但沒定義的 {{x}} 自動補上
+        var params = parSec ? parseParams(parSec.lines) : [], seen = {}; params.forEach(function (p) { seen[p.name] = 1; });
+        var re = /\{\{([a-zA-Z_][a-zA-Z0-9_]*)(?:@u)?\}\}/g;
+        steps.forEach(function (s) { JSON.stringify(s).replace(re, function (_, n) { if (!seen[n]) { seen[n] = 1; params.push({ name: n, label: n, type: 'text', default: '' }); } return _; }); });
+        return params;
+    }
+    async function importMd(text, filename, opts) {
+        var r = parseSkillMd(text, filename); opts = opts || {};
+        if (get(r.name) && !opts.overwrite) return { name: r.name, type: r.type, skipped: true, warnings: r.warnings };
+        if ((r.type === 'replay' || r.type === 'flow') && !r.payload.length) return { name: r.name, type: r.type, failed: true, warnings: r.warnings };
+        await saveSkill(r.name, r.type, r.meta, r.body, r.payload);
+        return { name: r.name, type: r.type, ok: true, warnings: r.warnings };
+    }
+    async function exportMd(name) {
+        var e = get(name); if (!e) throw new Error('找不到技能: ' + name);
+        var fm = { name: e.name, type: e.type, description: e.description, createdAt: e.createdAt }, body;
+        if (e.type === 'replay') body = replayBody(e.name, e.description, e.goal, e.params, e.steps);
+        else if (e.type === 'flow') body = replayBody(e.name, e.description, '', null, e.steps, 'flow');
+        else if (e.type === 'script') body = '# ' + (e.description || e.name) + '\n\n' + mdFence(await rd(e.name + '.js'), 'js') + '\n';
+        else { fm.execMode = e.execMode; body = e.goal || ''; }
+        if (e.partial) fm.partial = 'true';
+        return { filename: e.name + '.md', text: buildMd(fm, body) };
+    }
+    async function exportAllMd() { var out = []; for (var i = 0; i < manifest.length; i++) { try { out.push(await exportMd(manifest[i].name)); } catch (e) { /* skip */ } } return out; }
+
     // ── 執行 ──
     var helper = {
         showToast: function (m, d) { if (typeof W.showToast === 'function') W.showToast(m, d); },
@@ -319,7 +466,7 @@
         getPartialSkills: function () { return manifest.filter(function (s) { return s.type === 'replay' && s.partial; }); },
         getLastError: function () { return lastLoadError; }, getCount: function () { return manifest.length; },
         saveSkill: saveSkill, deleteSkill: deleteSkill, renameSkill: renameSkill, repairIndex: repairIndex, setLastValues: setLastValues,
-        exportAll: exportAll, importAll: importAll, stepOutline: stepOutline, outline: outline,
-        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.1.3'
+        exportAll: exportAll, importAll: importAll, importMd: importMd, exportMd: exportMd, exportAllMd: exportAllMd, parseSkillMd: parseSkillMd, stepOutline: stepOutline, outline: outline,
+        STEP_TYPES: STEP_TYPES, NAME_RE: NAME_RE, VERSION: '2.2.0'
     };
 })();
