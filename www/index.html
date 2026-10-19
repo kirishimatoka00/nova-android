@@ -698,7 +698,7 @@
     <div class="flex h-[100dvh] w-full relative">
 
 
-        <div id="custom-confirm-modal" class="hidden fixed inset-0 z-[999] flex items-center justify-center p-6" style="background:rgba(2,6,23,0.85);backdrop-filter:blur(4px);">
+        <div id="custom-confirm-modal" class="hidden fixed inset-0 z-[999] flex items-center justify-center p-6" style="z-index:2147483000;background:rgba(2,6,23,0.85);backdrop-filter:blur(4px);"><!-- v2.6.88：z-index 要高於技能管理等全螢幕視窗（9300～9600），否則確認框被蓋住看不到 -->
         <div class="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col space-y-5">
             <div class="flex items-start space-x-3">
                 <span class="text-yellow-400 text-2xl mt-0.5">⚠️</span>
@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.87';
+        const NOVA_APP_VERSION = '2.6.88';
         const NOVA_CHANGELOG = [
+            { v: '2.6.88', date: '2026-10-19', notes: [
+                '修正在技能管理按「刪除」時，確認對話框被技能視窗蓋在後面、看不到也按不到：確認框（showConfirm）的層級提高到所有全螢幕視窗之上。其他用到 showConfirm 的地方（刪除對話、清空等）也一併受益。'
+            ] },
             { v: '2.6.87', date: '2026-10-19', notes: [
                 '技能可以用 MD 檔當來源：技能管理與「整合 → 匯入技能檔案」都能直接選 .md（也可 .json，可一次多選）。MD 格式完整（frontmatter＋「## 任務目標／## 參數／## 步驟」，步驟用程式碼區塊，Python／指令直接放原始碼），也能手寫簡寫：- 搜尋「…」／- 輸入「…」／- 開網址 …；步驟裡的 {{變數}} 沒定義會自動補成參數；沒有 frontmatter 的 .md 直接變成提示範本（檔名當技能名稱）。',
                 '技能產生時的 .md 不再只是摘要（舊版沒有參數／目標，Python 被截斷，無法匯入），改成完整可還原的格式；新增「匯出全部技能（MD）」與每個技能的「📄 匯出成 MD 檔」（Documents/NOVA/skills_md/）；只有 .md 沒有 .json 的技能也能直接載入。（nova-skills.js v2.2.0、nova-skill-ui.js v1.6.0）'
