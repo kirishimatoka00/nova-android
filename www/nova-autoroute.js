@@ -2,6 +2,7 @@
    nova-autoroute.js — NOVA Android 一般對話「智慧分派」（跟 index.html 放同一個資料夾 www/）
    版本：v1.1.1
    版本紀錄：
+   v1.1.2 - App v2.6.89。私密對話不做智慧分派判斷。
    v1.1.1 - App v2.6.76。定位改由 novaAutoTask.run 統一附加（所有自主任務都適用），這裡不再自己附加座標。
    v1.1.0 - App v2.6.75。新增「自主任務」這條路（參考桌面版 NovaAutoRoute／nova-jev.js routeTask）：一般對話送出的話，除了判斷要不要派專家，
             也判斷「是不是該交給 AI 自主任務（/ap）」。判斷流程：
@@ -68,6 +69,7 @@
         ctx = ctx || {};
         var t = String(text || '').trim();
         if (!t || t.charAt(0) === '/') return false;
+        if (window.novaPrivIsCur && novaPrivIsCur()) return false;   // v1.1.2：私密對話不做智慧分派判斷（不經 Gemini／OpenAI／Jev）
         if (ctx.hasFile || appState.isLiveMode || appState.pendingAnalyzeContextId) return false;
         if (appState.translateMode && appState.translateMode !== 'off') return false;
         if (/錄音|live影像|口譯/i.test(t)) return false;

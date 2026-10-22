@@ -492,8 +492,8 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.4.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
-    <script src="./nova-skills.js?v=2.2.0"></script><script src="./nova-jev.js?v=1.5.0"></script><script src="./nova-skill-ui.js?v=1.6.0"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
+    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.5.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
+    <script src="./nova-skills.js?v=2.2.0"></script><script src="./nova-jev.js?v=1.5.1"></script><script src="./nova-skill-ui.js?v=1.6.1"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.0.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
     /* v2.6.43：「有沒有雲端可用」= Apps Script URL 或 Google Drive 授權任一個（nova-gdrive.js 載入後會用完整版覆寫） */
@@ -2245,8 +2245,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.88';
+        const NOVA_APP_VERSION = '2.6.89';
         const NOVA_CHANGELOG = [
+            { v: '2.6.89', date: '2026-10-22', notes: [
+                '私密對話：語意判斷與任何偵測一律不經 Gemini／OpenAI／Jev。通用意圖分類器、排程／喚醒連結判斷改用 Grok（沒有 Grok 金鑰就不判斷）；智慧分派（含專家）、技能比對在私密對話不執行；Jev 所有用途在私密對話一律停用（nova-jev.js v1.5.1）；搜尋工具改用 Grok 搜尋。聊天本身仍用你選的模型。',
+                '私密記憶完全用 Grok：回覆後摘要、長期事實固化、文件事實抽取都呼叫 Grok（沒有 Grok 金鑰就不處理，不退回 Gemini）；不再呼叫嵌入模型，檢索改在手機本機以關鍵字比對（nova-memory.js v1.5.0、nova-private.js v1.2.0）。主記憶不受影響。',
+                '注意：舊版已存進私密記憶的項目有 Gemini 向量，新版不使用（不影響內容）。'
+            ] },
             { v: '2.6.88', date: '2026-10-19', notes: [
                 '修正在技能管理按「刪除」時，確認對話框被技能視窗蓋在後面、看不到也按不到：確認框（showConfirm）的層級提高到所有全螢幕視窗之上。其他用到 showConfirm 的地方（刪除對話、清空等）也一併受益。'
             ] },
@@ -10040,11 +10045,19 @@ msg.files : (msg.file ? [msg.file] : []);
             if (appState.isSearchEnabled !== false) {
                 const _wsHere = function () { const la = appState.lastLat, lo = appState.lastLon; return (la && lo) ? { lat: +la, lon: +lo } : null; };
                 const _wsGoogle = async function (q, nearby) {
-                    const key = appState.keys.gemini; if (!key) throw new Error('沒有設定 Gemini 金鑰');
+                    const _pv = !!(window.novaPrivIsCur && novaPrivIsCur());   // v2.6.89：私密對話的搜尋改用 Grok 搜尋，不經 Gemini
+                    const key = appState.keys.gemini; if (!key && !_pv) throw new Error('沒有設定 Gemini 金鑰');
                     const model = window.NOVA_GEMINI_MODEL_DEFAULT || 'gemini-3.6-flash';
                     const ver = /gemini-3|preview/.test(model) ? 'v1alpha' : 'v1beta';
                     const loc = nearby ? _wsHere() : null;
                     const prompt = '請用 Google 搜尋取得最新、即時的資料來回答，列出具體的名稱、時間、地點、數字與日期，不要憑印象回答。使用繁體中文（台灣）。' + (loc ? '（使用者目前位置座標：' + loc.lat.toFixed(4) + ',' + loc.lon.toFixed(4) + '，需要「附近」的結果時請以此為中心。）' : '') + '\n\n問題：' + q;
+                    if (_pv) {
+                        if (!window.novaPrivGrokKey()) throw new Error('私密對話不使用 Gemini 搜尋，請先設定 Grok 金鑰');
+                        const gr = await window._novaDrCallGrok({ model: novaPrivGrokModel(), text: prompt, timeoutMs: 60000 });
+                        const cites = (gr.citations || []).slice(0, 8).map(function (c) { return '- ' + (c.url || c.title || c); });
+                        if (!gr.text) throw new Error('Grok 搜尋沒有回傳文字');
+                        return '【Grok 搜尋結果】\n' + gr.text + (cites.length ? '\n\n來源：\n' + cites.join('\n') : '');
+                    }
                     const res = await fetch('https://generativelanguage.googleapis.com/' + ver + '/models/' + model + ':generateContent?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }) });
                     const d = await res.json().catch(function () { return null; });
                     if (!res.ok) throw new Error((d && d.error && d.error.message) || ('HTTP ' + res.status));
@@ -15899,8 +15912,9 @@ try {
         }
 
         async function checkDeepLinkIntent(text) {
+            const _priv = !!(window.novaPrivIsCur && novaPrivIsCur());   // v2.6.89：私密對話只用 Grok
             const key = appState.keys.gemini;
-            if(!key) return null;
+            if(!key && !_priv) return null;
             
             const systemInstruction = `你是一個手機作業系統的智慧助手。任務是辨識使用者的自然語言指令，轉換為對應的 App 喚醒連結。
 常見格式：
@@ -15937,6 +15951,7 @@ try {
                 generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.2 }
             };
 
+            if (_priv) return await novaPrivGrokFromGemini(payload);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
 
@@ -16006,8 +16021,9 @@ try {
         }
 
         async function checkScheduleIntent(text) {
+            const _priv = !!(window.novaPrivIsCur && novaPrivIsCur());   // v2.6.89：私密對話只用 Grok
             const key = appState.keys.gemini;
-            if(!key) return null;
+            if(!key && !_priv) return null;
             const schema = {
                 type: "OBJECT",
                 properties: {
@@ -16028,6 +16044,7 @@ try {
                 contents: [{ role: "user", parts: [{ text: text }] }],
                 generationConfig: { responseMimeType: "application/json", responseSchema: schema, temperature: 0.1 }
             };
+            if (_priv) return await novaPrivGrokFromGemini(payload);
             try {
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -17135,7 +17152,8 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
 
                 const _ambiguousCandidate = _ambiguousActionCandidate || _ambiguousLocationCandidate;
 
-                if (_ambiguousCandidate && appState.currentModel === 'gemini') {
+                if (_ambiguousCandidate && appState.currentModel === 'gemini' && !(window.novaPrivIsCur && novaPrivIsCur() && !appState.keys.grok)) {   // v2.6.89：私密對話只用 Grok 判斷，沒 Grok 金鑰就不判斷
+                    const _privCls = !!(window.novaPrivIsCur && novaPrivIsCur());
                     const _sysPrompt = '你是一個多任務語意分類器。分析使用者輸入，判斷它屬於以下哪些類別（可多選，大多數情況只會符合 0 或 1 個類別）：\n'
                         + '1. isImageGen：要求生成一張圖片/照片/插圖（非圖表、流程圖、程式碼示意圖）\n'
                         + '2. isLocationQuery：詢問使用者目前所在位置、附近的地點、導航、距離等地理相關查詢\n'
@@ -17157,7 +17175,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
                     };
                     try {
                         let _result = null;
-                        if (appState.keys.gemini) {
+                        if (appState.keys.gemini && !_privCls) {
                             const url = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_LITE}:generateContent?key=${appState.keys.gemini}`;
                             const payload = {
                                 contents: [{ role: "user", parts: [{ text: _userMsg }] }],
@@ -21143,7 +21161,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.0"></script><script src="./nova-autoroute.js?v=1.1.1"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.1.0"></script>
+<script src="./nova-experts-glue.js?v=1.1.1"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.0.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>

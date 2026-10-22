@@ -2,6 +2,7 @@
    nova-skill-ui.js — NOVA Android 技能介面與接線層（跟 index.html 放同一個資料夾 www/）
    版本：v1.5.0
    版本紀錄：
+   v1.6.1 - App v2.6.89。私密對話不做技能比對（技能比對會用 Jev／Gemini）。
    v1.6.0 - App v2.6.87。匯入技能可直接選 .md（也可 .json、可一次選多個）並回報略過／失敗／看不懂的步驟；新增「匯出全部技能（MD）」與每個技能選單的「📄 匯出成 MD 檔」（存到 Documents/NOVA/skills_md/）。
    v1.5.0 - App v2.6.84。技能參數更容易辨識與填寫：
             ① 設定參數：搜尋字與較長的輸入文字會自動「拆成片段」候選（例如「高鐵 台北 雲林 時刻表」→ 台北、雲林…各一個），不用把整句都當成一個變數；
@@ -734,6 +735,7 @@
     }
     async function tryMatchAndReplay(goal) {
         if (!opt.match() || !S()) return false;
+        if (W.novaPrivIsCur && W.novaPrivIsCur()) return false;   // v1.6.1：私密對話不做技能比對（不經 Gemini／Jev）
         try { await S().load(); } catch (e) { return false; }
         var cs = candidates(goal, false).filter(function (c) { return c.score >= 0.15; }).slice(0, 6);
         if (!cs.length) return false;

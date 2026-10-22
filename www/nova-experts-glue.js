@@ -1163,6 +1163,7 @@ window.NovaExpertsGlue = (function () {
 
     // ═══ v1.1.0：一般對話「智慧分派」判斷（只回傳判斷結果，不執行；執行與設定在 nova-autoroute.js）。失敗／不確定一律回 chat ═══
     async function autoRoute(text) {
+        if (window.novaPrivIsCur && novaPrivIsCur()) return { route: 'chat', reason: '' };   // App v2.6.89：私密對話不做智慧分派判斷
         try {
             const experts = (ENG() && TK()) ? loadExperts().filter(function (e) { return e.enabled; }) : [];
             if (!experts.length) return { route: 'chat', reason: '' };

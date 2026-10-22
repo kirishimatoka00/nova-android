@@ -94,7 +94,9 @@
     if (c.threshold != null) set(K.thr, String(clamp(c.threshold, 0.5, 0.95, 0.7)));
     if (c.features) Object.keys(K.f).forEach(function (n) { if (c.features[n] != null) set(K.f[n], c.features[n] ? '1' : '0'); });
   }
+  function privNow() { try { return !!(window.NovaPrivate && window.NovaPrivate.isCurrent && window.NovaPrivate.isCurrent()); } catch (e) { return false; } }
   function isActive(feature) {
+    if (privNow()) return false;   // App v2.6.89：私密對話不使用 Jev
     var c = getConfig();
     if (!c.key || !c.enabled) return false;
     if (feature && !c.features[feature]) return false;
@@ -165,6 +167,7 @@
   // questions: { 名稱: {type:'choice'|'score'|'noul', instructions, criteria?} }
   async function ask(state, questions, opts) {
     opts = opts || {};
+    if (privNow()) return { ok: false, error: '私密對話不使用 Jev', off: true };
     var c = getConfig();
     if (!c.key) return { ok: false, error: '尚未設定 Jev API Key' };
     if (inCooldown() && !opts.force) return { ok: false, error: '冷卻中（先前連續失敗）', cooldown: true };

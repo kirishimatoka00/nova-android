@@ -2,6 +2,8 @@
    nova-private.js — NOVA Android「私密對話」（側邊欄新增對話旁的幽靈圖示；跟 index.html 放同一個資料夾 www/）
    版本：v1.1.0
    版本紀錄：
+   v1.2.0 - App v2.6.89：私密對話裡的語意判斷、偵測、記憶處理一律不經 Gemini／OpenAI／Jev：提供 novaPrivIsCur／novaPrivGrok／novaPrivGrokFromGemini 等共用函式（只用 Grok；沒有 Grok 金鑰就略過該項判斷，不退回別家）。
+            套用處：通用意圖分類器、排程／喚醒連結判斷、智慧分派（autoroute／專家）、技能比對、Jev 全部用途（nova-jev.js 的 isActive 在私密對話一律 false）、搜尋工具（改 Grok 搜尋）、私密記憶（nova-memory.js：摘要／固化／事實抽取用 Grok；檢索改本機關鍵字比對，不呼叫嵌入模型）。
    v1.1.0 - App v2.6.63：私密記憶／私密對話加密碼鎖（NovaPrivateLock）。密碼以 PBKDF2-SHA256（隨機 salt、120000 次）雜湊後存本機 localStorage nova_private_pw，不存明文、不隨備份／同步出去。
             尚未設密碼時，進入私密對話或私密記憶會先要求設定；解鎖狀態只存在記憶體，App 重開或按「上鎖」即失效。誠實聲明：這是「進入」的介面鎖，
             IndexedDB 與聊天紀錄本身沒有另外加密；忘記密碼只能在「變更密碼」輸入舊密碼，或清除 App 資料（私密記憶也會一併消失）。
@@ -21,6 +23,34 @@
     // 目前對話該用哪個記憶庫（私密對話→私密記憶；一般→主記憶；沒載入→null）
     W._novaMemStore = function () {
         try { return (W.NovaPrivate && W.NovaPrivate.isCurrent()) ? (W.NovaMemoryPrivate || null) : (W.NovaMemory || null); } catch (e) { return W.NovaMemory || null; }
+    };
+
+    // ───────── v1.2.0：私密對話的「語意判斷／偵測／記憶處理」只准用 Grok ─────────
+    // 私密對話裡，所有背景判斷（意圖分類、排程／喚醒連結判斷、智慧分派、技能比對、搜尋工具…）與私密記憶（摘要、固化、事實抽取）
+    // 一律不送給 Gemini／OpenAI／Jev；有 Grok 金鑰就改用 Grok，沒有就略過該項判斷（不退回別家）。聊天本身仍用你選的模型。
+    W.novaPrivIsCur = function () { try { return !!(W.NovaPrivate && W.NovaPrivate.isCurrent && W.NovaPrivate.isCurrent()); } catch (e) { return false; } };
+    W.novaPrivGrokKey = function () { try { return (W.appState && W.appState.keys && W.appState.keys.grok) || localStorage.getItem('nova_key_grok') || ''; } catch (e) { return ''; } };
+    W.novaPrivGrokModel = function () { var m = (W.appState && W.appState.grokModel) || ''; return (/^grok-/.test(m) && !/multi|auto|imagine|image|video/.test(m)) ? m : 'grok-4.3'; };
+    // 文字／JSON 呼叫。o: {system, user, json, timeoutMs, temperature} → 字串（沒金鑰回 null；失敗丟錯）
+    W.novaPrivGrok = async function (o) {
+        var key = W.novaPrivGrokKey(); if (!key) return null; o = o || {};
+        var msgs = []; if (o.system) msgs.push({ role: 'system', content: o.system }); msgs.push({ role: 'user', content: o.user || '' });
+        var body = { model: W.novaPrivGrokModel(), messages: msgs, temperature: o.temperature == null ? 0 : o.temperature }; if (o.json) body.response_format = { type: 'json_object' };
+        var res = await Promise.race([fetch('https://api.x.ai/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify(body) }),
+            new Promise(function (_, rej) { setTimeout(function () { rej(new Error('Grok 逾時')); }, o.timeoutMs || 20000); })]);
+        var d = await res.json().catch(function () { return null; });
+        if (!res.ok) throw new Error('Grok API 錯誤 ' + res.status + '：' + ((d && d.error && (d.error.message || d.error)) || ''));
+        return (d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
+    };
+    // 把 Gemini 格式的請求（systemInstruction＋contents＋responseSchema）轉成 Grok 呼叫，回傳解析後的 JSON 物件（失敗／沒金鑰回 null）
+    W.novaPrivGrokFromGemini = async function (payload) {
+        try {
+            var sys = payload && payload.systemInstruction && payload.systemInstruction.parts && payload.systemInstruction.parts[0] && payload.systemInstruction.parts[0].text || '';
+            var usr = payload && payload.contents && payload.contents[0] && payload.contents[0].parts && payload.contents[0].parts[0] && payload.contents[0].parts[0].text || '';
+            var sc = payload && payload.generationConfig && payload.generationConfig.responseSchema;
+            var t = await W.novaPrivGrok({ system: sys + (sc ? '\n\n只回傳一個 JSON 物件，欄位與型別必須符合這份 schema（Gemini 格式）：' + JSON.stringify(sc) : ''), user: usr, json: true, timeoutMs: 12000 });
+            if (!t) return null; var m = String(t).match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null;
+        } catch (e) { console.warn('[NovaPrivate] Grok 判斷失敗：', e.message); return null; }
     };
     W.createPrivateChat = function () {
         try {
