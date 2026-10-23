@@ -1,4 +1,6 @@
-/* nova-memsync.js — v1.0.0 (2026-10-11)
+/* nova-memsync.js — v1.1.0 (2026-10-23)
+ * 版本紀錄：v1.1.0 對標桌面 nova-memory-sync.js v1.1.0：對話摘要的「編輯」也能跨裝置同步（記憶圖譜可編輯對話摘要）。每筆摘要多 updated_at（本機編輯時間存 localStorage nova_mem_ep_edits），
+ *   同 id 兩邊內容不同時 updated_at 較新者贏；收到較新版本的一端覆寫本機（含向量）；刪除墓碑改比「建立或編輯時間的較大者」。新增 markEpisodicEdited(id)。沒編輯過的舊資料行為與 v1.0.0 相同。
  * 手機版「AI 記憶」跨裝置同步：與桌面版 nova-memory-sync.js v1.0.0 使用同一個 Drive 檔案 NOVA_Memory_Sync.json、同一份格式與同一套合併規則，
  *   讓桌面（sidecar SQLite）與手機（IndexedDB nova_memory_db）的記憶互通。
  * 格式對應（桌面 snake_case ↔ 手機 camelCase）：
@@ -17,7 +19,7 @@
   'use strict';
   var W = window, LS = W.localStorage;
   var FILENAME = 'NOVA_Memory_Sync.json', DAY = 86400000, TOMB_KEEP = 365 * DAY;
-  var K = { enabled: 'nova_mem_sync_enabled', tomb: 'nova_mem_tombstones', cleared: 'nova_mem_cleared_at', fileId: 'nova_mem_sync_file_id', last: 'nova_mem_sync_last_at', needVec: 'nova_mem_sync_need_vec', lastInfo: 'nova_mem_sync_last_info' };
+  var K = { enabled: 'nova_mem_sync_enabled', tomb: 'nova_mem_tombstones', cleared: 'nova_mem_cleared_at', epEdit: 'nova_mem_ep_edits', fileId: 'nova_mem_sync_file_id', last: 'nova_mem_sync_last_at', needVec: 'nova_mem_sync_need_vec', lastInfo: 'nova_mem_sync_last_info' };
   var inFlight = false;
 
   function num(x) { x = Number(x); return isFinite(x) ? x : 0; }
@@ -28,7 +30,7 @@
   function contentKey(c) { return String(c.page_md || '') + '\u0001' + String(c.fact || ''); }
   function normalize(b) {
     b = b || {}; var o = emptyBundle();
-    (Array.isArray(b.episodic) ? b.episodic : []).forEach(function (e) { if (!e || e.id == null) return; o.episodic.push({ id: String(e.id), session_id: e.session_id || '', summary: e.summary || '', topic: e.topic || '', entities: Array.isArray(e.entities) ? e.entities : [], vector: quantize(e.vector), created_at: num(e.created_at), source_range: e.source_range || '' }); });
+    (Array.isArray(b.episodic) ? b.episodic : []).forEach(function (e) { if (!e || e.id == null) return; o.episodic.push({ id: String(e.id), session_id: e.session_id || '', summary: e.summary || '', topic: e.topic || '', entities: Array.isArray(e.entities) ? e.entities : [], vector: quantize(e.vector), created_at: num(e.created_at), source_range: e.source_range || '', updated_at: num(e.updated_at) }); });
     (Array.isArray(b.core) ? b.core : []).forEach(function (c) { if (!c || !c.entity) return; o.core.push({ entity: String(c.entity), fact: c.fact || '', hit_count: num(c.hit_count) || 1, last_updated: num(c.last_updated), page_md: c.page_md || '', source_refs: Array.isArray(c.source_refs) ? c.source_refs : [] }); });
     (Array.isArray(b.entity_freq) ? b.entity_freq : []).forEach(function (f) { if (!f || !f.entity) return; o.entity_freq.push({ entity: String(f.entity), count_30d: num(f.count_30d), last_seen: num(f.last_seen) }); });
     if (b.tombstones && typeof b.tombstones === 'object') Object.keys(b.tombstones).forEach(function (k) { var t = num(b.tombstones[k]); if (t) o.tombstones[k] = t; });
@@ -48,8 +50,10 @@
     Object.keys(tomb).forEach(function (k) { if (now - tomb[k] > TOMB_KEEP) delete tomb[k]; });
     var cleared = Math.min(Math.max(a.clearedAt, b.clearedAt), now);
     var epMap = {};
-    a.episodic.concat(b.episodic).forEach(function (e) { var ex = epMap[e.id]; if (!ex || (!ex.vector.length && e.vector.length)) epMap[e.id] = e; });
-    var episodic = Object.keys(epMap).map(function (k) { return epMap[k]; }).filter(function (e) { var d = tomb['e:' + e.id]; if (d && d >= e.created_at) return false; if (e.created_at <= cleared) return false; return true; });
+    a.episodic.concat(b.episodic).forEach(function (e) { var ex = epMap[e.id]; if (!ex) { epMap[e.id] = e; return; }
+      if (e.updated_at !== ex.updated_at) { if (e.updated_at > ex.updated_at) epMap[e.id] = e; return; }   // v1.1.0：編輯過的較新版本贏（對標桌面 nova-memory-sync.js v1.1.0）
+      if (!ex.vector.length && e.vector.length) epMap[e.id] = e; });
+    var episodic = Object.keys(epMap).map(function (k) { return epMap[k]; }).filter(function (e) { var d = tomb['e:' + e.id], ts = Math.max(e.created_at, e.updated_at || 0); if (d && d >= ts) return false; if (ts <= cleared) return false; return true; });
     var conflicts = [], coreMap = {};
     a.core.forEach(function (c) { coreMap[c.entity] = c; });
     b.core.forEach(function (r) {
@@ -74,9 +78,9 @@
   /* ───────── 本機（IndexedDB nova_memory_db）↔ 同步格式 ───────── */
   function M() { return W.NovaMemory; }
   async function collectLocal() {
-    var r = await Promise.all([M()._getAll('episodic'), M()._getAll('core'), M()._getAll('entity_freq')]);
+    var r = await Promise.all([M()._getAll('episodic'), M()._getAll('core'), M()._getAll('entity_freq')]), edits = lsGet(K.epEdit, {});
     return normalize({
-      episodic: r[0].map(function (e) { return { id: e.id, session_id: e.sessionId, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, created_at: e.createdAt, source_range: e.sourceRange }; }),
+      episodic: r[0].map(function (e) { return { id: e.id, session_id: e.sessionId, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, created_at: e.createdAt, source_range: e.sourceRange, updated_at: num(edits[e.id]) }; }),
       core: r[1].map(function (c) { return { entity: c.entity, fact: c.fact, hit_count: c.hitCount, last_updated: c.lastUpdated, page_md: c.pageMd, source_refs: c.sourceRefs }; }),
       entity_freq: r[2].map(function (f) { return { entity: f.entity, count_30d: f.count30d, last_seen: f.lastSeen }; }),
       tombstones: lsGet(K.tomb, {}), clearedAt: num(lsGet(K.cleared, 0))
@@ -107,8 +111,8 @@
     var needVec = lsGet(K.needVec, []).filter(function (e) { return mergedCore[e]; }), needVecSet = {}; needVec.forEach(function (e) { needVecSet[e] = true; });
     var tasks = [];
     merged.episodic.forEach(function (e) {
-      var l = localEp[e.id]; if (l && (l.vector.length || !e.vector.length)) return;
-      tasks.push(async function () { await M()._put('episodic', { id: e.id, sessionId: e.session_id, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, createdAt: e.created_at, sourceRange: e.source_range }); res.epAdded++; });
+      var l = localEp[e.id]; if (l && (e.updated_at || 0) <= (l.updated_at || 0) && (l.vector.length || !e.vector.length)) return;
+      tasks.push(async function () { await M()._put('episodic', { id: e.id, sessionId: e.session_id, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, createdAt: e.created_at, sourceRange: e.source_range }); if (e.updated_at) { var ed = lsGet(K.epEdit, {}); ed[e.id] = e.updated_at; lsSet(K.epEdit, ed); } res.epAdded++; });
     });
     delEp.forEach(function (e) { tasks.push(async function () { await M()._del('episodic', e.id); res.epRemoved++; }); });
     merged.core.forEach(function (c) {
@@ -148,6 +152,7 @@
   function setEnabled(on) { try { LS.setItem(K.enabled, on ? '1' : '0'); } catch (e) {} }
   function touch() { try { if (W.NovaGoogle && W.NovaGoogle.schedule) W.NovaGoogle.schedule(); } catch (e) {} }
   function markEpisodicDeleted(id) { var t = lsGet(K.tomb, {}); t['e:' + id] = Date.now(); lsSet(K.tomb, t); touch(); }
+  function markEpisodicEdited(id) { var ed = lsGet(K.epEdit, {}); ed[id] = Date.now(); lsSet(K.epEdit, ed); touch(); }   // v1.1.0：圖譜編輯對話摘要後呼叫
   function markCoreDeleted(entity) { var t = lsGet(K.tomb, {}); t['c:' + entity] = Date.now(); lsSet(K.tomb, t); touch(); }
   function markClearedAll() { lsSet(K.cleared, Date.now()); lsSet(K.tomb, {}); lsSet(K.needVec, []); touch(); }
   function prune(t, now) { var o = {}; Object.keys(t || {}).forEach(function (k) { if (now - t[k] <= TOMB_KEEP) o[k] = t[k]; }); return o; }
@@ -202,7 +207,7 @@
     } finally { inFlight = false; }
   }
 
-  W.NovaMemSync = { version: '1.0.0', isEnabled: isEnabled, setEnabled: setEnabled, sync: sync, describe: describe, touch: touch, markEpisodicDeleted: markEpisodicDeleted, markCoreDeleted: markCoreDeleted, markClearedAll: markClearedAll, lastInfo: function () { return lsGet(K.lastInfo, null); },
+  W.NovaMemSync = { version: '1.1.0', isEnabled: isEnabled, setEnabled: setEnabled, sync: sync, describe: describe, touch: touch, markEpisodicDeleted: markEpisodicDeleted, markEpisodicEdited: markEpisodicEdited, markCoreDeleted: markCoreDeleted, markClearedAll: markClearedAll, lastInfo: function () { return lsGet(K.lastInfo, null); },
     mergeBundles: mergeBundles, normalize: normalize };
   try { W.addEventListener('nova-memory-changed', touch); } catch (e) {}
 })();

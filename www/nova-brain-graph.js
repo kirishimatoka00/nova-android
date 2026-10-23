@@ -2,6 +2,7 @@
    NOVA Brain Graph（手機版 v2.0.0；移植自桌面 v1.3.0，AI 大腦狀態組織圖）
    ------------------------------------------------------------
    版本紀錄：
+   手機 v2.1.1 (2026-10-23) - 對標桌面 v1.4.0：編輯對話摘要改成「重新向量化成功才儲存」，並記錄編輯時間讓記憶同步把編輯帶到其他裝置（nova-memsync.js v1.1.0）。
    手機 v2.1.0 (2026-10-23) - ① 修正「AI 思考」（與檔案卡）圖層取消勾選後選項消失、無法再勾回來：圖層按鈕的顯示條件改看原始資料（有思考／檔案卡就顯示），不再看目前畫得出幾個節點；② 點「對話摘要」節點的詳情新增 ✏️ 編輯（主題、摘要內容、提到的實體）與 🗑 刪除；改完圖譜即時重畫（寫入／刪除由 index 膠水層的 episodicOps 負責）。
    手機 v2.0.0 (2026-10-17) - 整套移植桌面 v1.3.0：中心「你」＋AI 兩顆核心、五層同心殼層（依活躍度）、AI 思考節點、紅黃圈提醒、相似度門檻；介面改手機版（圖層標籤可橫滑、資訊改底部面板）。無 WebGL 時退回舊 2D 圖。
    以下為桌面版紀錄：
@@ -1005,16 +1006,17 @@
       isLight: function () { return document.documentElement.classList.contains('theme-light'); },
       collect: collectForBrain,
       episodicOps: {   // v2.1.0：對話摘要編輯／刪除（主記憶；跟「設定→記憶」的刪除一樣會標記雲端同步）
-        update: async function (id, f) {
+        update: async function (id, f) {   // 對標桌面 v3.79.2：編輯＝重新向量化後同 id 覆寫；向量化失敗就不儲存
           var M = W.NovaMemory; if (!M || !M._getOne) throw new Error('記憶模組尚未就緒');
-          var r = await M._getOne('episodic', id); if (!r) throw new Error('找不到這筆摘要（可能已被刪除）');
-          var changedText = r.summary !== f.summary || (r.topic || '') !== f.topic;
-          r.topic = f.topic; r.summary = f.summary; r.entities = f.entities;
-          if (changedText && typeof W.novaKbEmbedDocumentBatch === 'function' && W.appState && appState.keys && appState.keys.gemini) {   // 內容變了 → 重新算向量，檢索才準；失敗就保留舊向量
-            try { var v = await W.novaKbEmbedDocumentBatch(['task: search result | title: ' + (f.topic || '對話摘要') + ' | text: ' + f.summary]); if (v && v[0]) r.vector = v[0]; } catch (e) { console.warn('[腦圖] 摘要重新嵌入失敗，沿用舊向量', e); }
-          }
+          var r = await M._getOne('episodic', id); if (!r) throw new Error('找不到這則對話摘要（可能已被刪除，請按「重新讀取」）');
+          var topic = String(f.topic || '').trim(), summary = String(f.summary || '').trim();
+          if (!summary) throw new Error('摘要內容不能是空的');
+          if (typeof W.novaKbEmbedDocumentBatch !== 'function' || !(W.appState && appState.keys && appState.keys.gemini)) throw new Error('需要 Gemini 金鑰才能重新向量化，這次沒有儲存');
+          var vec = await Promise.race([W.novaKbEmbedDocumentBatch(['task: search result | title: ' + (topic || '對話摘要') + ' | text: ' + summary]), new Promise(function (_, rej) { setTimeout(function () { rej(new Error('向量化逾時')); }, 15000); })]);
+          if (!vec || !vec[0]) throw new Error('向量化失敗，這次沒有儲存');
+          r.topic = topic; r.summary = summary; r.entities = Array.isArray(f.entities) ? f.entities.slice(0, 8) : (r.entities || []); r.vector = vec[0];
           await M._put('episodic', r);
-          try { if (W.NovaMemSync && W.NovaMemSync.touch) W.NovaMemSync.touch(); } catch (e) {}
+          try { if (W.NovaMemSync && W.NovaMemSync.markEpisodicEdited) W.NovaMemSync.markEpisodicEdited(id); else if (W.NovaMemSync && W.NovaMemSync.touch) W.NovaMemSync.touch(); } catch (e) {}
           try { W.dispatchEvent(new Event('nova-memory-changed')); } catch (e) {}
         },
         remove: async function (id) {

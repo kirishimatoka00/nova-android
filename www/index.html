@@ -2245,8 +2245,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.90';
+        const NOVA_APP_VERSION = '2.6.91';
         const NOVA_CHANGELOG = [
+            { v: '2.6.91', date: '2026-10-23', notes: [
+                '對標桌面版 v3.79.2：記憶圖譜編輯對話摘要改為「重新向量化成功才儲存」（沒有 Gemini 金鑰或失敗就提示且不儲存），編輯後會記錄編輯時間，由記憶同步（nova-memsync.js v1.1.0，對標桌面 nova-memory-sync.js v1.1.0）把編輯帶到其他裝置：同一筆摘要兩邊內容不同時，編輯時間較新者贏；刪除墓碑改比「建立或編輯時間較大者」，編輯後才刪不會被舊版本復活。（nova-brain-graph.js v2.1.1）'
+            ] },
             { v: '2.6.90', date: '2026-10-23', notes: [
                 '記憶圖譜：修正「AI 思考」圖層取消勾選後選項就消失、無法再勾回來（檔案卡圖層同樣問題）——圖層按鈕改依原始資料顯示，不再依目前畫出的節點數。',
                 '記憶圖譜：點「對話摘要」節點，詳情裡可直接 ✏️ 編輯（主題、摘要內容、提到的實體；內容改了會重算向量）或 🗑 刪除（會標記雲端記憶同步），圖譜即時更新。（nova-brain-graph.js v2.1.0）'
@@ -21214,8 +21217,8 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.2"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.2"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
-<script src="./nova-brain-graph.js?v=2.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
+<script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>
