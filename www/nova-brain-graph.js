@@ -2,6 +2,7 @@
    NOVA Brain Graph（手機版 v2.0.0；移植自桌面 v1.3.0，AI 大腦狀態組織圖）
    ------------------------------------------------------------
    版本紀錄：
+   手機 v2.1.0 (2026-10-23) - ① 修正「AI 思考」（與檔案卡）圖層取消勾選後選項消失、無法再勾回來：圖層按鈕的顯示條件改看原始資料（有思考／檔案卡就顯示），不再看目前畫得出幾個節點；② 點「對話摘要」節點的詳情新增 ✏️ 編輯（主題、摘要內容、提到的實體）與 🗑 刪除；改完圖譜即時重畫（寫入／刪除由 index 膠水層的 episodicOps 負責）。
    手機 v2.0.0 (2026-10-17) - 整套移植桌面 v1.3.0：中心「你」＋AI 兩顆核心、五層同心殼層（依活躍度）、AI 思考節點、紅黃圈提醒、相似度門檻；介面改手機版（圖層標籤可橫滑、資訊改底部面板）。無 WebGL 時退回舊 2D 圖。
    以下為桌面版紀錄：
    v1.3.0 - ① 拖曳核心時整張圖譜跟著移動：兩顆核心綁在一起平移，殼層目標位置與導引圈都以兩核心中點為圓心，放開後停在新位置；
@@ -233,7 +234,7 @@
     var epiKey = Object.create(null);
     if (layers.episodic) (input.episodic || []).forEach(function (e) {
       var k = 'epi:' + e.id; epiKey[e.id] = k;
-      addNode({ key: k, type: 'episodic', name: e.topic || '(對話摘要)', ts: Number(e.createdAt) || 0, group: '', summary: e.summary || '', ref: e.id, hits: 0 });
+      addNode({ key: k, type: 'episodic', name: e.topic || '(對話摘要)', ts: Number(e.createdAt) || 0, group: '', summary: e.summary || '', entities: (e.entities || []).slice(), ref: e.id, hits: 0 });
     });
 
     var skillKey = Object.create(null);
@@ -427,7 +428,7 @@
     el.style.background = colors.bg;
 
     function renderLayers() {
-      $('#nbg-layers').innerHTML = Object.keys(TYPE_META).filter(function (t) { return t !== 'core' && (t !== 'card' || (ui.data && ui.data.stats.nodes.card)) && (t !== 'thought' || (ui.data && ui.data.stats.nodes.thought)); }).map(function (t) {
+      $('#nbg-layers').innerHTML = Object.keys(TYPE_META).filter(function (t) { return t !== 'core' && (t !== 'card' || (ui.data && ui.data.stats.nodes.card) || (ui.input && (ui.input.cards || []).length)) && (t !== 'thought' || (ui.input && (ui.input.thoughts || []).length) || (ui.data && ui.data.stats.nodes.thought)); }).map(function (t) {
         var n = ui.data ? (ui.data.stats.nodes[t] || 0) : 0;
         return '<label style="flex:0 0 auto;display:flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;border:1px solid ' + TYPE_META[t].color + ';cursor:pointer;color:' + TYPE_META[t].color + ';">'
           + '<input type="checkbox" data-layer="' + t + '"' + (ui.layers[t] ? ' checked' : '') + '>' + TYPE_META[t].label + (ui.layers[t] ? ' ' + n : '') + '</label>';
@@ -481,7 +482,8 @@
       });
       var body = '';
       if (n.type === 'entity') body = '<pre style="white-space:pre-wrap;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:8px;max-height:240px;overflow:auto;margin:6px 0;">' + esc((n.page || n.fact || '').slice(0, 2000)) + '</pre>';
-      else if (n.type === 'episodic') body = '<div style="margin:6px 0;color:#cbd5e1;">' + esc((n.summary || '').slice(0, 800)) + '</div>';
+      else if (n.type === 'episodic') body = '<div style="margin:6px 0;color:#cbd5e1;white-space:pre-wrap;line-height:1.6;">' + esc(n.summary || '') + '</div>' + ((n.entities && n.entities.length) ? '<div style="color:#94a3b8;">提到：' + esc(n.entities.join('、')) + '</div>' : '')
+        + (D.episodicOps ? '<div style="display:flex;gap:8px;margin:8px 0;"><button id="nbg-epi-edit" style="flex:1;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;background:#0ea5e9;color:#fff;font-weight:700;">✏️ 編輯</button><button id="nbg-epi-del" style="flex:1;padding:8px 12px;border-radius:8px;border:none;cursor:pointer;background:#b91c1c;color:#fff;font-weight:700;">🗑 刪除</button></div>' : '');
       else if (n.type === 'thought') body = '<div style="margin:6px 0;padding:8px;border-radius:8px;background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.4);color:#fde68a;line-height:1.6;">' + esc(n.body || '') + '</div><div style="color:#94a3b8;">叢集：' + esc(n.group) + (n.adopted ? '　✅ 已採納為正式記憶' : '　（AI 推演，尚未採納）') + '</div>';
       else if (n.type === 'skill') body = '<div style="margin:6px 0;color:#cbd5e1;">' + esc(n.desc) + '</div>';
       else if (n.type === 'card') body = '<pre style="white-space:pre-wrap;background:#020617;border:1px solid #1e293b;border-radius:8px;padding:8px;max-height:200px;overflow:auto;margin:6px 0;">' + esc((n.body || '').slice(0, 1200)) + '</pre>';
@@ -506,6 +508,40 @@
         else if (n.type === 'skill') D.open.skill(n.ref);
       };
       box.querySelectorAll('[data-nb]').forEach(function (d) { d.onclick = function () { focus(d.getAttribute('data-nb')); }; });
+      var eb = box.querySelector('#nbg-epi-edit'); if (eb) eb.onclick = function () { editEpisodic(n); };
+      var db = box.querySelector('#nbg-epi-del'); if (db) db.onclick = function () { deleteEpisodic(n); };
+    }
+    // v2.1.0：對話摘要節點可直接編輯／刪除（點節點 → 詳情 → ✏️ 編輯／🗑 刪除）
+    function editEpisodic(n) {
+      var box = $('#nbg-detail'), inp = 'width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #334155;background:#020617;color:#f1f5f9;font-size:14px;';
+      box.innerHTML = '<div style="color:' + TYPE_META.episodic.color + ';font-size:0.72rem;">編輯對話摘要</div>'
+        + '<div style="margin-top:6px;color:#94a3b8;">主題</div><input id="nbg-e-topic" style="' + inp + '" value="' + esc(n.name === '(對話摘要)' ? '' : n.name) + '">'
+        + '<div style="margin-top:8px;color:#94a3b8;">摘要內容</div><textarea id="nbg-e-sum" rows="7" style="' + inp + 'line-height:1.5;">' + esc(n.summary || '') + '</textarea>'
+        + '<div style="margin-top:8px;color:#94a3b8;">提到的實體（用逗號分隔，會連到同名的記憶實體）</div><input id="nbg-e-ents" style="' + inp + '" value="' + esc((n.entities || []).join('，')) + '">'
+        + '<div style="display:flex;gap:8px;margin-top:10px;"><button id="nbg-e-cancel" style="flex:1;padding:8px;border-radius:8px;border:none;background:#334155;color:#e2e8f0;cursor:pointer;">取消</button><button id="nbg-e-save" style="flex:2;padding:8px;border-radius:8px;border:none;background:#0ea5e9;color:#fff;font-weight:700;cursor:pointer;">儲存</button></div>';
+      box.querySelector('#nbg-e-cancel').onclick = function () { select(n); };
+      box.querySelector('#nbg-e-save').onclick = async function () {
+        var topic = box.querySelector('#nbg-e-topic').value.trim(), sum = box.querySelector('#nbg-e-sum').value.trim();
+        var ents = box.querySelector('#nbg-e-ents').value.split(/[,，、\n]/).map(function (x) { return x.trim(); }).filter(Boolean).slice(0, 10);
+        if (!sum) { toast('摘要內容不能是空的'); return; }
+        var b = box.querySelector('#nbg-e-save'); b.disabled = true; b.textContent = '儲存中…';
+        try {
+          await D.episodicOps.update(n.ref, { topic: topic, summary: sum, entities: ents });
+          var it = (ui.input.episodic || []).find(function (x) { return String(x.id) === String(n.ref); });
+          if (it) { it.topic = topic; it.summary = sum; it.entities = ents; }
+          var key = n.key; rebuild(); toast('✅ 已儲存');
+          var nn = ui.data.nodes.find(function (x) { return x.key === key; }); if (nn) select(nn); else $('#nbg-detail').style.display = 'none';
+        } catch (e) { toast('❌ 儲存失敗：' + (e.message || e), 4000); b.disabled = false; b.textContent = '儲存'; }
+      };
+    }
+    async function deleteEpisodic(n) {
+      var ok = (typeof window.showConfirm === 'function') ? await window.showConfirm('確定刪除這筆對話摘要「' + (n.name || '').slice(0, 30) + '」？無法復原。') : true;
+      if (!ok) return;
+      try {
+        await D.episodicOps.remove(n.ref);
+        ui.input.episodic = (ui.input.episodic || []).filter(function (x) { return String(x.id) !== String(n.ref); });
+        $('#nbg-detail').style.display = 'none'; ui.selected = null; rebuild(); toast('已刪除');
+      } catch (e) { toast('❌ 刪除失敗：' + (e.message || e), 4000); }
     }
     function renderIssueList() {
       var box = $('#nbg-issuelist');
@@ -968,6 +1004,26 @@
       loadLib: ensure3D,
       isLight: function () { return document.documentElement.classList.contains('theme-light'); },
       collect: collectForBrain,
+      episodicOps: {   // v2.1.0：對話摘要編輯／刪除（主記憶；跟「設定→記憶」的刪除一樣會標記雲端同步）
+        update: async function (id, f) {
+          var M = W.NovaMemory; if (!M || !M._getOne) throw new Error('記憶模組尚未就緒');
+          var r = await M._getOne('episodic', id); if (!r) throw new Error('找不到這筆摘要（可能已被刪除）');
+          var changedText = r.summary !== f.summary || (r.topic || '') !== f.topic;
+          r.topic = f.topic; r.summary = f.summary; r.entities = f.entities;
+          if (changedText && typeof W.novaKbEmbedDocumentBatch === 'function' && W.appState && appState.keys && appState.keys.gemini) {   // 內容變了 → 重新算向量，檢索才準；失敗就保留舊向量
+            try { var v = await W.novaKbEmbedDocumentBatch(['task: search result | title: ' + (f.topic || '對話摘要') + ' | text: ' + f.summary]); if (v && v[0]) r.vector = v[0]; } catch (e) { console.warn('[腦圖] 摘要重新嵌入失敗，沿用舊向量', e); }
+          }
+          await M._put('episodic', r);
+          try { if (W.NovaMemSync && W.NovaMemSync.touch) W.NovaMemSync.touch(); } catch (e) {}
+          try { W.dispatchEvent(new Event('nova-memory-changed')); } catch (e) {}
+        },
+        remove: async function (id) {
+          var M = W.NovaMemory; if (!M || !M._del) throw new Error('記憶模組尚未就緒');
+          await M._del('episodic', id);
+          try { if (W.NovaMemSync && W.NovaMemSync.markEpisodicDeleted) W.NovaMemSync.markEpisodicDeleted(id); } catch (e) {}
+          try { W.dispatchEvent(new Event('nova-memory-changed')); } catch (e) {}
+        }
+      },
       open: {
         note: function (id) { if (W.openNoteEdit) W.openNoteEdit(String(id)); },
         skill: function (name) {

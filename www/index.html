@@ -2245,8 +2245,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.89';
+        const NOVA_APP_VERSION = '2.6.90';
         const NOVA_CHANGELOG = [
+            { v: '2.6.90', date: '2026-10-23', notes: [
+                '記憶圖譜：修正「AI 思考」圖層取消勾選後選項就消失、無法再勾回來（檔案卡圖層同樣問題）——圖層按鈕改依原始資料顯示，不再依目前畫出的節點數。',
+                '記憶圖譜：點「對話摘要」節點，詳情裡可直接 ✏️ 編輯（主題、摘要內容、提到的實體；內容改了會重算向量）或 🗑 刪除（會標記雲端記憶同步），圖譜即時更新。（nova-brain-graph.js v2.1.0）'
+            ] },
             { v: '2.6.89', date: '2026-10-22', notes: [
                 '私密對話：語意判斷與任何偵測一律不經 Gemini／OpenAI／Jev。通用意圖分類器、排程／喚醒連結判斷改用 Grok（沒有 Grok 金鑰就不判斷）；智慧分派（含專家）、技能比對在私密對話不執行；Jev 所有用途在私密對話一律停用（nova-jev.js v1.5.1）；搜尋工具改用 Grok 搜尋。聊天本身仍用你選的模型。',
                 '私密記憶完全用 Grok：回覆後摘要、長期事實固化、文件事實抽取都呼叫 Grok（沒有 Grok 金鑰就不處理，不退回 Gemini）；不再呼叫嵌入模型，檢索改在手機本機以關鍵字比對（nova-memory.js v1.5.0、nova-private.js v1.2.0）。主記憶不受影響。',
@@ -21212,6 +21216,6 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 </script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.0.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.0.2"></script><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
-<script src="./nova-brain-graph.js?v=2.0.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
+<script src="./nova-brain-graph.js?v=2.1.0"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>
