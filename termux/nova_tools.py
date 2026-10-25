@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-nova_tools.py v1.0.0 — NOVA Termux 橋接的選用工具：檔案轉 Markdown（markitdown）、影片字幕（yt-dlp）。
+nova_tools.py v1.1.0（PDF 改用 pdfminer 純文字：markitdown 的 PDF 轉換會把版面線條誤判成表格，產品規格書之類的 PDF 會變成一堆破碎的 | --- | 表格） — NOVA Termux 橋接的選用工具：檔案轉 Markdown（markitdown）、影片字幕（yt-dlp）。
 移植自 NOVA Desktop python-engine（v0.8.50–0.8.53）。markitdown／yt-dlp 都是選用套件，沒裝時只影響對應端點。
 由 nova_bridge.py 匯入；本檔不單獨執行。
 """
@@ -108,6 +108,19 @@ def _markitdown_version():
 
 
 
+def _pdf_plain_text(path):
+    """PDF → 純文字段落（pdfminer，依閱讀順序）。失敗或沒有文字回空字串（呼叫端再退回 markitdown）。"""
+    try:
+        from pdfminer.high_level import extract_text
+        t = extract_text(path) or ""
+    except Exception:
+        return ""
+    t = t.replace("\x0c", "\n\n")
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
 def markitdown_status():
     md = _markitdown_get()
     return {"available": md is not None, "version": _markitdown_version() if md is not None else "",
@@ -142,8 +155,12 @@ def markitdown_convert(name, data_base64, max_chars=400000):
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
             tf.write(raw)
             tmp_path = tf.name
-        res = md.convert(tmp_path)
-        text = getattr(res, "markdown", None) or getattr(res, "text_content", "") or ""
+        text = ""
+        if ext == ".pdf":
+            text = _pdf_plain_text(tmp_path)
+        if not text.strip():
+            res = md.convert(tmp_path)
+            text = getattr(res, "markdown", None) or getattr(res, "text_content", "") or ""
     except Exception as e:
         msg = str(e)
         m = re.search(r"markitdown\[([^\]]+)\]", msg)

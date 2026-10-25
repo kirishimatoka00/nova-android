@@ -2248,8 +2248,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.94';
+        const NOVA_APP_VERSION = '2.6.95';
         const NOVA_CHANGELOG = [
+            { v: '2.6.95', date: '2026-10-26', notes: [
+                '修正匯入 PDF 格式跑掉（產品規格書之類的 PDF 被切成一堆破碎的 | --- | 表格、文字錯位）：PDF 改用 pdfminer 依閱讀順序抽成純文字段落，抽不到文字才退回 markitdown（橋接用的 nova_tools.py v1.1.0）。代價：PDF 內的表格不再轉成 Markdown 表格，而是逐行文字。Word／PowerPoint 不受影響。',
+                '需在 Termux 重新執行安裝指令更新 nova_tools.py。'
+            ] },
             { v: '2.6.94', date: '2026-10-26', notes: [
                 '修正 Termux 安裝 markitdown 卡在編譯 pandas（手機上要編譯很久還常失敗）：改用 --no-deps 只安裝 Word／PowerPoint／PDF 需要的純 Python 套件，不裝 pandas 與 onnxruntime（magika 由內建替身頂替）。代價：markitdown 不處理 .xlsx／.xls（Excel 仍由 App 內建解析讀取）。（nova-termux.js v1.1.2；橋接 /pip 支援 nodeps；install.sh v1.2.2）',
                 '注意：橋接程式 nova_bridge.py 有更新，需在 Termux 重新執行安裝指令。'
