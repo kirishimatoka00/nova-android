@@ -4,7 +4,7 @@
 NOVA Termux Bridge v1.1.0
 讓手機上的 NOVA（Android App）把 Python／指令送到 Termux 執行，結果回傳給 NOVA。
 核心只用 Python 標準函式庫。選用工具（檔案轉 Markdown、影片字幕）在 nova_tools.py，需另外 pip 安裝 markitdown／yt-dlp。
-v1.1.0：新增 /tools/status、/markitdown、/subtitles（App v2.6.92）。
+v1.1.0（/pip 另支援 upgrade、nodeps）：新增 /tools/status、/markitdown、/subtitles（App v2.6.92）。
 
 安全設計（這個服務等於把手機的 Termux 交給持有 token 的人，請務必留意）：
   1. 只監聽 127.0.0.1（手機本機），區網與外部連不到。
@@ -239,7 +239,7 @@ class H(BaseHTTPRequestHandler):
                 pk = [str(x) for x in (body.get("packages") or []) if str(x).strip()]
                 if not pk or any(x.startswith("-") for x in pk):
                     return self._send(400, {"ok": False, "error": "packages 不可為空，也不可以 - 開頭"})
-                return self._send(200, run_proc(argv=[sys.executable, "-m", "pip", "install", "--disable-pip-version-check"] + (["--upgrade"] if body.get("upgrade") else []) + pk, timeout=body.get("timeout") or 300))
+                return self._send(200, run_proc(argv=[sys.executable, "-m", "pip", "install", "--disable-pip-version-check"] + (["--upgrade"] if body.get("upgrade") else []) + (["--no-deps"] if body.get("nodeps") else []) + pk, timeout=body.get("timeout") or 300))
             if path in ("/markitdown", "/subtitles"):
                 if nova_tools is None:
                     return self._send(501, {"ok": False, "error": "nova_tools.py 沒有載入，請在 Termux 重新執行 install.sh 更新"})

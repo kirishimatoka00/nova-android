@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-termux.js — NOVA Android「執行 Python／指令」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.1
+   版本：v1.1.2
    版本紀錄：
+   v1.1.2 - App v2.6.94。安裝 markitdown 改 --no-deps＋只裝純 Python 相依，不再編譯 pandas／onnxruntime。
    v1.1.1 - App v2.6.93。安裝文件／影片工具前，先用 pkg 安裝預編譯的 python-lxml／numpy／pillow／cryptography 與 libxml2／libxslt（pip 在 Termux 編譯 lxml 會失敗）。
    v1.1.0 - App v2.6.92。新增橋接選用工具的呼叫：toolPost(path, body, timeoutMs)（給 nova-docs.js 打 /markitdown、/subtitles）、toolsStatus()（GET /tools/status）、
             installTools(upgradeYtdlp)（用 /pip 安裝 markitdown 與 yt-dlp）；設定頁 Termux 橋接卡片新增「文件／影片工具」狀態列與「安裝文件／影片工具」「更新 yt-dlp」按鈕。
@@ -143,7 +144,8 @@
         if (upgradeYtdlp) out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], upgrade: true, timeout: 600 }, 620000));
         else {
             out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], timeout: 600 }, 620000));
-            out.push(await call('POST', '/pip', { packages: ['markitdown[docx,pptx,xlsx,xls,pdf]'], timeout: 600 }, 620000));
+            out.push(await call('POST', '/pip', { packages: ['markitdown'], nodeps: true, timeout: 600 }, 620000));
+            out.push(await call('POST', '/pip', { packages: ['beautifulsoup4', 'defusedxml', 'markdownify', 'requests', 'charset-normalizer', 'mammoth', 'python-pptx', 'pdfminer.six', 'pdfplumber', 'openpyxl'], timeout: 600 }, 620000));
         }
         return out;
     }
@@ -272,6 +274,6 @@
         var a = register(), b = injectCard();
         if ((!a || !b) && n < 40) setTimeout(function () { boot(n + 1); }, 500);
     }
-    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, toolPost: toolPost, toolsStatus: toolsStatus, installTools: installTools, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.1.1' };
+    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, toolPost: toolPost, toolsStatus: toolsStatus, installTools: installTools, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.1.2' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();

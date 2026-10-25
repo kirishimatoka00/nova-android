@@ -1,6 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # NOVA Termux Bridge 安裝／更新腳本（在 Termux 裡執行；重複執行就是更新，token 會保留）
 # 版本紀錄：
+#   v1.2.2 - App v2.6.94。markitdown 改 --no-deps＋只裝純 Python 相依（不裝 pandas／onnxruntime，避免在手機上編譯卡很久）；Excel 檔仍由 App 內建的解析處理。
 #   v1.2.1 - App v2.6.93。修正 markitdown 在 Termux 安裝失敗（lxml 編譯失敗）：改先用 pkg 安裝預編譯的 python-lxml／python-numpy／python-pillow／python-cryptography／libxml2／libxslt 與編譯工具，再 pip 安裝。
 #   v1.2.0 - App v2.6.92。多下載 nova_tools.py（檔案轉 Markdown、影片字幕）；嘗試 pip 安裝 markitdown 與 yt-dlp（失敗不影響橋接，之後可在 NOVA 設定按「安裝文件／影片工具」重試）。
 #   v1.1.0 - App v2.6.76。先 pkg update／upgrade（含重試；修 curl 與 openssl 版本不一致的連結錯誤）；套件安裝失敗時重裝 openssl／curl 再試；
@@ -41,7 +42,8 @@ echo "▶ 安裝選用工具（markitdown：docx／pptx／xlsx／pdf 轉文字�
 pkg install -y libxml2 libxslt libjpeg-turbo clang make pkg-config binutils >/dev/null 2>&1 || true
 for P in python-lxml python-numpy python-pillow python-cryptography; do pkg install -y "$P" >/dev/null 2>&1 || echo "  （pkg 沒有 $P，略過）"; done
 python -m pip install --disable-pip-version-check "yt-dlp[default]" || python -m pip install --disable-pip-version-check yt-dlp || echo "⚠️ yt-dlp 安裝失敗（之後可在 NOVA 設定按「安裝文件／影片工具」重試）"
-python -m pip install --disable-pip-version-check "markitdown[docx,pptx,xlsx,xls,pdf]" || python -m pip install --disable-pip-version-check "markitdown[docx,pptx,xlsx]" || echo "⚠️ markitdown 安裝失敗（之後可在 NOVA 設定按「安裝文件／影片工具」重試）"
+# markitdown：Termux 上 pandas／onnxruntime 幾乎一定要自己編譯（要等很久且常失敗），所以不裝它們——--no-deps 後只補 Word／PPT／PDF 需要的純 Python 套件（magika 由 nova_tools.py 內建替身頂替）
+python -m pip install --disable-pip-version-check --no-deps markitdown && python -m pip install --disable-pip-version-check beautifulsoup4 defusedxml markdownify requests charset-normalizer mammoth python-pptx "pdfminer.six" pdfplumber openpyxl || echo "⚠️ markitdown 安裝失敗（之後可在 NOVA 設定按「安裝文件／影片工具」重試）"
 if [ ! -s "$D/token" ]; then
   python -c "import secrets;print(secrets.token_urlsafe(24))" > "$D/token"
 fi

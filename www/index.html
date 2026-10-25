@@ -2248,8 +2248,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.93';
+        const NOVA_APP_VERSION = '2.6.94';
         const NOVA_CHANGELOG = [
+            { v: '2.6.94', date: '2026-10-26', notes: [
+                '修正 Termux 安裝 markitdown 卡在編譯 pandas（手機上要編譯很久還常失敗）：改用 --no-deps 只安裝 Word／PowerPoint／PDF 需要的純 Python 套件，不裝 pandas 與 onnxruntime（magika 由內建替身頂替）。代價：markitdown 不處理 .xlsx／.xls（Excel 仍由 App 內建解析讀取）。（nova-termux.js v1.1.2；橋接 /pip 支援 nodeps；install.sh v1.2.2）',
+                '注意：橋接程式 nova_bridge.py 有更新，需在 Termux 重新執行安裝指令。'
+            ] },
             { v: '2.6.93', date: '2026-10-26', notes: [
                 '修正 markitdown 在 Termux 安裝失敗（Failed to build lxml）：安裝指令與設定頁「安裝文件／影片工具」改成先用 pkg 安裝預編譯的 python-lxml、python-numpy、python-pillow、python-cryptography 與 libxml2／libxslt，再 pip 安裝（nova-termux.js v1.1.1；install.sh v1.2.1）。',
                 '若設定頁顯示「橋接程式太舊」，要先在 Termux 重新執行安裝指令（會更新到橋接 v1.1.0）。'
@@ -21242,7 +21246,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.1"></script><script src="./nova-docs.js?v=1.0.0"></script><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
