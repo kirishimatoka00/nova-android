@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-termux.js — NOVA Android「執行 Python／指令」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.1.1
    版本紀錄：
+   v1.1.1 - App v2.6.93。安裝文件／影片工具前，先用 pkg 安裝預編譯的 python-lxml／numpy／pillow／cryptography 與 libxml2／libxslt（pip 在 Termux 編譯 lxml 會失敗）。
    v1.1.0 - App v2.6.92。新增橋接選用工具的呼叫：toolPost(path, body, timeoutMs)（給 nova-docs.js 打 /markitdown、/subtitles）、toolsStatus()（GET /tools/status）、
             installTools(upgradeYtdlp)（用 /pip 安裝 markitdown 與 yt-dlp）；設定頁 Termux 橋接卡片新增「文件／影片工具」狀態列與「安裝文件／影片工具」「更新 yt-dlp」按鈕。
    v1.0.2 - App v2.6.78。修正還原備份後設定卡片仍是空白的：還原只寫 localStorage，已建好的卡片沒更新，之後 syncFromDom 反而用空值蓋掉剛還原的 Token。
@@ -138,6 +139,7 @@
     async function installTools(upgradeYtdlp) {
         if (!configured()) throw new Error('安裝套件需要 Termux 橋接');
         var out = [];
+        if (!upgradeYtdlp) { try { await call('POST', '/shell', { cmd: 'pkg install -y libxml2 libxslt libjpeg-turbo clang make pkg-config binutils python-lxml python-numpy python-pillow python-cryptography 2>&1 | tail -5', timeout: 600 }, 620000); } catch (e) { /* 繼續嘗試 pip */ } }
         if (upgradeYtdlp) out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], upgrade: true, timeout: 600 }, 620000));
         else {
             out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], timeout: 600 }, 620000));
@@ -270,6 +272,6 @@
         var a = register(), b = injectCard();
         if ((!a || !b) && n < 40) setTimeout(function () { boot(n + 1); }, 500);
     }
-    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, toolPost: toolPost, toolsStatus: toolsStatus, installTools: installTools, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.1.0' };
+    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, toolPost: toolPost, toolsStatus: toolsStatus, installTools: installTools, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.1.1' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();
