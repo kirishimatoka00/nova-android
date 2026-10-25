@@ -2248,8 +2248,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.95';
+        const NOVA_APP_VERSION = '2.6.96';
         const NOVA_CHANGELOG = [
+            { v: '2.6.96', date: '2026-10-26', notes: [
+                '完整備份現在會把聊天裡的圖片本體一起存進備份檔（新區段 images；最多約 250MB，新的優先），重新安裝後載入備份，圖片會寫回並重新顯示在對話中。舊安裝留下的圖片檔重裝後讀不到，還原時若無法寫回原路徑，會改存新檔名並自動更新訊息裡的圖片路徑。備份完成的提示會顯示附了幾張圖片。',
+                '注意：背景自動快照（NOVA_Live.json）不附圖片（避免檔案暴增）；舊版備份檔本來就沒有圖片本體，無法補回。要保留圖片請在重裝前用「完整備份」重新備份一次。備份檔含圖片會變大，還原時需要較多記憶體。'
+            ] },
             { v: '2.6.95', date: '2026-10-26', notes: [
                 '修正匯入 PDF 格式跑掉（產品規格書之類的 PDF 被切成一堆破碎的 | --- | 表格、文字錯位）：PDF 改用 pdfminer 依閱讀順序抽成純文字段落，抽不到文字才退回 markitdown（橋接用的 nova_tools.py v1.1.0）。代價：PDF 內的表格不再轉成 Markdown 表格，而是逐行文字。Word／PowerPoint 不受影響。',
                 '需在 Termux 重新執行安裝指令更新 nova_tools.py。'
@@ -3407,7 +3411,27 @@ async function encodeMp3(audioBuffer) {
                 return count;
             }
 
-            return { IMG_DIR, save, resolveSrc, exists, readAsDataUri, remove, exportImages, importImages };
+            // v2.6.96：從完整備份的 images 區段還原圖片。重新安裝後舊檔案屬於舊安裝、寫不進去時，改存成新檔名並回傳對照表（舊 ref → 新 ref）
+            async function restoreList(list, progress) {
+                const CapFS = _getCapFS(), remap = {}; let ok = 0, fail = 0;
+                if (!CapFS || !Array.isArray(list)) return { remap, ok, fail: list ? list.length : 0 };
+                for (let i = 0; i < list.length; i++) {
+                    const it = list[i]; if (!it || !it.ref || !it.b64) { fail++; continue; }
+                    let wrote = false;
+                    try { await CapFS.writeFile({ path: it.ref, data: it.b64, directory: 'DOCUMENTS', recursive: true }); wrote = true; }
+                    catch (e1) {
+                        const base = String(it.ref).split('/').pop();
+                        const alt = IMG_DIR + '/r_' + Date.now().toString(36) + '_' + base;
+                        try { await CapFS.writeFile({ path: alt, data: it.b64, directory: 'DOCUMENTS', recursive: true }); remap[it.ref] = alt; wrote = true; } catch (e2) { /* 失敗 */ }
+                    }
+                    if (wrote) { ok++; _uriCache.delete(it.ref); } else fail++;
+                    list[i] = null;
+                    if (i % 5 === 4) { if (progress) progress(i + 1, list.length); await new Promise(r => setTimeout(r, 5)); }
+                }
+                return { remap, ok, fail };
+            }
+
+            return { IMG_DIR, save, resolveSrc, exists, readAsDataUri, remove, exportImages, importImages, restoreList };
         })();
 
         // ★ 背景遷移：掃描 appState.messages 中殘留的舊格式 base64 圖片（f.data 為
@@ -6763,7 +6787,8 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
 
         // ★ 串流備份輔助：逐塊 append 到 CACHE 檔案
         // Capacitor Filesystem.appendFile 每次只處理一小塊，記憶體中不需要完整字串
-        window._novaStreamBackup = async function(CapFS, fileName, fullBackupData, silent) {
+        window._novaStreamBackup = async function(CapFS, fileName, fullBackupData, silent, opts) {
+            opts = opts || {};
             const _prog = (msg) => { if (!silent && typeof showToast === 'function') showToast(msg, 6000); };
 
             // ★ 寫入緩衝區：累積到一定大小才 appendFile，
@@ -6844,6 +6869,28 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                 await _appendText(JSON.stringify(fullBackupData.todos || []));
                 await _appendText(',"audioRecords":');
                 await _appendText(JSON.stringify(fullBackupData.audioRecords || []));
+                // v2.6.96：手動完整備份附上聊天圖片本體（重新安裝後舊圖片檔讀不到，靠這裡還原）。背景快照（NOVA_Live.json）不附，避免檔案暴增。
+                if (opts.embedImages && window.NovaImageStore && NovaImageStore.readAsDataUri) {
+                    const refs = new Map();
+                    for (const m of msgs) {
+                        const fa = Array.isArray(m.files) ? m.files : (m.file ? [m.file] : []);
+                        for (const f of fa) if (f && f.__fileRef && !refs.has(f.__fileRef)) refs.set(f.__fileRef, f.mimeType || 'image/png');
+                    }
+                    await _appendText(',"images":[');
+                    let n = 0, bytes = 0, skipped = 0, missing = 0; const CAP = 250 * 1024 * 1024;
+                    for (const [ref, mime] of Array.from(refs.entries()).reverse()) {   // 新的圖片優先
+                        if (bytes > CAP) { skipped++; continue; }
+                        const du = await NovaImageStore.readAsDataUri(ref, mime);
+                        if (!du) { missing++; continue; }
+                        const b64 = du.split(',')[1] || '';
+                        bytes += b64.length;
+                        await _appendText((n ? ',' : '') + JSON.stringify({ ref: ref, mime: mime, b64: b64 }));
+                        n++;
+                        if (n % 5 === 0) { _prog('⏳ 備份圖片 ' + n + '/' + refs.size + '...'); await new Promise(r => setTimeout(r, 5)); }
+                    }
+                    await _appendText(']');
+                    opts.result = { total: refs.size, saved: n, skipped: skipped, missing: missing, mb: Math.round(bytes / 1048576) };
+                }
                 await _appendText('}');
 
                 // ── 4. 強制 flush 殘留緩衝區 ────────────────────
@@ -6921,7 +6968,8 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
             if (CapFS) {
                 try {
                     // ★ 串流備份至 CACHE：appendFile 逐條寫入，記憶體中只有一條訊息
-                    const cacheResult = await window._novaStreamBackup(CapFS, fileName, fullBackupData);
+                    const _imgOpts = { embedImages: true };
+                    const cacheResult = await window._novaStreamBackup(CapFS, fileName, fullBackupData, false, _imgOpts);
 
                     // ★ 將 CACHE 檔案搬到公開 Documents/NOVA_Backups/
                     //   使用 CapFS.copy/rename：原生端直接搬移檔案，
@@ -6949,7 +6997,7 @@ s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gm
                         ? (finalUri ? finalUri.replace(/\/[^\/]+$/, '/') : 'Documents/NOVA_Backups/')
                         : '應用程式快取（內部儲存搬移失敗，檔案仍可用）';
                     const msgCount = (appState.messages||[]).length;
-                    showToast(`✅ 備份完成（${msgCount} 則訊息，含圖片）\n📂 ${_savePath}`, 6000);
+                    const _ir = _imgOpts.result; showToast(`✅ 備份完成（${msgCount} 則訊息）\n🖼️ ` + (_ir ? `圖片 ${_ir.saved}/${_ir.total} 張（約 ${_ir.mb}MB）` + (_ir.missing ? `，${_ir.missing} 張找不到檔案` : '') + (_ir.skipped ? `，${_ir.skipped} 張因超過容量上限未附` : '') : '未附圖片') + `\n📂 ${_savePath}`, 9000);
                     console.log('[NOVA] 備份完成:', finalUri);
 
                 } catch (err) {
@@ -7217,6 +7265,17 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                     showToast(`⏳ 還原中，共 ${msgCount} 則訊息、${noteCount} 則筆記...`, 8000);
                     await new Promise(r => setTimeout(r, 50)); // 讓 toast 先渲染
 
+                    // v2.6.96：還原備份內附的聊天圖片（重新安裝後舊圖片檔讀不到）；寫進新位置時同步改訊息裡的圖片路徑
+                    if (Array.isArray(data.images) && data.images.length && window.NovaImageStore && NovaImageStore.restoreList) {
+                        showToast(`⏳ 還原圖片 0/${data.images.length}...`, 6000);
+                        const _rr = await NovaImageStore.restoreList(data.images, (d, t) => showToast(`⏳ 還原圖片 ${d}/${t}...`, 3000));
+                        if (Object.keys(_rr.remap).length) {
+                            (data.messages || []).forEach(m => { const fa = Array.isArray(m.files) ? m.files : (m.file ? [m.file] : []); fa.forEach(f => { if (f && f.__fileRef && _rr.remap[f.__fileRef]) f.__fileRef = _rr.remap[f.__fileRef]; }); });
+                        }
+                        console.log('[NOVA] 圖片還原：成功 ' + _rr.ok + '，失敗 ' + _rr.fail + '，改路徑 ' + Object.keys(_rr.remap).length);
+                        if (_rr.fail) showToast(`⚠️ ${_rr.fail} 張圖片還原失敗`, 6000);
+                    }
+                    data.images = null;
                     await restoreDB('messages', data.messages, (done, tot) => {
                         if (done % 50 === 0 || done === tot)
                             showToast(`⏳ 還原訊息 ${done}/${tot}...`, 3000);
