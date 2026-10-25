@@ -1,7 +1,9 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-termux.js — NOVA Android「執行 Python／指令」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.2
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.92。新增橋接選用工具的呼叫：toolPost(path, body, timeoutMs)（給 nova-docs.js 打 /markitdown、/subtitles）、toolsStatus()（GET /tools/status）、
+            installTools(upgradeYtdlp)（用 /pip 安裝 markitdown 與 yt-dlp）；設定頁 Termux 橋接卡片新增「文件／影片工具」狀態列與「安裝文件／影片工具」「更新 yt-dlp」按鈕。
    v1.0.2 - App v2.6.78。修正還原備份後設定卡片仍是空白的：還原只寫 localStorage，已建好的卡片沒更新，之後 syncFromDom 反而用空值蓋掉剛還原的 Token。
             importCfg 沒有資料（舊備份檔沒有 termuxConfig）時，改成把 localStorage 目前的值刷新到卡片；syncFromDom 只在使用者實際輸入過（或 localStorage 沒有值）時才寫回，
             卡片欄位空白但 localStorage 有值時不覆蓋。
@@ -117,6 +119,33 @@
         return fmt('pip install', await call('POST', '/pip', { packages: list, timeout: 300 }, 320000));
     }
 
+    /* ───────── 選用工具（markitdown／yt-dlp；橋接 v1.1.0 以上） ───────── */
+    async function toolPost(path, body, timeoutMs) {
+        if (!configured()) throw new Error('需要先設定 Termux 橋接（設定 → 🔌 工具 → Termux 橋接）');
+        try { return await call('POST', path, body, timeoutMs || 120000); }
+        catch (e) {
+            var m = String((e && e.message) || e);
+            if (/not found|HTTP 404/i.test(m)) throw new Error('Termux 裡的橋接程式版本太舊，沒有這個功能。請在 Termux 重新執行安裝指令更新（設定頁可複製）。');
+            if (/Failed to fetch|NetworkError|Load failed|ECONNREFUSED|timeout|Timeout/i.test(m) && !/Token/.test(m)) throw new Error('連不上 Termux 橋接（' + m + '）。請確認 Termux 有執行：bash ~/nova_bridge/start.sh');
+            throw e;
+        }
+    }
+    async function toolsStatus() {
+        if (!configured()) return { ok: false, reason: 'noconfig' };
+        try { return await call('GET', '/tools/status', null, 8000); }
+        catch (e) { var m = String((e && e.message) || e); return { ok: false, reason: /not found|HTTP 404/i.test(m) ? 'old' : 'down', error: m }; }
+    }
+    async function installTools(upgradeYtdlp) {
+        if (!configured()) throw new Error('安裝套件需要 Termux 橋接');
+        var out = [];
+        if (upgradeYtdlp) out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], upgrade: true, timeout: 600 }, 620000));
+        else {
+            out.push(await call('POST', '/pip', { packages: ['yt-dlp[default]'], timeout: 600 }, 620000));
+            out.push(await call('POST', '/pip', { packages: ['markitdown[docx,pptx,xlsx,xls,pdf]'], timeout: 600 }, 620000));
+        }
+        return out;
+    }
+
     /* 自主任務用：先確認（除非設成自動允許），失敗一律丟軟失敗 */
     async function agentRun(kind, a) {
         var c = cfg();
@@ -192,7 +221,10 @@
             '<label class="nova-em-item"><input id="ntx-auto" type="checkbox" ' + (c.auto ? 'checked' : '') + ' style="accent-color:#a855f7;"><span>執行前不再詢問（⚠️ 網頁或檔案內的惡意文字可能誘使 AI 執行危險指令，建議保持關閉）</span></label>' +
             '<label class="nova-em-item"><input id="ntx-pyo" type="checkbox" ' + (c.pyodide ? 'checked' : '') + ' style="accent-color:#a855f7;"><span>橋接連不上時，退回內建 Pyodide 執行 Python</span></label>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="nv-btn nv-primary" id="ntx-test">測試連線</button><button type="button" class="nv-btn" id="ntx-copy">複製 Termux 安裝指令</button></div>' +
-            '<div id="ntx-status" class="nv-muted" style="min-height:18px;"></div></div>';
+            '<div id="ntx-status" class="nv-muted" style="min-height:18px;"></div>' +
+            '<div style="border-top:1px solid rgba(148,163,184,.25);margin-top:6px;padding-top:8px;"><div style="font-weight:600;font-size:13px;">文件／影片工具（匯入 Word／PPT／PDF 轉文字、抓影片字幕）</div>' +
+            '<div id="ntx-tools-status" class="nv-muted" style="min-height:18px;margin:4px 0;">尚未檢查</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="nv-btn" id="ntx-tools-check">檢查</button><button type="button" class="nv-btn nv-primary" id="ntx-tools-install">安裝文件／影片工具</button><button type="button" class="nv-btn" id="ntx-tools-upd">更新 yt-dlp</button></div></div></div>';
         var anchor = D.getElementById('fc-skill-list'); anchor = anchor && anchor.closest ? anchor.closest('.nv-card') : null;
         if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(card, anchor); else tab.appendChild(card);
         var save = function () { syncFromDom(); scheduleSnap(); };
@@ -207,6 +239,25 @@
                 else st.textContent = '✅ 連線成功：橋接 v' + r.version + '、Python ' + r.python + '、工作資料夾 ' + r.work_dir + '、Termux:API ' + (r.termux_api ? '可用' : '未安裝');
             } catch (e) { st.textContent = '❌ 連不上 ' + cfg().url + '：請確認 Termux 在執行（bash ~/nova_bridge/start.sh）。' + ((e && e.message) || ''); }
         };
+        var toolsLine = async function () {
+            var el = D.getElementById('ntx-tools-status'); if (!el) return; el.textContent = '檢查中…';
+            var r = await toolsStatus();
+            if (!r || !r.ok) { el.textContent = r && r.reason === 'noconfig' ? '⚠️ 尚未設定 Token' : r && r.reason === 'old' ? '⚠️ Termux 裡的橋接程式太舊（沒有這個功能）：請重新執行安裝指令更新' : '❌ 連不上橋接：' + ((r && r.error) || ''); return; }
+            if (!r.tools) { el.textContent = '⚠️ 橋接沒載入 nova_tools.py：請重新執行安裝指令更新'; return; }
+            var m = r.markitdown || {}, y = r.ytdlp || {};
+            el.textContent = (m.available ? '✅ markitdown ' + m.version : '❌ markitdown 未安裝' + (m.error ? '（' + String(m.error).slice(0, 80) + '）' : '')) + '　' + (y.available ? '✅ yt-dlp ' + y.version + (y.stale ? '（版本偏舊，建議更新）' : '') : '❌ yt-dlp 未安裝');
+        };
+        D.getElementById('ntx-tools-check').onclick = function () { save(); toolsLine(); };
+        var runInstall = async function (upg) {
+            save(); var el = D.getElementById('ntx-tools-status'); el.textContent = '⏳ 安裝中，可能要幾分鐘，請不要離開這一頁…';
+            try {
+                var rs = await installTools(upg), bad = rs.filter(function (x) { return !x.ok; });
+                await toolsLine();
+                if (bad.length) { el.textContent += '　⚠️ 有項目安裝失敗：' + String((bad[0].stderr || bad[0].stdout || '')).replace(/\s+/g, ' ').slice(-220); }
+            } catch (e) { el.textContent = '❌ ' + ((e && e.message) || e); }
+        };
+        D.getElementById('ntx-tools-install').onclick = function () { runInstall(false); };
+        D.getElementById('ntx-tools-upd').onclick = function () { runInstall(true); };
         D.getElementById('ntx-copy').onclick = async function () {
             try { var CB = W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Clipboard; if (CB) await CB.write({ string: INSTALL_CMD }); else await navigator.clipboard.writeText(INSTALL_CMD); toast('已複製，到 Termux 貼上執行'); }
             catch (e) { D.getElementById('ntx-status').textContent = INSTALL_CMD; }
@@ -219,6 +270,6 @@
         var a = register(), b = injectCard();
         if ((!a || !b) && n < 40) setTimeout(function () { boot(n + 1); }, 500);
     }
-    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.0.2' };
+    W.NovaTermux = { configured: configured, ping: ping, runPython: runPython, runShell: runShell, pipInstall: pipInstall, agentRun: agentRun, toolPost: toolPost, toolsStatus: toolsStatus, installTools: installTools, exportCfg: exportCfg, importCfg: importCfg, installCommand: INSTALL_CMD, version: '1.1.0' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();

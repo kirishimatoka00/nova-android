@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NOVA Termux Bridge v1.0.0
+NOVA Termux Bridge v1.1.0
 讓手機上的 NOVA（Android App）把 Python／指令送到 Termux 執行，結果回傳給 NOVA。
-只用 Python 標準函式庫，不需要 pip 安裝任何東西。
+核心只用 Python 標準函式庫。選用工具（檔案轉 Markdown、影片字幕）在 nova_tools.py，需另外 pip 安裝 markitdown／yt-dlp。
+v1.1.0：新增 /tools/status、/markitdown、/subtitles（App v2.6.92）。
 
 安全設計（這個服務等於把手機的 Termux 交給持有 token 的人，請務必留意）：
   1. 只監聽 127.0.0.1（手機本機），區網與外部連不到。
@@ -22,13 +23,21 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.0.0"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import nova_tools
+except Exception as _e:  # noqa: BLE001  橋接核心不因選用工具壞掉而無法啟動
+    nova_tools = None
+    sys.stderr.write("nova_tools 載入失敗：%s\n" % _e)
+
+VERSION = "1.1.0"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("NOVA_BRIDGE_PORT", "7913"))
 BASE = os.path.expanduser("~/nova_bridge")
 WORK = os.path.expanduser(os.environ.get("NOVA_WORK_DIR", "~/nova_work"))
 MAX_OUT = 20000
 MAX_BODY = 2 * 1024 * 1024
+MAX_BODY_BIG = 64 * 1024 * 1024   # /markitdown 帶檔案（base64）
 MAX_TIMEOUT = 600
 ALLOWED_ORIGINS = {"http://localhost", "https://localhost", "capacitor://localhost"}
 
@@ -183,8 +192,15 @@ class H(BaseHTTPRequestHandler):
                     "python": sys.version.split()[0],
                     "work_dir": WORK,
                     "termux_api": bool(shutil.which("termux-battery-status")),
+                    "tools": nova_tools is not None,
                 })
             return self._send(200, info)
+        if self.path.split("?")[0] == "/tools/status":
+            if not self._authed():
+                return self._send(401, {"ok": False, "error": "token 不正確或未設定"})
+            if nova_tools is None:
+                return self._send(200, {"ok": True, "tools": False, "markitdown": {"available": False, "error": "nova_tools.py 沒有載入（請重新執行 install.sh）"}, "ytdlp": {"available": False, "error": "nova_tools.py 沒有載入"}})
+            return self._send(200, {"ok": True, "tools": True, "markitdown": nova_tools.markitdown_status(), "ytdlp": nova_tools.ytdlp_status()})
         self._send(404, {"ok": False, "error": "not found"})
 
     def do_POST(self):
@@ -196,7 +212,7 @@ class H(BaseHTTPRequestHandler):
         if not (self._host_ok() and self._origin_ok()):
             self.close_connection = True
             return self._send(403, {"ok": False, "error": "forbidden"})
-        if n > MAX_BODY:
+        if n > (MAX_BODY_BIG if self.path.split("?")[0] == "/markitdown" else MAX_BODY):
             self.close_connection = True
             return self._send(413, {"ok": False, "error": "內容過大"})
         raw = self.rfile.read(n) if n else b""
@@ -223,7 +239,16 @@ class H(BaseHTTPRequestHandler):
                 pk = [str(x) for x in (body.get("packages") or []) if str(x).strip()]
                 if not pk or any(x.startswith("-") for x in pk):
                     return self._send(400, {"ok": False, "error": "packages 不可為空，也不可以 - 開頭"})
-                return self._send(200, run_proc(argv=[sys.executable, "-m", "pip", "install", "--disable-pip-version-check"] + pk, timeout=body.get("timeout") or 300))
+                return self._send(200, run_proc(argv=[sys.executable, "-m", "pip", "install", "--disable-pip-version-check"] + (["--upgrade"] if body.get("upgrade") else []) + pk, timeout=body.get("timeout") or 300))
+            if path in ("/markitdown", "/subtitles"):
+                if nova_tools is None:
+                    return self._send(501, {"ok": False, "error": "nova_tools.py 沒有載入，請在 Termux 重新執行 install.sh 更新"})
+                try:
+                    if path == "/markitdown":
+                        return self._send(200, nova_tools.markitdown_convert(body.get("name"), body.get("data_base64"), body.get("max_chars") or 400000))
+                    return self._send(200, nova_tools.video_subtitles(body.get("url"), body.get("langs"), body.get("lang") or "", body.get("timestamps") is not False, body.get("max_chars") or 400000))
+                except nova_tools.ToolError as te:
+                    return self._send(te.status, {"ok": False, "error": te.detail})
         except Exception as e:  # noqa: BLE001
             return self._send(500, {"ok": False, "error": "橋接服務內部錯誤：%s" % e})
         self._send(404, {"ok": False, "error": "not found"})
