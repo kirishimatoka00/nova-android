@@ -2248,8 +2248,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.95';
+        const NOVA_APP_VERSION = '2.6.97';
         const NOVA_CHANGELOG = [
+            { v: '2.6.97', date: '2026-10-26', notes: [
+                '重新安裝後保留對話圖片，且圖片不進備份檔（新檔 nova-imgsync.js v1.0.0；撤回 v2.6.96「把圖片嵌進備份檔」的做法）。設定頁「圖片儲存」區塊新增兩條路：',
+                '① Google Drive：「上傳圖片到 Drive」把聊天圖片傳到雲端硬碟「NOVA 圖片」資料夾，訊息只多記一個雲端編號（備份檔只多一小段文字）；新圖片可自動上傳（開關，預設開，需 Google 授權含雲端硬碟）。重裝並還原備份後，對話裡的圖片在本機讀不到時會自動從 Drive 下載回來，也可按「從 Drive 還原全部圖片」一次補齊（要連接同一個 Google 帳號）。',
+                '② 檔案：新增「匯出到資料夾」（存到 文件／NOVA_圖片匯出，重裝前用檔案管理員複製走）；「匯入圖片檔案」改成比對檔名、可一次選很多檔，且舊安裝留下的同名檔擋住寫入時會自動改存新檔名並更新訊息裡的圖片路徑（原本會匯入失敗）。',
+                '注意：舊備份裡的圖片沒有雲端編號，需要先在重裝前按一次「上傳圖片到 Drive」再做完整備份。Drive 路徑只在沙盒用模擬環境驗證，真機的上傳與下載請先用少量圖片試。'
+            ] },
             { v: '2.6.95', date: '2026-10-26', notes: [
                 '修正匯入 PDF 格式跑掉（產品規格書之類的 PDF 被切成一堆破碎的 | --- | 表格、文字錯位）：PDF 改用 pdfminer 依閱讀順序抽成純文字段落，抽不到文字才退回 markitdown（橋接用的 nova_tools.py v1.1.0）。代價：PDF 內的表格不再轉成 Markdown 表格，而是逐行文字。Word／PowerPoint 不受影響。',
                 '需在 Termux 重新執行安裝指令更新 nova_tools.py。'
@@ -3407,7 +3413,7 @@ async function encodeMp3(audioBuffer) {
                 return count;
             }
 
-            return { IMG_DIR, save, resolveSrc, exists, readAsDataUri, remove, exportImages, importImages };
+            return { IMG_DIR, save, resolveSrc, exists, readAsDataUri, remove, exportImages, importImages, _clearCache: function (r) { _uriCache.delete(r); } };
         })();
 
         // ★ 背景遷移：掃描 appState.messages 中殘留的舊格式 base64 圖片（f.data 為
@@ -21250,7 +21256,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
