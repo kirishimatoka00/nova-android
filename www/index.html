@@ -2269,7 +2269,7 @@
             { v: '2.6.99', date: '2026-10-26', notes: [
                 '對標桌面版 v3.80.8–13：筆記匯出重做——「Word」改輸出真正的 .docx（原本是 .rtf；支援粗斜體底線刪除線、顏色／字級／螢光、連結、標題、巢狀清單、引用、程式碼、分隔線、表格含合併儲存格、內文與附圖，webp／svg 自動轉 PNG；用新檔 vendor/nova-word-lib.js，第一次匯出才載入）；新增「Markdown」（.md，標題、粗斜體、連結、清單、引用、程式碼、GFM 表格、圖片內嵌，開頭帶標題／日期／標籤）；「HTML」維持獨立按鈕（含標題、日期、標籤、內文與附圖，標題與內文做跳脫）；RichText 改輸出 .rtf（列表不放按鈕，函式保留）。匯出檔存到 Documents 並開啟分享。',
                 '筆記卡片介面對齊桌面版：按鈕只留圖示（文字在長按／提示裡）、合併成同一排並固定貼在卡片最下方（同一列卡片等高）、預覽區吃掉剩餘空間（最小 5.5rem、最高 10.5rem，超出可在卡片內捲動）、卡片顯示標籤徽章、刪除鈕加提示；錄音筆記按鈕多時自動換行，分段徽章獨佔一列。',
-                '沒移植（Android 版沒有對應功能）：筆記標籤篩選列、跨筆記分析勾選、連結數量徽章、「AI 分析」模式選擇器、向量庫「已匯入」狀態記憶。'
+                '筆記列表由 nova-notes-pro.js（v1.2.0）繪製，卡片改動在該檔。'
             ] },
             { v: '2.6.98', date: '2026-10-26', notes: [
                 '對標桌面版：錄音紀錄頁新增「開啟音檔」——選取手機上的音檔（weba／webm／mp3／ogg／aac／m4a／flac／wav，可多選）只放進錄音紀錄，不會立刻分析，可直接在卡片上播放；之後再決定要不要「上傳 Drive」或「AI 深度分析」。原本的「上傳音檔分析」保持不變。',
@@ -21749,7 +21749,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 })();
 </script>
 <script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
-<script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
+<script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
 </html>

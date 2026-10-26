@@ -1,4 +1,4 @@
-/* nova-notes-pro.js — v1.1.0 (2026-10-11)
+/* nova-notes-pro.js — v1.2.0 (2026-10-26)
  * 手機版筆記本對標桌面版：富文本編輯器（字體大小/文字色/螢光筆/表格儲存格色/框線色/字型統一）、
  * 標籤、雙向連結、AI 建議相關筆記（向量相似度）、貼圖 OCR（文字/表格，可選 Gemini/Grok 模型）、
  * 筆記關聯圖譜、標籤篩選、單篇/跨筆記 AI 分析模式（含 ###TAGS###/###RELATED### 解析）。
@@ -6,6 +6,7 @@
  * 載入位置：index.html 主腳本之後（同名函式以本檔為準）。
  *
  * 版本紀錄
+ *   v1.2.0 2026-10-26  App v2.6.99：筆記卡片對齊桌面 v3.80.8–13——匯出按鈕改 Word(.docx)／Markdown／HTML；按鈕只留圖示、合併同一排貼卡片底、預覽區吃剩餘空間（樣式與 _novaIconifyButtons 在 index.html）
  *   v1.1.1 2026-10-17  3D 函式庫載入網址升為 ?v=2（配合大腦圖譜移植；函式庫多開放 THREE 元件，介面不變）
  *   v1.1.0 2026-10-11  筆記 3D 圖譜：函式庫改本地打包（vendor/nova-graph3d.js，單一 three 實例，不需網路）、明確指定尺寸＋ResizeObserver、無 WebGL 或建立失敗改 2D 備援、顯示筆記／連結數；修正移植時漏宣告 _novaGraphInstance 造成的 ReferenceError（手機上整片空白的真正原因）
  *   v1.0.0 2026-10-11  首版：自桌面版移植編輯器/標籤/連結/OCR/圖譜/分析；補 4 個輔助函式（代理 fetch 直通、Gemini genCfg 直通）。
@@ -1362,8 +1363,9 @@
                 const isAudio = n.type === 'audio'; const icon = isAudio ? '<i class="ph-fill ph-microphone text-purple-400"></i>' : '<i class="ph-fill ph-notebook text-emerald-400"></i>';
                 const folderBadge = `<span class="absolute top-3 right-3 text-[9px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">${escapeHtml(n.folder || '未分類')}</span>`;
                 
-                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Word 相容格式 (.rtf)"><i class="ph-bold ph-file-doc"></i> Word</button>`;
-                actionButtons += `<button onclick="exportNoteRichText('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 HTML"><i class="ph-bold ph-file-html"></i> RichText</button>`;
+                let actionButtons = `<button onclick="exportNoteWord('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Word 檔 (.docx)"><i class="ph-bold ph-file-doc"></i> Word (.docx)</button>`;
+                actionButtons += `<button onclick="exportNoteMarkdown('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1" title="匯出為 Markdown (.md)"><i class="ph-bold ph-file-md"></i> Markdown (.md)</button>`;
+                actionButtons += `<button onclick="exportNoteHtml('${n.id}')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1"><i class="ph-bold ph-file-html"></i> HTML (.html)</button>`;
                 actionButtons += `<button id="btn-backup-${n.id}" onclick="backupNoteToDrive('${n.id}')" class="text-xs bg-blue-900/50 hover:bg-blue-800/50 border border-blue-500/50 px-2 py-1.5 rounded text-blue-200 transition-colors flex items-center justify-center gap-1"><i class="ph-bold ph-cloud-arrow-up"></i> 雲端備份</button>`;
                 actionButtons += importedNoteIds.has(String(n.id))
                     ? `<button id="btn-kb-import-${n.id}" onclick="importNoteToKb('${n.id}')" class="text-xs bg-emerald-900/40 hover:bg-emerald-800/50 border border-emerald-600/50 px-2 py-1.5 rounded text-emerald-300 transition-colors flex items-center justify-center gap-1" title="重新向量化（會覆蓋舊索引）"><i class="ph-bold ph-check-circle"></i> 已匯入（點擊更新）</button>`
@@ -1379,7 +1381,7 @@
                     const noteGroupBadge = noteSegCount > 1
                         ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold bg-orange-900/40 text-orange-300 border border-orange-500/30 px-2 py-0.5 rounded-full"><i class="ph-fill ph-scissors"></i> 分段 ${noteSegCount} 段</span>`
                         : '';
-                    if (noteGroupBadge) extraAudioButtons += `<div class="col-span-full mb-1">${noteGroupBadge}</div>`;
+                    if (noteGroupBadge) extraAudioButtons += `<div class="nova-ib-full">${noteGroupBadge}</div>`;
                     extraAudioButtons += `<button onclick="batchDownloadWeba(${segIdsJs}, 'note')" class="text-xs bg-slate-800 hover:bg-slate-700 px-2 py-1.5 rounded text-slate-300 transition-colors border border-slate-700 flex items-center justify-center gap-1"><i class="ph-bold ph-download-simple"></i> weba${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
                     extraAudioButtons += `<button onclick="batchDownloadMp3(${segIdsJs}, 'note')" class="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1.5 rounded text-green-300 transition-colors border border-green-700/50 flex items-center justify-center gap-1"><i class="ph-bold ph-file-audio"></i> MP3${noteSegCount>1?` (${noteSegCount})`:''}</button>`;
                     if (noteSegCount > 1) extraAudioButtons += `<button onclick="downloadMergedMp3(${segIdsJs}, '${n.title.replace(/'/g,"\\'")}', 'note')" class="text-xs bg-orange-700 hover:bg-orange-600 px-2 py-1.5 rounded text-white transition-colors flex items-center justify-center gap-1" title="接合所有分段為一個 MP3"><i class="ph-bold ph-music-notes-plus"></i> 合併 MP3</button>`;
@@ -1439,7 +1441,7 @@
                 const linksBadgeHtml = (outgoingCount || backlinkCount)
                     ? `<div class="mb-2"><span class="text-[9px] bg-blue-900/30 text-blue-300 border border-blue-600/30 px-1.5 py-0.5 rounded-full inline-flex items-center gap-1"><i class="ph-bold ph-link"></i> ${outgoingCount ? `連出 ${outgoingCount}` : ''}${outgoingCount && backlinkCount ? '・' : ''}${backlinkCount ? `被連 ${backlinkCount}` : ''}</span></div>`
                     : '';
-                return `<div class="bg-slate-900 p-5 rounded-2xl border ${isSelectedForAnalysis ? 'border-purple-500' : 'border-slate-800'} flex flex-col relative overflow-hidden slide-in pt-8">${selectCheckbox}${folderBadge}<div class="flex justify-between items-start mb-2"><h3 class="text-lg font-bold text-white flex items-center gap-2 truncate pr-2 w-full">${icon} <span class="truncate">${escapeHtml(n.title)}</span></h3><div class="flex space-x-1 shrink-0"><button onclick="deleteNote('${n.id}')" class="text-slate-500 hover:text-red-400 p-1.5 bg-slate-950/50 rounded"><i class="ph-bold ph-trash"></i></button></div></div><span class="text-[10px] text-slate-500 mb-2">${n.date}</span>${tagsBadgeHtml}${linksBadgeHtml}${imgHtml}${audioPlayerHtml}<div class="note-html-content text-slate-300 text-sm overflow-y-auto max-h-40 scrollbar-thin ${n.isHtml ? 'whitespace-normal' : 'whitespace-pre-wrap'} relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-8 after:bg-gradient-to-t after:from-slate-900 after:to-transparent">${renderedContent}</div>${linkHtml}<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-800">${extraAudioButtons}</div><div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">${actionButtons}</div></div>`;
+                return `<div class="bg-slate-900 p-5 rounded-2xl border ${isSelectedForAnalysis ? 'border-purple-500' : 'border-slate-800'} flex flex-col relative overflow-hidden slide-in pt-8">${selectCheckbox}${folderBadge}<div class="flex justify-between items-start mb-2"><h3 class="text-lg font-bold text-white flex items-center gap-2 truncate pr-2 w-full">${icon} <span class="truncate">${escapeHtml(n.title)}</span></h3><div class="flex space-x-1 shrink-0"><button onclick="deleteNote('${n.id}')" title="刪除筆記" class="text-slate-500 hover:text-red-400 p-1.5 bg-slate-950/50 rounded"><i class="ph-bold ph-trash"></i></button></div></div><span class="text-[10px] text-slate-500 mb-2">${n.date}</span>${tagsBadgeHtml}${linksBadgeHtml}${imgHtml}${audioPlayerHtml}<div class="note-html-content nova-note-preview text-slate-300 text-sm overflow-y-auto scrollbar-thin ${n.isHtml ? 'whitespace-normal' : 'whitespace-pre-wrap'} relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-8 after:bg-gradient-to-t after:from-slate-900 after:to-transparent">${renderedContent}</div>${linkHtml}<div class="nova-ib-row nova-ib-row-bottom">${(typeof _novaIconifyButtons === 'function') ? _novaIconifyButtons(extraAudioButtons + actionButtons) : (extraAudioButtons + actionButtons)}</div></div>`;
             }).join('')||'<p class="text-slate-500 text-center col-span-3 mt-10">找不到符合的筆記</p>'; 
             
             if(mini) mini.innerHTML=appState.notes.slice(0,2).map(n=>{
