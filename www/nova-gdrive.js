@@ -1,4 +1,4 @@
-/* nova-gdrive.js — v1.0.2 (2026-10-13)
+/* nova-gdrive.js — v1.0.3 (2026-10-26)
  * ① 錄音／筆記音訊改走「Google Drive 授權」直接上傳（Drive 可續傳上傳，分段送出，沒有 Apps Script 的 10MB 限制）；
  *    已連接 Google 且授權含 Drive 時優先使用，否則維持原本 Apps Script 路徑。檔案放在雲端硬碟的「NOVA 錄音」資料夾。
  *    覆寫 window.manualUploadToDrive／uploadNoteAudioToDrive／batchUploadToDrive／backupNoteToDrive（沒授權時呼叫原函式）；
@@ -9,6 +9,7 @@
  * 依賴：NovaGoogle（_raw／_has／_connected／_token）、loadAudioBlob／base64ToBlob／saveToDB／renderAudioRecords／renderNotes／showToast
  * 對外：window.NovaGDrive
  * 版本紀錄
+ *   v1.0.3 2026-10-26  App v2.6.98：上傳檔名優先沿用「開啟音檔」記下的原副檔名（rec.srcExt）
  *   v1.0.2 2026-10-13  原生錄音進行中不執行自動上傳（停止後才傳），避免大檔上傳拖垮錄音
  *   v1.0.1 2026-10-12  自動上傳（novaAutoUpload）：上傳期間保留前景服務、失敗進待上傳清單並在回到前景時重試、顯示失敗原因
  *   v1.0.0 2026-10-11  首版。誠實聲明：只在沙盒用模擬的 Drive 端點驗證流程（瀏覽器路徑）；原生 CapacitorHttp 的分段上傳（308 回應處理）
@@ -90,7 +91,7 @@
 
   /* ───────── 音訊／筆記上傳覆寫 ───────── */
   var orig = { manual: W.manualUploadToDrive, note: W.uploadNoteAudioToDrive, batch: W.batchUploadToDrive, backup: W.backupNoteToDrive };
-  function audioName(rec, blob) { var mime = rec.mimeType || blob.type || 'audio/webm', ext = mime.indexOf('mp4') !== -1 ? '.m4a' : mime.indexOf('aac') !== -1 ? '.aac' : mime.indexOf('mpeg') !== -1 ? '.mp3' : mime.indexOf('wav') !== -1 ? '.wav' : '.weba'; return String(rec.title || rec.filename || ('NOVA_Audio_' + rec.id)).replace(/[\\/:*?"<>|]/g, '_') + ext; }
+  function audioName(rec, blob) { var mime = rec.mimeType || blob.type || 'audio/webm', ext = rec.srcExt || (mime.indexOf('mp4') !== -1 ? '.m4a' : mime.indexOf('aac') !== -1 ? '.aac' : mime.indexOf('mpeg') !== -1 ? '.mp3' : mime.indexOf('wav') !== -1 ? '.wav' : '.weba'); return String(rec.title || rec.filename || ('NOVA_Audio_' + rec.id)).replace(/[\\/:*?"<>|]/g, '_') + ext; }
   async function getBlob(rec) { var b = await W.loadAudioBlob(rec.id); if (!b && rec.audioData) b = W.base64ToBlob(rec.audioData); return b; }
   async function uploadRecord(rec, store, label) {
     var blob = await getBlob(rec); if (!blob) throw new Error('找不到本地音訊資料');

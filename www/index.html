@@ -1870,6 +1870,11 @@
                                 <i class="ph-bold ph-upload-simple"></i><span class="hidden sm:inline">上傳音檔分析</span>
                             </label>
                             <input type="file" id="audio-upload-from-tab" accept="audio/*,video/*" class="hidden" onchange="handleAudioAnalyzeSelect(event)">
+                            <!-- v2.6.98：開啟音檔——只放進錄音紀錄（不立刻分析），可直接播放，之後可上傳 Drive／AI 深度分析（同桌面版） -->
+                            <label for="audio-open-from-tab" class="bg-slate-600 hover:bg-slate-500 text-white px-3 py-2 rounded-lg flex items-center space-x-1 transition-colors text-sm cursor-pointer" title="開啟本機音檔並放入錄音紀錄（不會立刻分析；支援 weba／webm／mp3／ogg／aac／m4a／flac／wav）">
+                                <i class="ph-bold ph-folder-open"></i><span class="hidden sm:inline">開啟音檔</span>
+                            </label>
+                            <input type="file" id="audio-open-from-tab" accept=".weba,.webm,.mp3,.ogg,.oga,.opus,.aac,.m4a,.mp4,.flac,.wav,audio/*" multiple class="hidden" onchange="handleAudioOpenSelect(event)">
                             <button onclick="startAudioRecordOnly()" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded-lg flex items-center space-x-1 transition-colors text-sm"><i class="ph-bold ph-microphone"></i><span class="hidden sm:inline">錄音</span></button>
                             <button onclick="startMeetingRecording('record')" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg flex items-center space-x-1 transition-colors text-sm" title="雙軌錄製麥克風與會議聲音"><i class="ph-bold ph-headset"></i><span class="hidden sm:inline">雙軌會議錄音</span></button>
                         </div>
@@ -2248,8 +2253,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.97';
+        const NOVA_APP_VERSION = '2.6.98';
         const NOVA_CHANGELOG = [
+            { v: '2.6.98', date: '2026-10-26', notes: [
+                '對標桌面版：錄音紀錄頁新增「開啟音檔」——選取手機上的音檔（weba／webm／mp3／ogg／aac／m4a／flac／wav，可多選）只放進錄音紀錄，不會立刻分析，可直接在卡片上播放；之後再決定要不要「上傳 Drive」或「AI 深度分析」。原本的「上傳音檔分析」保持不變。',
+                '開啟的檔案會記原本的副檔名，上傳 Drive、下載時沿用（不再一律改成 .weba）；nova-gdrive.js 的上傳檔名同步。'
+            ] },
             { v: '2.6.97', date: '2026-10-26', notes: [
                 '重新安裝後保留對話圖片，且圖片不進備份檔（新檔 nova-imgsync.js v1.0.0；撤回 v2.6.96「把圖片嵌進備份檔」的做法）。設定頁「圖片儲存」區塊新增兩條路：',
                 '① Google Drive：「上傳圖片到 Drive」把聊天圖片傳到雲端硬碟「NOVA 圖片」資料夾，訊息只多記一個雲端編號（備份檔只多一小段文字）；新圖片可自動上傳（開關，預設開，需 Google 授權含雲端硬碟）。重裝並還原備份後，對話裡的圖片在本機讀不到時會自動從 Drive 下載回來，也可按「從 Drive 還原全部圖片」一次補齊（要連接同一個 Google 帳號）。',
@@ -9616,6 +9625,53 @@ msg.files : (msg.file ? [msg.file] : []);
             renderChatFilePreview();
             document.getElementById('plus-menu').classList.add('hidden'); document.getElementById('plus-icon').classList.remove('rotate-45');
         };
+        // v2.6.98：副檔名 → MIME（WebView 對 file.type 常為空或不一致，統一以副檔名為準）
+        window._novaAudioMimeByExt = { '.weba':'audio/webm', '.webm':'audio/webm', '.mp3':'audio/mpeg', '.ogg':'audio/ogg', '.oga':'audio/ogg', '.opus':'audio/ogg',
+            '.aac':'audio/aac', '.m4a':'audio/mp4', '.mp4':'audio/mp4', '.flac':'audio/flac', '.wav':'audio/wav' };
+        // 上傳／下載用的副檔名：開啟的檔案沿用原副檔名；NOVA 自己錄的維持原規則（mp4→.m4a、aac→.aac，其餘→.weba）
+        window._novaAudioExt = function (rec) {
+            if (rec && rec.srcExt) return rec.srcExt;
+            const mt = (rec && rec.mimeType) || 'audio/webm';
+            return mt.includes('mp4') ? '.m4a' : mt.includes('aac') ? '.aac' : '.weba';
+        };
+        // 開啟音檔：只放進「錄音紀錄」，不分析、可直接播放。之後在卡片上可「上傳 Drive」「AI 深度分析」
+        window.handleAudioOpenSelect = async function (e) {
+            const files = Array.from((e.target && e.target.files) || []);
+            e.target.value = '';
+            if (!files.length) return;
+            let ok = 0; const bad = [];
+            for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                const m = /\.[A-Za-z0-9]+$/.exec(f.name || '');
+                const ext = m ? m[0].toLowerCase() : '';
+                const mime = window._novaAudioMimeByExt[ext] || ((f.type || '').indexOf('audio/') === 0 ? f.type : '');
+                if (!mime) { bad.push((f.name || '?') + '（不支援的格式）'); continue; }
+                try {
+                    const blob = new Blob([await f.arrayBuffer()], { type: mime });
+                    const duration = await new Promise(function (resolve) {
+                        let done = false; const u = URL.createObjectURL(blob), a = new Audio();
+                        const fin = function (v) { if (done) return; done = true; try { URL.revokeObjectURL(u); } catch (_) {} resolve(v); };
+                        a.preload = 'metadata';
+                        a.onloadedmetadata = function () { fin(isFinite(a.duration) ? Math.round(a.duration) : 0); };
+                        a.onerror = function () { fin(0); };
+                        setTimeout(function () { fin(0); }, 4000);
+                        a.src = u;
+                    });
+                    const id = Date.now() + i;
+                    const rec = {
+                        id: id, title: (f.name || '開啟的音檔').replace(/\.[^.]+$/, ''), date: new Date().toLocaleString(),
+                        filename: f.name || ('NOVA_Audio_' + id + (ext || '.weba')), driveUrl: '', transcript: '',
+                        mimeType: mime, duration: duration, groupId: id, srcExt: ext || '.weba', srcName: f.name || ''
+                    };
+                    await saveAudioBlob(id, blob);
+                    appState.audioRecords.unshift(rec); saveToDB('audioRecords', rec);
+                    ok++;
+                } catch (err) { bad.push((f.name || '?') + '（' + (err && err.message || err) + '）'); }
+            }
+            renderAudioRecords();
+            if (ok) showToast('📂 已開啟 ' + ok + ' 個音檔（尚未分析）；可直接播放，或在卡片上「上傳 Drive」「AI 深度分析」', 6000);
+            if (bad.length) showToast('⚠️ 無法開啟：' + bad.join('、'), 7000);
+        };
         window.handleAudioAnalyzeSelect = async function(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -12593,7 +12649,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                         const base64Data = await new Promise((resolve, reject) => {
                             const fr = new FileReader(); fr.onloadend = () => resolve(fr.result.split(',')[1]); fr.onerror = reject; fr.readAsDataURL(audioBlob);
                         });
-                        const uploadExt  = (rec.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (rec.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
+                        const uploadExt  = window._novaAudioExt(rec);
                         const uploadFilename = (rec.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_') + uploadExt;
                         showToast(`☁️ 第 ${i+1}/${ids.length} 段（${rawSizeMB} MB）上傳中…`);
                         const res = await fetch(appState.driveUrl, {
@@ -12629,7 +12685,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                 if (!audioBlob && record.audioData) audioBlob = base64ToBlob(record.audioData);
                 if (!audioBlob) { showToast("找不到本地音檔資料。"); return; }
 
-                const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (record.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
+                const ext = window._novaAudioExt(record);
                 const safeTitle = (record.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_');
                 const filename = safeTitle + ext;
 
@@ -12674,7 +12730,7 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                     console.error("MP3 Conversion Error:", e);
                     showToast(`❌ MP3 轉換失敗：${e.message}，將改以原格式下載`);
                     // 降級：原格式下載
-                    const ext = (record.mimeType || 'audio/webm').includes('mp4') ? '.m4a' : (record.mimeType || 'audio/webm').includes('aac') ? '.aac' : '.weba';
+                    const ext = window._novaAudioExt(record);
                     const url = URL.createObjectURL(audioBlob);
                     const a = document.createElement('a');
                     a.href = url; a.download = (record.title || `NOVA_Audio_${id}`).replace(/[\\/:*?"<>|]/g, '_') + ext;
@@ -21256,7 +21312,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.2"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.1.1"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
