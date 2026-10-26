@@ -2264,8 +2264,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.99';
+        const NOVA_APP_VERSION = '2.6.100';
         const NOVA_CHANGELOG = [
+            { v: '2.6.100', date: '2026-10-26', notes: [
+                '修正 v2.6.99 的筆記卡片介面在手機上沒有變：筆記列表實際是由 nova-notes-pro.js 繪製（覆蓋 index.html 的版本），上一版只改了 index.html。現在 nova-notes-pro.js（v1.2.0）也改成桌面版樣式：匯出按鈕為 Word (.docx)／Markdown／HTML、按鈕只留圖示並合併成同一排貼卡片底、預覽區吃剩餘空間；原有的標籤篩選、跨筆記勾選、連結徽章、AI 分析模式選擇、向量庫已匯入狀態都保留。',
+                '更正 v2.6.99 changelog 裡「沒移植」的說法：那幾項 Android 本來就有（在 nova-notes-pro.js）。'
+            ] },
             { v: '2.6.99', date: '2026-10-26', notes: [
                 '對標桌面版 v3.80.8–13：筆記匯出重做——「Word」改輸出真正的 .docx（原本是 .rtf；支援粗斜體底線刪除線、顏色／字級／螢光、連結、標題、巢狀清單、引用、程式碼、分隔線、表格含合併儲存格、內文與附圖，webp／svg 自動轉 PNG；用新檔 vendor/nova-word-lib.js，第一次匯出才載入）；新增「Markdown」（.md，標題、粗斜體、連結、清單、引用、程式碼、GFM 表格、圖片內嵌，開頭帶標題／日期／標籤）；「HTML」維持獨立按鈕（含標題、日期、標籤、內文與附圖，標題與內文做跳脫）；RichText 改輸出 .rtf（列表不放按鈕，函式保留）。匯出檔存到 Documents 並開啟分享。',
                 '筆記卡片介面對齊桌面版：按鈕只留圖示（文字在長按／提示裡）、合併成同一排並固定貼在卡片最下方（同一列卡片等高）、預覽區吃掉剩餘空間（最小 5.5rem、最高 10.5rem，超出可在卡片內捲動）、卡片顯示標籤徽章、刪除鈕加提示；錄音筆記按鈕多時自動換行，分段徽章獨佔一列。',
