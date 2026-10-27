@@ -2264,8 +2264,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.100';
+        const NOVA_APP_VERSION = '2.6.101';
         const NOVA_CHANGELOG = [
+            { v: '2.6.101', date: '2026-10-27', notes: [
+                '新增「Gemini 安全設定」（新檔 nova-gemini-safety.js v1.0.0）：設定頁的圖片儲存區塊上方，四個類別（騷擾／仇恨言論／煽情露骨內容／危險內容）各自選封鎖閾值——預設（不送）、OFF、BLOCK_NONE、BLOCK_ONLY_HIGH、BLOCK_MEDIUM_AND_ABOVE、BLOCK_LOW_AND_ABOVE，依官方文件 safety-settings。',
+                '在 fetch 統一補上 safetySettings（只對 generativelanguage 的 generateContent／streamGenerateContent；選預設的類別不送；請求已自帶 safetySettings 的原樣放行），所以聊天、翻譯、筆記、生圖等各處呼叫都適用，不需逐處修改。'
+            ] },
             { v: '2.6.100', date: '2026-10-26', notes: [
                 '修正 v2.6.99 的筆記卡片介面在手機上沒有變：筆記列表實際是由 nova-notes-pro.js 繪製（覆蓋 index.html 的版本），上一版只改了 index.html。現在 nova-notes-pro.js（v1.2.0）也改成桌面版樣式：匯出按鈕為 Word (.docx)／Markdown／HTML、按鈕只留圖示並合併成同一排貼卡片底、預覽區吃剩餘空間；原有的標籤篩選、跨筆記勾選、連結徽章、AI 分析模式選擇、向量庫已匯入狀態都保留。',
                 '更正 v2.6.99 changelog 裡「沒移植」的說法：那幾項 Android 本來就有（在 nova-notes-pro.js）。'
@@ -21752,7 +21756,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-gemini-safety.js?v=1.0.0"></script><!-- v2.6.101：Gemini 安全設定 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
