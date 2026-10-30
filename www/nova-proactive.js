@@ -1,7 +1,8 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-proactive.js — AI 主動說話（針對單一對話，隨機時間、依前文與當下時間主動傳訊息）（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.102。訊息數量可設定：每天則數改為輸入 1–12；新增 ctxHead（開頭設定 0/3/6/10/20 則）與 ctxRecent（最近 8/16/30/50/80 則）；總量上限 9000→24000 字。
    v1.0.0 - App v2.6.101。新功能（方案 B：到點由原生端自己呼叫 Gemini，沒開 App 也會響）。
             · 入口：對話記錄「⋮」選單 →「主動說話…」。每個對話各自設定：開關、每天約幾則、可說話的時段（時段外為安靜時間）、
               最短間隔、連續幾則沒回就暫停、補充指示（角色口吻等）；可「立即測試一則」；顯示通知權限／精確鬧鐘／電池限制狀態與最近錯誤。
@@ -18,7 +19,7 @@
     'use strict';
     var W = window, D = document;
     var K_CFG = 'nova_proactive_cfg', K_PLAN = 'nova_proactive_plan', K_LASTUSER = 'nova_proactive_lastuser', K_MODEL = 'nova_proactive_model';
-    var DEFAULTS = { enabled: false, perDay: 3, start: '09:00', end: '22:00', minGap: 90, maxUnanswered: 3, extra: '' };
+    var DEFAULTS = { enabled: false, perDay: 3, start: '09:00', end: '22:00', minGap: 90, maxUnanswered: 3, ctxHead: 6, ctxRecent: 16, extra: '' };
     var PLAN_DAYS = 3;
 
     function lsGet(k, d) { try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }
@@ -110,9 +111,10 @@
         t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, '[圖片]').replace(/data:[a-z]+\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+/gi, '[檔案]').replace(/```[\s\S]*?```/g, '[程式碼]').replace(/\s+/g, ' ').trim();
         return t.length > 600 ? t.slice(0, 600) + '…' : t;
     }
-    function buildContext(sid) {
+    function buildContext(sid, headN, recentN) {
+        headN = Math.max(0, Math.min(40, headN == null ? 6 : +headN)); recentN = Math.max(2, Math.min(100, recentN == null ? 16 : +recentN));
         var ms = (W.appState && appState.messages || []).filter(function (m) { return String(m.sessionId) === String(sid) && (m.sender === 'user' || m.sender === 'ai') && m.text; });
-        var head = ms.slice(0, 6), tail = ms.slice(Math.max(6, ms.length - 16)), seen = {}, out = [], total = 0;
+        var head = ms.slice(0, headN), tail = ms.slice(Math.max(headN, ms.length - recentN)), seen = {}, out = [], total = 0;
         head.concat(tail).forEach(function (m) {
             var key = m.id || (m.sender + m.text.slice(0, 20));
             if (seen[key]) return; seen[key] = 1;
@@ -121,7 +123,8 @@
         });
         // 總量上限：從最舊（但保留開頭設定）之後開始丟
         for (var i = 0; i < out.length; i++) total += out[i].t.length;
-        while (total > 9000 && out.length > 8) { var rm = out.splice(6, 1)[0]; total -= rm.t.length; }
+        var keepHead = Math.min(headN, out.length - 1);
+        while (total > 24000 && out.length > keepHead + 2) { var rm = out.splice(keepHead, 1)[0]; total -= rm.t.length; }   // 太長就從「開頭設定」之後最舊的開始丟
         return out;
     }
     function titleOf(sid) {
@@ -145,7 +148,7 @@
                 if (!c.enabled || isPrivate(sid)) return;
                 sessions[sid] = {
                     title: titleOf(sid), extra: String(c.extra || '').slice(0, 800), maxUnanswered: +c.maxUnanswered || 3,
-                    lastUserTs: lastUser[sid] || 0, context: buildContext(sid), plan: ensurePlan(sid, c)
+                    lastUserTs: lastUser[sid] || 0, context: buildContext(sid, c.ctxHead, c.ctxRecent), plan: ensurePlan(sid, c)
                 };
             });
             var key = (W.appState && appState.keys && appState.keys.gemini) || '';
@@ -243,17 +246,20 @@
         var ov = D.createElement('div'); ov.id = 'nova-proactive-modal';
         ov.style.cssText = 'position:fixed;inset:0;z-index:1000000;background:rgba(2,6,23,.75);display:flex;align-items:center;justify-content:center;padding:12px;';
         var gap = [[30, '30 分鐘'], [60, '1 小時'], [90, '1.5 小時'], [120, '2 小時'], [180, '3 小時'], [240, '4 小時']];
-        var perDay = [[1, '1 則'], [2, '2 則'], [3, '3 則'], [4, '4 則'], [6, '6 則'], [8, '8 則']];
+        var headL = [[0, '不帶'], [3, '3 則'], [6, '6 則'], [10, '10 則'], [20, '20 則']];
+        var recL = [[8, '8 則'], [16, '16 則'], [30, '30 則'], [50, '50 則'], [80, '80 則']];
         var maxUn = [[1, '1 則'], [2, '2 則'], [3, '3 則'], [5, '5 則']];
         ov.innerHTML = '<div style="width:100%;max-width:420px;max-height:92vh;overflow:auto;background:#0f172a;border:1px solid #334155;border-radius:12px;padding:14px;color:#e2e8f0;">' +
             '<div style="font-size:14px;font-weight:800;margin-bottom:2px;">💬 主動說話</div>' +
             '<div style="font-size:10px;color:#94a3b8;margin-bottom:10px;">對話：' + esc(titleOf(sid)) + '。AI 會在隨機時間依前文與現在的時間主動傳訊息給你，沒開 App 也會用通知提醒。</div>' +
             '<label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;margin-bottom:10px;"><input id="np-en" type="checkbox"' + (c.enabled ? ' checked' : '') + ' style="accent-color:#10b981;"> 對這個對話開啟</label>' +
-            row('每天大約幾則', '<select id="np-per" style="' + SEL + '">' + opts(perDay, c.perDay) + '</select>', '實際每天會有些許浮動') +
+            row('每天大約幾則（最多 12）', '<input id="np-per" type="number" min="1" max="12" value="' + esc(c.perDay) + '" style="' + SEL + '">', '實際每天會有些許浮動；越多越花 Gemini 費用') +
             row('可說話的時段', '<div style="display:flex;gap:6px;align-items:center;"><input id="np-st" type="time" value="' + esc(c.start) + '" style="' + SEL + '"> ～ <input id="np-ed" type="time" value="' + esc(c.end) + '" style="' + SEL + '"></div>', '時段以外是安靜時間，不會打擾') +
             row('兩則之間至少隔', '<select id="np-gap" style="' + SEL + '">' + opts(gap, c.minGap) + '</select>') +
             row('連續幾則沒回就暫停', '<select id="np-un" style="' + SEL + '">' + opts(maxUn, c.maxUnanswered) + '</select>', '你再發言一次就會恢復') +
             row('使用的模型', '<select id="np-model" style="' + SEL + '">' + opts([['default', '標準（品質較好）'], ['lite', '省錢（Flash-Lite）']], lsGet(K_MODEL, 'default')) + '</select>', '每則主動訊息會呼叫一次，費用算在你的 Gemini 金鑰') +
+            row('帶給 AI 的對話：開頭設定', '<select id="np-head" style="' + SEL + '">' + opts(headL, c.ctxHead) + '</select>', '對話最前面的幾則（通常是角色設定），一定會帶') +
+            row('帶給 AI 的對話：最近幾則', '<select id="np-rec" style="' + SEL + '">' + opts(recL, c.ctxRecent) + '</select>', '越多越能接上前文，但每次呼叫越貴；總量上限約 24000 字') +
             row('補充指示（選填）', '<textarea id="np-ex" rows="3" placeholder="例如：口吻再撒嬌一點、不要提到工作" style="' + SEL + 'resize:vertical;">' + esc(c.extra) + '</textarea>') +
             '<div id="np-status" style="font-size:11px;color:#cbd5e1;background:#1e293b;border-radius:8px;padding:8px;margin-bottom:10px;line-height:1.7;">讀取狀態中…</div>' +
             '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
@@ -264,7 +270,7 @@
         var $ = function (id) { return D.getElementById(id); };
         function collect() {
             return {
-                enabled: $('np-en').checked, perDay: +$('np-per').value, start: $('np-st').value || '09:00', end: $('np-ed').value || '22:00',
+                enabled: $('np-en').checked, perDay: Math.max(1, Math.min(12, Math.round(+$('np-per').value) || 3)), ctxHead: +$('np-head').value, ctxRecent: +$('np-rec').value, start: $('np-st').value || '09:00', end: $('np-ed').value || '22:00',
                 minGap: +$('np-gap').value, maxUnanswered: +$('np-un').value, extra: $('np-ex').value.trim()
             };
         }
@@ -333,6 +339,6 @@
         } catch (e) {}
     }
 
-    W.NovaProactiveJS = { makePlan: makePlan, buildContext: buildContext, openModal: openModal, sync: sync, pull: pull, getCfg: getCfg, version: '1.0.0' };
+    W.NovaProactiveJS = { makePlan: makePlan, buildContext: buildContext, openModal: openModal, sync: sync, pull: pull, getCfg: getCfg, version: '1.1.0' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();

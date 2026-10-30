@@ -2264,8 +2264,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.101';
+        const NOVA_APP_VERSION = '2.6.102';
         const NOVA_CHANGELOG = [
+            { v: '2.6.102', date: '2026-10-30', notes: [
+                '「主動說話」訊息數量改為可設定（nova-proactive.js v1.1.0，僅 www，不需重新打包原生）：每天則數改成可輸入 1–12；新增「帶給 AI 的對話」兩項——開頭設定 0／3／6／10／20 則、最近 8／16／30／50／80 則（原本固定 6＋16）；總量上限由 9000 字提高到 24000 字，太長時從開頭設定之後最舊的開始丟。'
+            ] },
             { v: '2.6.101', date: '2026-10-30', notes: [
                 '新功能「AI 主動說話」（新檔 nova-proactive.js v1.0.0；原生 NovaProactive.java／NovaProactivePlugin.java／NovaProactiveReceiver.java，需重新打包 APK）：對話記錄「⋮」選單 →「主動說話…」，針對單一對話讓 AI 在隨機時間依前文與現在的時間（早／午／晚、週幾、距離你上次發言多久）主動傳訊息，沒開 App 也會用通知提醒；點通知會切到該對話，訊息寫進對話。',
                 '每個對話各自設定：開關、每天約幾則、可說話的時段（時段外為安靜時間）、最短間隔、連續幾則沒回就暫停（你再發言就恢復）、使用的模型、補充指示；可「立即測試一則」，並顯示通知權限／精確鬧鐘／電池限制狀態與最近錯誤。',
@@ -21757,7 +21760,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.0.0"></script><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
