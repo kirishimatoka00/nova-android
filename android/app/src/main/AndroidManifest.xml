@@ -55,6 +55,17 @@
                 android:resource="@xml/nova_accessibility_config" />
         </service>
 
+        <!-- v2.6.101：AI 主動說話——鬧鐘到點／開機後重新排程 -->
+        <receiver
+            android:name=".NovaProactiveReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

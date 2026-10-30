@@ -32,7 +32,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NovaFilesPlugin.class);   // v2.6.61：手機檔案瀏覽（所有檔案存取）
         registerPlugin(NovaSystemBarsPlugin.class);   // v2.6.67：導覽列顏色跟主題
         registerPlugin(NovaAccessibilityPlugin.class);   // v2.6.24：無障礙服務外掛（批次 5b）
+        registerPlugin(NovaProactivePlugin.class);   // v2.6.101：AI 主動說話
         super.onCreate(savedInstanceState);
+        NovaProactive.saveLaunch(this, getIntent() == null ? null : getIntent().getStringExtra(NovaProactive.EXTRA_OPEN));   // v2.6.101：從主動訊息通知點開時，記下要切換的對話
         try { getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#020617")); } catch (Exception e) { /* 之後由 JS 依主題設定 */ }   // v2.6.67：啟動預設深色導覽列
 
         // ★ Step 1：App 啟動時主動請求所有必要的 Android 系統權限
@@ -60,6 +62,13 @@ public class MainActivity extends BridgeActivity {
                 }
             }
         );
+    }
+
+    // v2.6.101：App 已開著時點通知（singleTask 會走這裡）
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        NovaProactive.saveLaunch(this, intent == null ? null : intent.getStringExtra(NovaProactive.EXTRA_OPEN));
     }
 
     // 統一在 App 啟動時請求所有權限（讓使用者一次授予，後續不用再問）
