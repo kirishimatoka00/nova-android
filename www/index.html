@@ -2264,8 +2264,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.103';
+        const NOVA_APP_VERSION = '2.6.104';
         const NOVA_CHANGELOG = [
+            { v: '2.6.104', date: '2026-10-31', notes: [
+                '自主任務結束後自動輸出執行 log 檔（nova-autoreport.js v1.1.0；僅 www，不需重新打包原生），對標桌面版 v3.31.40「匯出執行紀錄」，格式沿用 schema nova-autonomous-run：存到 Documents/NOVA_AutoRun/NOVA_AutoRun_<目標>_<時間>.json，不彈分享視窗（避免蓋掉跳回 NOVA），對話區會印出存放路徑。',
+                '內容：目標、狀態、起訖與耗時、設定快照、統計、steps（任務期間對話區每一則系統訊息，含時間與距上一步秒數）、actions（每回合 AI 的完整動作與結果）、codeOutputs（run_python 程式碼／run_shell 指令與輸出）、usage（逐次呼叫 tokens 與是否用快取）、cache。不含截圖與金鑰。',
+                '設定頁自主任務區塊新增「自動輸出執行 log 檔」開關（預設開）與「匯出上次任務 log」按鈕（開分享）。【未在真機驗證】'
+            ] },
             { v: '2.6.103', date: '2026-10-31', notes: [
                 '自主任務結束（完成、失敗、逾時、達回合上限、錯誤中止）時一定叫回 NOVA（新檔 nova-autoreport.js v1.0.0；原生 NovaProactive 新增 bringToFront，需重新打包 APK 才有原生那一段）：先用執行器的 shell 執行 am start 開啟 NOVA（不受 Android 背景啟動限制），還在背景就呼叫原生外掛直接開啟並發高優先通知（Android 14 以前帶全螢幕意圖）；你自己中斷的不會跳。Manifest 新增 USE_FULL_SCREEN_INTENT。',
                 '對標桌面版 v3.31.63：任務結束在對話區印「📊 這次自主任務用量」——呼叫次數、輸入（含快取命中與百分比）、輸出、思考、合計 tokens、估算費用（僅 Gemini 3.6／3.7／3.8 Flash 有價格資料）；做法是在 fetch 統一記錄所有 Gemini 回應的 usageMetadata（規劃、判斷、聯網搜尋都算）。最近 30 次存在 localStorage nova_auto_usage_history。',
@@ -9191,7 +9196,7 @@ ${elementsText ? '\n' + elementsText : ''}`;
                     } catch (_) { /* ignore */ }
                     // v2.6.103：用量統計＋釋放快取＋完成／失敗時跳回 NOVA（要在關閉背景保活之前，網路與 shell 才還能用）
                     try {
-                        if (window.NovaAutoReport) await NovaAutoReport.finish({ status: finishedDone ? 'done' : (cancelRequested ? 'cancelled' : 'failed'), goal: String(goal).replace(/\n\n【目前定位[\s\S]*$/, ''), detail: _lastStatusText, shell: shellExec });
+                        if (window.NovaAutoReport) await NovaAutoReport.finish({ status: finishedDone ? 'done' : (cancelRequested ? 'cancelled' : 'failed'), goal: String(goal).replace(/\n\n【目前定位[\s\S]*$/, ''), detail: _lastStatusText, shell: shellExec, history: history });
                     } catch (_) { /* 結束處理失敗不影響任務結果 */ }
                     // 只有在沒有其他功能（錄音／即時翻譯／連續模式）還需要保活機制時才關閉，
                     // 避免自主任務結束時，順手把其他正在進行中的背景保活也一起關掉。
@@ -21784,7 +21789,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.0.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

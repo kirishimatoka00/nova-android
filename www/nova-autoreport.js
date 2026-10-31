@@ -1,7 +1,10 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-autoreport.js — 自主任務的「結束處理」：token 用量統計、提示詞明確快取、完成／失敗時跳回 NOVA（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.104。任務結束自動輸出執行 log 檔（對標桌面版 v3.31.40「匯出執行紀錄」，格式沿用 schema 'nova-autonomous-run'）：存到 Documents/NOVA_AutoRun/NOVA_AutoRun_<目標>_<時間>.json（不彈分享視窗，避免蓋掉跳回 NOVA）；
+            內容＝目標／狀態／起訖與耗時／設定快照／統計／steps（任務期間對話區出現的每一則系統訊息，含時間與距上一步秒數）／actions（每回合 AI 的完整動作與執行結果）／codeOutputs（run_python 程式碼、run_shell 指令）／usage（逐次呼叫的 tokens 與是否用快取）／cache。
+            不含截圖與金鑰。設定頁新增「自動存 log 檔」開關（nova_auto_log_file，預設開）與「匯出上次任務 log」按鈕（會開分享）；上一次的 log 另存 localStorage nova_auto_lastrun_log（超過 1.5MB 不存）。
    v1.0.0 - App v2.6.103。對標桌面版 v3.31.63～65 的自主任務用量與明確快取，並新增「結束時一定要叫回 NOVA」。
             ① 用量統計：任務執行期間，在 fetch 這一層統一記下所有 Gemini 回應的 usageMetadata（規劃、每回合判斷、聯網搜尋都算，不必逐處改）；
                任務結束在對話區印一行「📊 這次自主任務用量」：呼叫次數、輸入（含快取命中與百分比）、輸出、思考、合計、估算費用
@@ -25,7 +28,29 @@
     function raw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
     function on(k) { return raw(k) !== '0'; }
     function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-    function say(text) { try { if (ST && typeof W.addMessage === 'function') W.addMessage(text, 'system'); } catch (e) {} }
+    function say(text) { try { if (ST && typeof W.addMessage === 'function') { ST.muted = true; try { W.addMessage(text, 'system'); } finally { ST.muted = false; } } } catch (e) {} }
+    // 任務期間對話區出現的系統／AI 訊息 = 執行紀錄的 steps（類似桌面版的「執行紀錄」時間軸）
+    function stepType(t) {
+        if (/^⚙️/.test(t)) return 'action'; if (/^✅ 第/.test(t)) return 'result'; if (/^✅ 自主任務完成/.test(t)) return 'done';
+        if (/^⚠️ 自主任務無法繼續/.test(t)) return 'fail'; if (/^⚠️/.test(t)) return 'warn'; if (/^❌/.test(t)) return 'error'; if (/^⏱️/.test(t)) return 'timeout';
+        if (/^⏸️/.test(t)) return 'skip'; if (/^🔁/.test(t)) return 'limit'; if (/^⏹/.test(t)) return 'cancel'; if (/^🧊/.test(t)) return 'cache'; if (/^⚡/.test(t)) return 'verify';
+        if (/^🤖/.test(t)) return 'start'; return 'message';
+    }
+    function hookAddMessage() {
+        if (W.__novaAutoReportAddHooked || typeof W.addMessage !== 'function') return false;
+        W.__novaAutoReportAddHooked = true;
+        var orig = W.addMessage;
+        W.addMessage = function (text, sender) {
+            try {
+                if (ST && !ST.muted && (sender === 'system' || sender === 'ai') && typeof text === 'string') {
+                    var m = /第\s*(\d+)\s*(?:\/\s*\d+\s*)?回合/.exec(text);
+                    ST.steps.push({ time: Date.now(), sender: sender, type: stepType(text), round: m ? +m[1] : null, text: text.slice(0, 4000) });
+                }
+            } catch (e) {}
+            return orig.apply(this, arguments);
+        };
+        return true;
+    }
     function fmt(n) { return Number(n).toLocaleString('en-US'); }
 
     /* ───────── 價格（美元／百萬 tokens；與桌面版同一份資料） ─────────
@@ -214,6 +239,75 @@
         }
     }
 
+    /* ───────── 執行 log 檔（對標桌面版 v3.31.40） ───────── */
+    function clip(t, n) { t = String(t == null ? '' : t); return t.length > n ? t.slice(0, n) + '…（已截斷 ' + (t.length - n) + ' 字）' : t; }
+    function buildRecord(st, ctx, sum) {
+        var iso = function (ms) { return ms ? new Date(ms).toISOString() : null; };
+        var end = Date.now(), prev = st.t0;
+        var steps = st.steps.map(function (x, i) {
+            var r = { index: i + 1, round: x.round, time: iso(x.time), elapsedSec: Math.round((x.time - prev) / 100) / 10, type: x.type, sender: x.sender, text: x.text };
+            prev = x.time; return r;
+        });
+        var hist = (ctx && Array.isArray(ctx.history)) ? ctx.history : [];
+        var actions = hist.map(function (h) {
+            var a = h && h.action ? JSON.parse(JSON.stringify(h.action, function (k, v) { return typeof v === 'string' && v.length > 20000 ? v.slice(0, 20000) + '…' : v; })) : null;
+            return { round: h.round, action: a, result: clip(h.result, 6000) };
+        });
+        var codeOutputs = [];
+        hist.forEach(function (h) {
+            var a = h && h.action; if (!a) return;
+            if (a.type === 'run_python' && a.code) codeOutputs.push({ round: h.round, kind: 'python', code: clip(a.code, 20000), result: clip(h.result, 6000) });
+            else if (a.type === 'run_shell' && a.cmd) codeOutputs.push({ round: h.round, kind: 'shell', code: clip(a.cmd, 20000), result: clip(h.result, 6000) });
+        });
+        var rounds = {}; steps.forEach(function (x) { if (x.round != null) rounds[x.round] = 1; });
+        var as = (W.appState && W.appState.autoTaskSettings) || {};
+        var ver = ''; try { ver = typeof NOVA_APP_VERSION !== 'undefined' ? NOVA_APP_VERSION : ''; } catch (e) {}
+        return {
+            schema: 'nova-autonomous-run', schemaVersion: 1, platform: 'android',
+            exportedAt: iso(end), novaVersion: 'android ' + ver,
+            session: { id: String((W.appState && W.appState.currentSessionId) || '') },
+            goal: st.goal, status: ctx && ctx.status || '', finalStatusText: ctx && ctx.detail || '',
+            startedAt: iso(st.t0), endedAt: iso(end), durationSec: Math.round((end - st.t0) / 1000),
+            settings: { judge: as.judge, executor: as.executor, cuModel: as.cuModel, maxRounds: as.maxRounds, roundTimeoutSec: as.roundTimeoutSec, textFirst: as.textFirst, explicitCache: on('nova_auto_explicit_cache') },
+            stats: { stepCount: steps.length, roundCount: Object.keys(rounds).length, actionCount: actions.length, errorSteps: steps.filter(function (x) { return x.type === 'error'; }).length,
+                     warnSteps: steps.filter(function (x) { return x.type === 'warn'; }).length, longestStepSec: steps.reduce(function (m, x) { return Math.max(m, x.elapsedSec || 0); }, 0) },
+            usageSummary: sum ? { calls: sum.calls, prompt: sum.sum.prompt, cached: sum.sum.cached, out: sum.sum.out, thoughts: sum.sum.thoughts, total: sum.sum.total, costUsd: sum.cost } : null,
+            usage: st.rows.map(function (r) { return { model: r.model, prompt: r.prompt, cached: r.cached, out: r.out, thoughts: r.thoughts, viaCache: r.viaCache }; }),
+            cache: st.cacheLog.map(function (c) { return { name: c.name, model: c.model, tokens: c.tokens, createdAt: iso(c.createdMs), releasedAt: iso(c.releasedMs) }; }),
+            steps: steps, actions: actions, codeOutputs: codeOutputs,
+            notes: [
+                'steps：任務期間對話區出現的每一則系統／AI 訊息（⚙️ 動作、✅/⚠️ 結果、❌ 錯誤…），elapsedSec 是距離上一則的秒數（含等 AI 判斷的時間），用來找慢步驟。',
+                'actions：每回合 AI 回傳的完整動作與執行結果（結果最多 6000 字元）；run_python／run_shell 的完整程式碼與指令另列在 codeOutputs。',
+                'usage：每次 Gemini 呼叫的輸入／快取命中／輸出／思考 tokens；viaCache 為 true 但 cached 為 0 代表用了快取請求卻沒命中。Computer Use 判斷器的 usage 欄位格式為推測，讀不到的呼叫不會出現在這裡。',
+                '截圖與 API 金鑰不放進這份檔案。每次任務一份檔案，不會互相覆蓋。'
+            ]
+        };
+    }
+    function logFileName(rec) {
+        var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+        var stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+        var slug = String(rec.goal || 'task').replace(/[\\/:*?"<>|\r\n\t]+/g, ' ').replace(/\s+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'task';
+        return 'NOVA_AutoRun_' + slug.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_') + '_' + stamp + '.json';
+    }
+    async function saveLog(rec) {
+        var json = JSON.stringify(rec, null, 2), name = logFileName(rec);
+        try { if (json.length < 1500000) localStorage.setItem('nova_auto_lastrun_log', json); } catch (e) {}
+        var FS = W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem;
+        if (!FS) return null;
+        try {
+            await FS.writeFile({ path: 'NOVA_AutoRun/' + name, data: json, directory: 'DOCUMENTS', encoding: 'utf8', recursive: true });
+            return 'Documents/NOVA_AutoRun/' + name;
+        } catch (e) { say('⚠️ 執行 log 檔儲存失敗：' + String((e && e.message) || e).slice(0, 120)); return null; }
+    }
+    async function exportLast() {
+        var json = raw('nova_auto_lastrun_log');
+        if (!json) { try { W.showToast('還沒有可匯出的任務 log（跑完一次自主任務後才會有）'); } catch (e) {} return false; }
+        var name = 'NOVA_AutoRun_last_' + Date.now() + '.json';
+        try { var rec = JSON.parse(json); name = logFileName(rec); } catch (e) {}
+        if (typeof W._novaExportTextFile === 'function') return await W._novaExportTextFile(json, name, 'application/json');
+        return false;
+    }
+
     /* ───────── 跳回 NOVA ───────── */
     async function bringToFront(ctx, status) {
         if (!on('nova_auto_front') || status === 'cancelled') return;
@@ -234,7 +328,7 @@
     }
 
     /* ───────── 對外：任務開始／結束 ───────── */
-    function begin(info) { ST = { t0: Date.now(), goal: info && info.goal || '', rows: [], cacheLog: [], judgeCalls: 0, noted: {} }; }
+    function begin(info) { ST = { t0: Date.now(), goal: info && info.goal || '', rows: [], cacheLog: [], judgeCalls: 0, noted: {}, steps: [] }; }
     async function finish(ctx) {
         var st = ST; if (!st) return;
         var key = (W.appState && W.appState.keys && W.appState.keys.gemini) || '';
@@ -246,6 +340,11 @@
                 storeHistory(st, s, ctx && ctx.status);
                 if (on('nova_auto_usage_msg')) say(s.text);
             }
+            if (on('nova_auto_log_file')) {
+                var rec = buildRecord(st, ctx || {}, s);
+                var where = await saveLog(rec);
+                if (where) say('📄 已輸出執行 log：' + where + '（' + rec.stats.stepCount + ' 個步驟、' + rec.stats.actionCount + ' 個動作）');
+            }
         } catch (e) { /* 統計失敗不能影響任務 */ }
         try { await bringToFront(ctx || {}, ctx && ctx.status); } catch (e) {}
         ST = null;
@@ -255,7 +354,8 @@
     var TOGGLES = [
         ['nova_auto_front', '🔔 完成或失敗時自動跳回 NOVA', '你自己中斷的不會跳。Android 對背景開啟畫面限制很多，所以另外會發通知。'],
         ['nova_auto_usage_msg', '📊 任務結束顯示 token 用量', '在對話區印一行用量與估算費用。'],
-        ['nova_auto_explicit_cache', '🧊 提示詞明確快取（提示詞判斷器）', '第 3 次判斷起把固定規則存成 Gemini 快取，省輸入費用；失敗會自動退回。Computer Use 判斷器不適用。']
+        ['nova_auto_explicit_cache', '🧊 提示詞明確快取（提示詞判斷器）', '第 3 次判斷起把固定規則存成 Gemini 快取，省輸入費用；失敗會自動退回。Computer Use 判斷器不適用。'],
+        ['nova_auto_log_file', '📄 任務結束自動輸出執行 log 檔', '存到 Documents/NOVA_AutoRun/，內容含每回合動作、結果、程式碼與 token 用量，不含截圖與金鑰。']
     ];
     function injectUi() {
         if (D.getElementById('nova-autoreport-box')) return true;
@@ -266,7 +366,9 @@
         box.innerHTML = TOGGLES.map(function (t, i) {
             return '<label class="flex items-start gap-2 text-[11px] text-slate-300"><input type="checkbox" data-k="' + t[0] + '" id="nar-' + i + '" style="margin-top:2px;accent-color:#10b981;"><span>' + t[1] + '<span class="block text-[10px] text-slate-500">' + t[2] + '</span></span></label>';
         }).join('');
+        box.innerHTML += '<button id="nar-export" class="px-2 py-1 text-[10px] bg-blue-700 hover:bg-blue-600 text-white rounded-md">📤 匯出上次任務 log</button>';
         grid.parentNode.insertBefore(box, grid.nextSibling);
+        var eb = D.getElementById('nar-export'); if (eb) eb.onclick = function () { exportLast(); };
         Array.prototype.forEach.call(box.querySelectorAll('input[data-k]'), function (c) {
             c.checked = on(c.getAttribute('data-k'));
             c.onchange = function () { try { localStorage.setItem(c.getAttribute('data-k'), c.checked ? '1' : '0'); } catch (e) {} };
@@ -277,6 +379,7 @@
 
     patchFetch();
     W.NovaAutoCache = { apply: apply, _reg: cacheReg };
-    W.NovaAutoReport = { begin: begin, finish: finish, _summary: summary, _state: function () { return ST; }, version: '1.0.0' };
+    (function hk(n) { if (!hookAddMessage() && n < 60) setTimeout(function () { hk(n + 1); }, 500); })(0);
+    W.NovaAutoReport = { begin: begin, finish: finish, exportLast: exportLast, _buildRecord: buildRecord, _summary: summary, _state: function () { return ST; }, version: '1.1.0' };
     if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', function () { boot(0); }); else boot(0);
 })();
