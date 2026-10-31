@@ -2264,8 +2264,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.104';
+        const NOVA_APP_VERSION = '2.6.105';
         const NOVA_CHANGELOG = [
+            { v: '2.6.105', date: '2026-10-31', notes: [
+                '專案頁「知識庫問答」對標桌面版 v3.92.0（nova-projects.js v1.1.0；僅 www，不需重新打包原生）：① 專案資料沒有相關內容時自動連網搜尋（Gemini googleSearch grounding），答案上方標示「來自網路搜尋」並列出來源連結，每則專案資料回答多一顆「🌐 用網路搜尋再查」，問答頁有「資料不足時連網搜尋」開關（預設開）；② 可開新問答對話（切換／＋新對話／改名／刪除，自動歸在該專案，舊版單一問答自動轉成第一段）；③ 總覽新增「知識庫問答對話」卡片，打勾的問答對話會和專案對話、關聯筆記一起成為後續問答、AI 摘要、AI 專案記憶的資料來源。',
+                'index.html 只改 NovaProjects.init：新增 search（呼叫 Gemini generateContent + google_search，回傳文字與來源）與 openExternal。私密對話仍不會進專案，也不會被搜尋。【未在真機驗證】'
+            ] },
             { v: '2.6.104', date: '2026-10-31', notes: [
                 '自主任務結束後自動輸出執行 log 檔（nova-autoreport.js v1.1.0；僅 www，不需重新打包原生），對標桌面版 v3.31.40「匯出執行紀錄」，格式沿用 schema nova-autonomous-run：存到 Documents/NOVA_AutoRun/NOVA_AutoRun_<目標>_<時間>.json，不彈分享視窗（避免蓋掉跳回 NOVA），對話區會印出存放路徑。',
                 '內容：目標、狀態、起訖與耗時、設定快照、統計、steps（任務期間對話區每一則系統訊息，含時間與距上一步秒數）、actions（每回合 AI 的完整動作與結果）、codeOutputs（run_python 程式碼／run_shell 指令與輸出）、usage（逐次呼叫 tokens 與是否用快取）、cache。不含截圖與金鑰。',
@@ -21742,7 +21746,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
 <script src="./nova-experts-glue.js?v=1.1.1"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
-<script src="./nova-projects.js?v=1.0.0"></script>
+<script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>
 <script>
 /* v2.6.64：專案視窗（nova-projects.js）與 AI 思考（nova-thoughts.js）接線——對標桌面版 v3.72.0／v3.73.0 */
@@ -21759,6 +21763,37 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
             saveNote: function (o) {
                 var note = { id: Date.now(), title: o.title, content: o.html, isHtml: true, date: new Date().toLocaleString(), type: 'text', folder: '未分類' };
                 appState.notes.unshift(note); saveToDB('notes', note); scheduleEmergencyBackup(); renderNotes();
+            },
+            search: async function (o) {
+                try {
+                    var key = (appState.keys && appState.keys.gemini) || '';
+                    if (!key) return { ok: false, error: '連網搜尋需要設定 Gemini API Key' };
+                    var model = window.NOVA_GEMINI_MODEL_DEFAULT || 'gemini-3.6-flash';
+                    try { model = localStorage.getItem('nova_auto_search_model') || model; } catch (e) { /* 用預設 */ }
+                    var ver = /gemini-3|preview/.test(model) ? 'v1alpha' : 'v1beta';
+                    var prompt = '你是專案助理。請用 Google 搜尋取得最新、可靠的資料來回答問題；使用繁體中文（台灣）；具體列出名稱、數字、日期，不要憑印象回答，不確定或各來源不一致時要明說。\n\n' +
+                        (o.context ? '【專案背景（僅供理解脈絡）】\n' + o.context + '\n\n' : '') + (o.history ? '【先前的問答】\n' + o.history + '\n\n' : '') + '【問題】\n' + o.query;
+                    var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 90000);
+                    var res;
+                    try {
+                        res = await fetch('https://generativelanguage.googleapis.com/' + ver + '/models/' + model + ':generateContent?key=' + encodeURIComponent(key), {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctl.signal,
+                            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { maxOutputTokens: 4096 } })
+                        });
+                    } finally { clearTimeout(tm); }
+                    var d = await res.json().catch(function () { return null; });
+                    if (!res.ok) return { ok: false, error: (d && d.error && d.error.message) || ('HTTP ' + res.status) };
+                    var cand = d && d.candidates && d.candidates[0], parts = (cand && cand.content && cand.content.parts) || [];
+                    var text = parts.filter(function (x) { return !x.thought; }).map(function (x) { return x.text || ''; }).join('').trim();
+                    if (!text) return { ok: false, error: 'Google 搜尋沒有回傳文字（可能被安全機制攔截或沒有結果）' };
+                    var seen = {}, srcs = [];
+                    ((((cand || {}).groundingMetadata || {}).groundingChunks) || []).forEach(function (c) { var w = c && c.web; if (w && w.uri && !seen[w.uri]) { seen[w.uri] = 1; srcs.push({ title: w.title || '', uri: w.uri }); } });
+                    return { ok: true, text: text, sources: srcs };
+                } catch (e) { return { ok: false, error: (e && e.name === 'AbortError') ? '連網搜尋逾時' : String((e && e.message) || e) }; }
+            },
+            openExternal: function (u) {
+                try { var B = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.Browser; if (B && B.open) { B.open({ url: u }); return; } } catch (e) { /* 落到 window.open */ }
+                window.open(u, '_blank', 'noopener');
             },
             saveFile: function (name, text, mime) { return window._novaExportTextFile ? _novaExportTextFile(text, name, mime) : false; },
             saveBase64: async function (name, b64, mime) { await downloadDataUriFile('data:' + mime + ';base64,' + b64, name); return true; }

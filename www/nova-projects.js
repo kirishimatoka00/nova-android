@@ -2,6 +2,11 @@
  * nova-projects.js — NOVA Android「專案視窗」（把桌面版 nova-projects.js v0.1.1 移植到手機；跟 index.html 放同一個資料夾 www/）
  *
  * 版本記錄（只記這個檔案自己的變更）：
+ *  v1.1.0（2026-10-31，App v2.6.105）知識庫問答對標桌面版 nova-projects.js v0.2.0：
+ *    ・資料不足時可連網搜尋：專案資料完全沒有相關內容（模型回 [[NO_DATA]]）或專案沒有任何資料時，改用 Google 搜尋（Gemini grounding）回答；答案上方標示「來自網路搜尋」並列出來源連結；每則專案資料回答多一顆「🌐 用網路搜尋再查」；問答頁有「資料不足時連網搜尋」開關（預設開）。
+ *    ・可開新對話：問答改成多段對話（threads），可切換／＋新對話／改名／刪除，自動歸在該專案；舊版單一問答自動轉成第一段。
+ *    ・對話內容納入資料：打勾的問答對話（總覽的「知識庫問答對話」卡片）會和專案對話、關聯筆記一起，成為後續問答、AI 對話摘要、AI 專案記憶的資料來源（網路搜尋的答案會標註來源）。
+ *    ・依賴：NovaProjects.init 新增 search（回傳 {ok,text,sources:[{title,uri}]}）與 openExternal。
  *  v1.0.0（2026-10-17，App v2.6.64）首版，對標桌面版 nova-projects.js v0.1.1（desktop-patch v3.72.0）：
  *    ・點側邊欄「資料夾」名稱 → 開啟全螢幕專案頁（手機單欄排版）；三個分頁：總覽／知識庫問答／設定（桌面版右側欄在手機改成第三個分頁）。
  *    ・總覽：AI 專案摘要（長對話先個別濃縮並快取）、AI 專案記憶（可編輯、更新時參考舊記憶）、專案對話清單（點了跳到該對話）。
@@ -15,7 +20,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '1.0.0', KEY = 'nova_projects_v1';
+  var VERSION = '1.1.0', KEY = 'nova_projects_v1';
   var H = null;            // host（index.html 注入）
   var CUR = null;          // 目前開啟的專案名稱
   var BUSY = {};           // 進行中的工作
@@ -32,6 +37,17 @@
     var all = loadAll(), m = all[name];
     if (!m || typeof m !== 'object') m = {};
     m.instr = typeof m.instr === 'string' ? m.instr : ''; if (!Array.isArray(m.noteIds)) m.noteIds = []; if (!m.digests || typeof m.digests !== 'object') m.digests = {}; if (!Array.isArray(m.qa)) m.qa = [];
+    // v1.1.0：問答改成多段對話（threads）；舊版單一問答 m.qa 轉成第一段（id 由第一則的時間決定，重複轉換結果一致）
+    if (!Array.isArray(m.threads)) m.threads = [];
+    m.threads = m.threads.filter(function (t) { return t && typeof t === 'object' && t.id; });
+    m.threads.forEach(function (t) { if (!Array.isArray(t.qa)) t.qa = []; t.title = typeof t.title === 'string' && t.title ? t.title : '知識庫問答'; });
+    if (m.qa.length) {
+      var f0 = m.qa.find(function (x) { return x && x.role === 'user'; }), t0 = (m.qa[0] && m.qa[0].ts) || 1;
+      m.threads.unshift({ id: 't' + t0, title: clip(f0 ? String(f0.text).replace(/\s+/g, ' ') : '知識庫問答', 24), ts: t0, qa: m.qa, inc: true });
+      m.qa = [];
+    }
+    if (typeof m.webOk !== 'boolean') m.webOk = true;
+    if (typeof m.curTid !== 'string') m.curTid = '';
     return m;
   }
   function setMeta(name, m) { var all = loadAll(); all[name] = m; saveAll(all); }
@@ -80,6 +96,30 @@
     });
     return out;
   }
+  function thById(m, id) { for (var i = 0; i < m.threads.length; i++) if (m.threads[i].id === id) return m.threads[i]; return null; }
+  function curTh(m) { return thById(m, m.curTid) || (m.threads.length ? m.threads[m.threads.length - 1] : null); }
+  function curQa(name) { var t = curTh(meta(name)); return t ? t.qa : []; }
+  function thLast(t) { var l = t.qa.length ? t.qa[t.qa.length - 1] : null; return (l && l.ts) || t.ts || 0; }
+  // 問答對話當成「對話」資料來源（excl＝目前這段對話，不重複納入）
+  function qaConvsOf(name, excl) {
+    var m = meta(name), out = [];
+    m.threads.forEach(function (t) {
+      if (t.id === excl || t.inc === false || !t.qa.length) return;
+      var text = t.qa.map(function (x) {
+        var body = String(x.text || '').trim();
+        if (x.role === 'user') return '使用者問：' + body;
+        body = body.replace(/\[\d{1,2}\]/g, '');
+        return 'AI 答' + (x.web ? '（網路搜尋結果' + ((x.webSources || []).length ? '，來源：' + (x.webSources || []).slice(0, 5).map(function (z) { return z.title || z.uri; }).join('、') : '') + '）' : '') + '：' + body;
+      }).join('\n');
+      out.push({ sid: 'qa:' + t.id, title: t.title, msgs: t.qa, text: text, n: t.qa.length, last: thLast(t), qa: true });
+    });
+    return out;
+  }
+  function allConvs(name) { return convsOf(name).concat(qaConvsOf(name)).sort(function (a, b) { return b.last - a.last; }); }
+  function notesBlock(name) {
+    var notes = notesOf(name);
+    return notes.length ? '\n\n【關聯筆記】\n' + notes.map(function (n) { return '■ ' + n.title + '\n' + clip(n.text, 1500); }).join('\n\n') : '';
+  }
   function sigOf(convs) { return convs.length + ':' + convs.reduce(function (a, c) { return a + c.n; }, 0); }
 
   /* ───────────── LLM ───────────── */
@@ -106,7 +146,7 @@
     var parts = [], used = 0;
     for (var i = 0; i < convs.length; i++) {
       var d = await digestOf(name, convs[i]);
-      var block = '■ 對話「' + convs[i].title + '」（' + convs[i].n + ' 則訊息，' + fmtTime(convs[i].last) + '）\n' + d;
+      var block = '■ ' + (convs[i].qa ? '知識庫問答「' : '對話「') + convs[i].title + '」（' + convs[i].n + ' 則訊息，' + fmtTime(convs[i].last) + '）\n' + d;
       if (used + block.length > budget) { block = clip(block, Math.max(300, budget - used)); }
       parts.push(block); used += block.length;
       if (used >= budget) { parts.push('（其餘 ' + (convs.length - i - 1) + ' 個較舊對話因長度限制省略）'); break; }
@@ -115,11 +155,10 @@
   }
 
   async function genSummary(name) {
-    var convs = convsOf(name), m = meta(name);
-    if (!convs.length) throw new Error('這個專案裡還沒有對話');
-    var notes = notesOf(name);
-    var body = await digestsText(name, convs, 50000);
-    var nt = notes.length ? '\n\n【關聯筆記】\n' + notes.map(function (n) { return '■ ' + n.title + '\n' + clip(n.text, 1500); }).join('\n\n') : '';
+    var convs = allConvs(name), m = meta(name);
+    if (!convs.length && !notesOf(name).length) throw new Error('這個專案裡還沒有任何資料（對話、關聯筆記或知識庫問答）');
+    var body = convs.length ? await digestsText(name, convs, 50000) : '（沒有對話，只有關聯筆記）';
+    var nt = notesBlock(name);
     var user = (m.instr ? '【專案指示（使用者寫的背景）】\n' + m.instr + '\n\n' : '') + '【專案「' + name + '」的對話內容】\n' + body + nt +
       '\n\n請產出這個專案的「AI 摘要」，用 Markdown，固定包含這幾個二級標題（沒有內容的就寫「（無）」）：\n## 專案概況\n（2–4 句：這個專案在做什麼、目前階段）\n## 目前進度與重點\n## 已做出的決定\n## 待辦與未解問題\n## 可能被忽略的地方\n（從對話中看得出、但使用者可能沒注意到的矛盾、風險或機會；沒有就寫無，不要硬湊）\n要點用條列，每點盡量帶具體內容（數字、名稱、結論）。';
     var t = await llm(SYS_BASE, user);
@@ -127,11 +166,11 @@
     return t;
   }
   async function genMemory(name) {
-    var convs = convsOf(name), m = meta(name);
-    if (!convs.length) throw new Error('這個專案裡還沒有對話');
-    var body = await digestsText(name, convs, 45000);
+    var convs = allConvs(name), m = meta(name);
+    if (!convs.length && !notesOf(name).length) throw new Error('這個專案裡還沒有任何資料（對話、關聯筆記或知識庫問答）');
+    var body = convs.length ? await digestsText(name, convs, 45000) : '（沒有對話，只有關聯筆記）';
     var user = (m.instr ? '【專案指示】\n' + m.instr + '\n\n' : '') + (m.memory && m.memory.text ? '【目前的專案記憶（請在此基礎上更新：保留仍然成立的、修正過時的、加入新的；使用者手動改過的內容優先保留）】\n' + m.memory.text + '\n\n' : '') +
-      '【專案「' + name + '」的對話內容】\n' + body +
+      '【專案「' + name + '」的對話內容】\n' + body + notesBlock(name) +
       '\n\n請整理「AI 對這個專案的記憶」＝之後在這個專案裡聊天時 AI 應該記得的長期資訊。用 Markdown 條列，分成這些二級標題（沒有的省略）：\n## 目標與背景\n## 使用者的偏好與限制\n## 重要決定與原因\n## 關鍵事實、名詞與數據\n## 持續追蹤的事項\n只寫穩定、可重複使用的資訊，不寫一次性的閒聊；每點一行、精簡。';
     var t = await llm(SYS_BASE, user);
     patchMeta(name, function (mm) { mm.memory = { text: t, ts: Date.now(), sig: sigOf(convs), edited: false }; });
@@ -315,9 +354,10 @@
     cj.forEach(function (seg) { if (seg.length === 1) t.push(seg); for (var i = 0; i < seg.length - 1; i++) t.push(seg.substr(i, 2)); });
     return t;
   }
-  function buildSources(name) {
+  function buildSources(name, excl) {
     var src = [];
     convsOf(name).forEach(function (c) { src.push({ type: 'chat', id: c.sid, title: c.title, text: c.text }); });
+    qaConvsOf(name, excl).forEach(function (c) { src.push({ type: 'qa', id: c.sid.slice(3), title: c.title, text: c.text }); });
     notesOf(name).forEach(function (n) { src.push({ type: 'note', id: n.id, title: n.title, text: n.text }); });
     return src;
   }
@@ -330,8 +370,8 @@
     if (cur) out.push(cur);
     return out.map(function (t) { return { si: idx, text: t, tk: tokens(t) }; });
   }
-  function retrieve(name, q) {
-    var src = buildSources(name), total = src.reduce(function (a, s) { return a + s.text.length; }, 0);
+  function retrieve(name, q, excl) {
+    var src = buildSources(name, excl), total = src.reduce(function (a, s) { return a + s.text.length; }, 0);
     if (!src.length) return { src: src, ctx: '', used: [] };
     var picked = {}, ctx = '';
     if (total <= 26000) {
@@ -353,18 +393,40 @@
     var used2 = [];
     Object.keys(picked).map(Number).sort(function (a, b) { return a - b; }).forEach(function (i) {
       used2.push(i);
-      ctx += '\n=== 來源 [' + (used2.length) + ']：' + (src[i].type === 'chat' ? '對話' : '筆記') + '「' + src[i].title + '」 ===\n' + picked[i].join('\n…\n') + '\n';
+      ctx += '\n=== 來源 [' + (used2.length) + ']：' + (src[i].type === 'chat' ? '對話' : src[i].type === 'qa' ? '知識庫問答' : '筆記') + '「' + src[i].title + '」 ===\n' + picked[i].join('\n…\n') + '\n';
     });
     return { src: src, ctx: ctx, used: used2.map(function (i) { return src[i]; }) };
   }
-  async function ask(name, q) {
-    var m = meta(name), r = retrieve(name, q);
-    if (!r.used.length) throw new Error('這個專案目前沒有可用的對話或關聯筆記');
-    var hist = m.qa.slice(-6).map(function (x) { return (x.role === 'user' ? '使用者：' : '助理：') + clip(x.text, 500); }).join('\n');
-    var sys = SYS_BASE + '\n你現在是「專案知識庫問答」助理（像 NotebookLM）：只能根據【資料】回答。規則：1) 資料裡找不到答案就明說「專案資料中沒有提到」，可以建議使用者補充什麼；2) 每個論點後面用 [編號] 標註出處（編號對應【資料】的來源編號，可以多個，如 [1][3]）；3) 先給直接答案再補充細節；4) 可用 Markdown 條列或表格。';
+  // ★ v0.2.0：連網搜尋（資料不足時）。由 host 的 H.search 提供（Gemini googleSearch grounding），回傳 {ok,text,sources:[{title,uri}]}
+  async function webAnswer(name, q, th) {
+    if (!H || typeof H.search !== 'function') throw new Error('這個版本尚未提供連網搜尋（需要 index.html desktop-patch v3.92.0）');
+    var m = meta(name);
+    var ctx = (m.instr ? '專案指示：' + clip(m.instr, 600) + '\n' : '') + (m.summary && m.summary.text ? '專案摘要：' + clip(m.summary.text, 1200) : '');
+    var hist = (th ? th.qa : []).slice(-6).map(function (x) { return (x.role === 'user' ? '使用者：' : '助理：') + clip(x.text, 400); }).join('\n');
+    var r = await H.search({ query: q, context: ctx, history: hist });
+    if (!r || !r.ok || !String(r.text || '').trim()) throw new Error((r && r.error) || '網路搜尋沒有結果');
+    var seen = {}, srcs = [];
+    (r.sources || []).forEach(function (x) { var u = x && (x.uri || x.url); if (u && !seen[u] && srcs.length < 12) { seen[u] = 1; srcs.push({ title: x.title || u, uri: u }); } });
+    return { text: String(r.text).trim(), sources: [], web: true, webSources: srcs };
+  }
+  async function ask(name, q, opt) {
+    opt = opt || {};
+    var m = meta(name), th = thById(m, opt.tid) || curTh(m), r = retrieve(name, q, th && th.id), webOk = m.webOk !== false && !!(H && typeof H.search === 'function');
+    if (opt.forceWeb) return webAnswer(name, q, th);
+    if (!r.used.length) {
+      if (webOk) { try { return await webAnswer(name, q, th); } catch (e) { throw new Error('專案目前沒有資料可用，連網搜尋也失敗：' + (e && e.message || e)); } }
+      throw new Error('這個專案目前沒有可用的對話、關聯筆記或問答資料' + (m.webOk === false ? '（連網搜尋已關閉）' : ''));
+    }
+    var hist = (th ? th.qa : []).slice(-6).map(function (x) { return (x.role === 'user' ? '使用者：' : '助理：') + clip(x.text, 500); }).join('\n');
+    var noData = webOk ? '1) 如果【資料】裡完全沒有和問題相關的內容，只輸出 [[NO_DATA]] 這個標記，不要輸出任何其他文字（系統會改用網路搜尋）；資料部分相關就照常回答，並明說缺少哪一部分；' : '1) 資料裡找不到答案就明說「專案資料中沒有提到」，可以建議使用者補充什麼；';
+    var sys = SYS_BASE + '\n你現在是「專案知識庫問答」助理（像 NotebookLM）：只能根據【資料】回答。規則：' + noData + '2) 每個論點後面用 [編號] 標註出處（編號對應【資料】的來源編號，可以多個，如 [1][3]）；來源類型「知識庫問答」是先前的問答紀錄，標示「網路搜尋結果」的內容引用時要說明它來自先前的網路搜尋；3) 先給直接答案再補充細節；4) 可用 Markdown 條列或表格。';
     var user = (m.instr ? '【專案指示】\n' + m.instr + '\n\n' : '') + (m.summary && m.summary.text ? '【專案摘要（輔助理解，非引用來源）】\n' + clip(m.summary.text, 2500) + '\n\n' : '') + '【資料】' + r.ctx + (hist ? '\n【先前的問答】\n' + hist + '\n' : '') + '\n【問題】\n' + q;
     var a = await llm(sys, user, 150000);
-    return { text: a, sources: r.used.map(function (s) { return { type: s.type, id: s.id, title: s.title }; }) };
+    if (webOk && /^\s*\[\[NO_DATA\]\]/.test(a)) {
+      try { return await webAnswer(name, q, th); }
+      catch (e) { return { text: '專案資料中沒有提到這個問題；嘗試連網搜尋也失敗了（' + (e && e.message || e) + '）。', sources: [] }; }
+    }
+    return { text: a.replace(/\[\[NO_DATA\]\]/g, ''), sources: r.used.map(function (s) { return { type: s.type, id: s.id, title: s.title }; }) };
   }
 
   /* ───────────── UI ───────────── */
@@ -414,6 +476,13 @@
     '#npj-win .npj-src{font-size:12px;padding:5px 10px;border-radius:999px;border:1px solid var(--bd);background:var(--c2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '#npj-win .npj-inp{display:flex;gap:6px;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--bd);background:var(--c);align-items:flex-end;flex-shrink:0}',
     '#npj-win .npj-inp textarea{flex:1;min-height:42px;max-height:120px}',
+    '#npj-win .npj-qa{display:flex;flex-direction:column;flex:1;min-height:0}',
+    '#npj-win .npj-thbar{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--bd);background:var(--c);flex-wrap:wrap;flex-shrink:0}',
+    '#npj-win .npj-thbar select{flex:1 1 100%;min-width:0;width:auto}',
+    '#npj-win .npj-webrow{padding:4px 10px;font-size:12px;background:var(--c);border-top:1px solid var(--bd);color:var(--t2);flex-shrink:0}',
+    '#npj-win .npj-webnote{border-left:3px solid #f59e0b;background:rgba(245,158,11,.1);padding:6px 10px;border-radius:6px;font-size:12px;margin-bottom:8px;color:var(--t)}',
+    '#npj-win .npj-link{color:var(--ac2);text-decoration:underline}',
+    '#npj-win .npj-row input[type=checkbox]{width:20px;height:20px;flex-shrink:0}',
     '#npj-win .npj-sug{display:flex;flex-direction:column;gap:6px;align-items:stretch;margin-top:12px}',
     'html.theme-light:root body #npj-win .npj-b.pri{background:transparent !important;border-color:transparent !important;color:var(--nv-accent) !important;font-weight:700}',
     '#npj-notepick{position:fixed;inset:0;z-index:99100;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}',
@@ -433,7 +502,7 @@
   function busyBtn(key, label, idle) { return BUSY[key] ? '<span class="npj-b sm" style="opacity:.7">⏳ ' + label + '…</span>' : idle; }
 
   function renderOverview(name) {
-    var convs = convsOf(name), m = meta(name), sig = sigOf(convs), h = '';
+    var convs = convsOf(name), m = meta(name), sig = sigOf(allConvs(name)), h = '';
     var sumStale = m.summary && m.summary.sig !== sig, memStale = m.memory && m.memory.sig !== sig;
     h += '<div class="npj-card"><div class="hd"><b>🧠 AI 對話摘要</b>' + (m.summary ? '<span class="ts">' + fmtTime(m.summary.ts) + '</span>' : '') +
       (m.summary ? '<button class="npj-b sm" data-a="copy-sum">複製</button>' : '') +
@@ -444,27 +513,43 @@
       busyBtn('mem', '整理中', '<button class="npj-b sm pri" data-a="gen-mem">' + (m.memory ? '更新記憶' : '整理記憶') + '</button>') + '</div>' +
       '<div id="npj-mem-body">' + (m.memory ? '<div class="npj-md">' + mdToHtml(m.memory.text) + '</div>' + (memStale ? '<div class="npj-warn">⚠ 專案內的對話有變動，建議更新記憶（會保留你手動改過的內容）</div>' : '') : '<div class="npj-empty">還沒有專案記憶。AI 會從對話整理出「之後聊這個專案該記得的長期資訊」，你可以直接編輯。</div>') + '</div></div>';
     h += '<div class="npj-card"><div class="hd"><b>💬 專案對話（' + convs.length + '）</b></div>' +
-      (convs.length ? convs.map(function (c) { return '<div class="npj-row" data-chat="' + esc(c.sid) + '"><i class="ph ph-chat-circle"></i><span class="t">' + esc(c.title) + '</span><span class="s">' + c.n + ' 則 · ' + esc(fmtTime(c.last).slice(0, 10)) + '</span></div>'; }).join('') : '<div class="npj-empty">尚無對話。在側邊欄對話旁的 ⋯ → 移至資料夾，即可加入這個專案（私密對話不會加入專案）。</div>') + '</div>';
+      (convs.length ? convs.map(function (c) { return '<div class="npj-row" data-chat="' + esc(c.sid) + '"><i class="ph ph-chat-circle"></i><span class="t">' + esc(c.title) + '</span><span class="s">' + c.n + ' 則 · ' + esc(fmtTime(c.last).slice(0, 10)) + '</span></div>'; }).join('') : '<div class="npj-empty">尚無對話。在側邊欄對話旁的 ⋯ → 移至資料夾，即可加入這個專案。</div>') + '</div>';
+    h += qaCard(name);
     return h;
+  }
+  function qaCard(name) {
+    var m = meta(name), ths = m.threads.slice().sort(function (a, b) { return thLast(b) - thLast(a); });
+    var h = '<div class="npj-card"><div class="hd"><b>🔎 知識庫問答對話（' + ths.length + '）</b><button class="npj-b sm" data-a="go-qa">前往問答</button></div>';
+    h += ths.length ? ths.map(function (t) {
+      return '<div class="npj-row" data-th="' + esc(t.id) + '"><input type="checkbox" data-inc="' + esc(t.id) + '"' + (t.inc === false ? '' : ' checked') + ' title="納入後續問答、摘要與記憶" style="width:auto"><i class="ph ph-magnifying-glass"></i><span class="t">' + esc(t.title) + '</span><span class="s">' + t.qa.length + ' 則 · ' + esc(fmtTime(thLast(t)).slice(0, 10)) + '</span></div>';
+    }).join('') : '<div class="npj-empty">還沒有問答對話。到「知識庫問答」提問後會自動出現在這裡。</div>';
+    return h + '<div class="npj-empty">打勾的問答對話會和專案對話、關聯筆記一起，成為後續問答、AI 摘要與 AI 專案記憶的資料來源。</div></div>';
   }
   function renderQa(name) {
-    var m = meta(name), srcN = convsOf(name).length + notesOf(name).length;
-    var h = '<div class="npj-msgs" id="npj-msgs">';
-    if (!m.qa.length) {
-      h += '<div class="npj-msg" style="text-align:center;color:var(--t2);margin-top:3vh"><div style="font-size:30px">📚</div><div style="font-weight:700;color:var(--t);margin:6px 0">專案知識庫問答</div><div style="font-size:12.5px">只根據「本專案的 ' + convsOf(name).length + ' 個對話 + ' + notesOf(name).length + ' 則關聯筆記」回答，並標註出處。<br>想加資料來源：到「設定」分頁的「關聯筆記」勾選筆記。</div>' +
+    var m = meta(name), th = curTh(m), qa = th ? th.qa : [], srcN = convsOf(name).length + notesOf(name).length + qaConvsOf(name, th && th.id).length;
+    var ths = m.threads.slice().sort(function (a, b) { return thLast(b) - thLast(a); });
+    var h = '<div class="npj-qa"><div class="npj-thbar"><select id="npj-th" title="切換問答對話">' + (ths.length ? ths.map(function (t) { return '<option value="' + esc(t.id) + '"' + (th && th.id === t.id ? ' selected' : '') + '>' + esc(t.title) + '（' + t.qa.length + ' 則）</option>'; }).join('') : '<option>（尚無問答對話）</option>') + '</select>' +
+      '<button class="npj-b sm pri" data-a="new-th" title="開新的問答對話（自動歸在這個專案）">＋ 新對話</button>' +
+      (th ? '<button class="npj-b sm" data-a="ren-th">改名</button><button class="npj-b sm" data-a="del-th">刪除</button>' : '') + '</div><div class="npj-msgs" id="npj-msgs">';
+    if (!qa.length) {
+      h += '<div class="npj-msg" style="text-align:center;color:var(--t2);margin-top:3vh"><div style="font-size:30px">📚</div><div style="font-weight:700;color:var(--t);margin:6px 0">專案知識庫問答</div><div style="font-size:12.5px">根據「本專案的 ' + convsOf(name).length + ' 個對話、' + notesOf(name).length + ' 則關聯筆記、' + qaConvsOf(name, th && th.id).length + ' 個其他問答對話」回答，附 [編號] 引用；' + (m.webOk !== false ? '資料不足時會連網搜尋（標註來源）。' : '連網搜尋目前關閉。') + '</div>' +
         '<div class="npj-sug">' + ['這個專案目前進度到哪？', '我們做過哪些決定？為什麼？', '還有哪些事沒解決？', '有哪些矛盾或風險？'].map(function (q) { return '<button class="npj-b sm" data-sug="' + esc(q) + '">' + esc(q) + '</button>'; }).join('') + '</div></div>';
-    } else m.qa.forEach(function (x, i) { h += qaMsgHtml(x, i); });
-    if (BUSY.ask) h += '<div class="npj-msg a"><div class="bub" style="color:var(--t2)">⏳ 正在翻閱專案資料…</div></div>';
-    h += '</div><div class="npj-inp"><textarea id="npj-q" rows="1" placeholder="' + (srcN ? '問問這個專案的資料…' : '這個專案還沒有資料來源') + '"></textarea><button class="npj-b pri" data-a="ask"' + (BUSY.ask ? ' disabled' : '') + '>送出</button>' +
-      (m.qa.length ? '<button class="npj-b" data-a="clear-qa" title="清除問答紀錄">清除</button>' : '') + '</div>';
+    } else qa.forEach(function (x, i) { h += qaMsgHtml(x, i); });
+    if (BUSY.ask) h += '<div class="npj-msg a"><div class="bub" style="color:var(--t2)">⏳ 正在翻閱專案資料…（資料不足時會自動連網搜尋）</div></div>';
+    h += '</div><div class="npj-webrow"><label class="npj-chk" style="margin:0"><input type="checkbox" id="npj-webok"' + (m.webOk !== false ? ' checked' : '') + '> 🌐 專案資料不足時，連網搜尋回答（會標註來自網路搜尋並列出出處）</label></div>' +
+      '<div class="npj-inp"><textarea id="npj-q" rows="1" placeholder="' + (srcN || m.webOk !== false ? '問問這個專案的資料…' : '這個專案還沒有資料來源') + '"></textarea><button class="npj-b pri" data-a="ask"' + (BUSY.ask ? ' disabled' : '') + '>送出</button>' +
+      (qa.length ? '<button class="npj-b" data-a="clear-qa" title="清空這段對話的訊息">清空</button>' : '') + '</div></div>';
     return h;
   }
+  function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
   function qaMsgHtml(x, i) {
     if (x.role === 'user') return '<div class="npj-msg u"><div class="bub">' + esc(x.text) + '</div></div>';
-    var srcs = (x.sources || []);
-    return '<div class="npj-msg a" data-i="' + i + '"><div class="bub"><div class="npj-md">' + mdToHtml(x.text, true) + '</div>' +
-      (srcs.length ? '<div class="npj-srcs">' + srcs.map(function (s, k) { return '<span class="npj-src" data-src="' + k + '" title="' + esc(s.title) + '">[' + (k + 1) + '] ' + (s.type === 'chat' ? '💬 ' : '📝 ') + esc(s.title) + '</span>'; }).join('') + '</div>' : '') +
-      '<div class="npj-srcs"><button class="npj-b sm" data-a="copy-ans" data-i="' + i + '">複製</button><button class="npj-b sm" data-a="note-ans" data-i="' + i + '">存成筆記</button></div></div></div>';
+    var srcs = (x.sources || []), ws = (x.webSources || []);
+    var note = x.web ? '<div class="npj-webnote">🌐 <b>以下內容來自網路搜尋結果（Google 搜尋）</b>，不是專案資料；請自行核對來源。</div>' : '';
+    var srcHtml = srcs.length ? '<div class="npj-srcs">' + srcs.map(function (s, k) { return '<span class="npj-src" data-src="' + k + '" title="' + esc(s.title) + '">[' + (k + 1) + '] ' + (s.type === 'chat' ? '💬 ' : s.type === 'qa' ? '🔎 ' : '📝 ') + esc(s.title) + '</span>'; }).join('') + '</div>' : '';
+    var webHtml = x.web ? '<div style="font-size:12px;margin-top:8px;color:var(--t2)">🌐 網路來源' + (ws.length ? '（' + ws.length + '）' : '') + '：' + (ws.length ? '' : '搜尋沒有回傳可列出的來源連結') + '</div>' + (ws.length ? '<div class="npj-srcs">' + ws.map(function (w, k) { var hs = hostOf(w.uri); return '<a class="npj-src npj-link" data-ext="' + esc(w.uri) + '" title="' + esc(w.uri) + '">' + (k + 1) + '. ' + esc(w.title && w.title !== w.uri ? w.title : hs || w.uri) + (hs && w.title && w.title !== hs ? ' · ' + esc(hs) : '') + '</a>'; }).join('') + '</div>' : '') : '';
+    return '<div class="npj-msg a" data-i="' + i + '"><div class="bub">' + note + '<div class="npj-md">' + mdToHtml(x.text, !x.web) + '</div>' + srcHtml + webHtml +
+      '<div class="npj-srcs"><button class="npj-b sm" data-a="copy-ans" data-i="' + i + '">複製</button><button class="npj-b sm" data-a="note-ans" data-i="' + i + '">存成筆記</button>' + (x.web ? '' : '<button class="npj-b sm" data-a="web-ans" data-i="' + i + '" title="不用專案資料，改用 Google 搜尋回答這個問題">🌐 用網路搜尋再查</button>') + '</div></div></div>';
   }
   function renderSide(name) {
     var m = meta(name), notes = notesOf(name);
@@ -519,16 +604,35 @@
   function onBlur(e) {
     if (e.target && e.target.id === 'npj-instr' && CUR) { var v = e.target.value; patchMeta(CUR, function (m) { m.instr = v; }); }
   }
-  function onChange() { /* 輸出選項僅在畫面上，不需儲存 */ }
+  function onChange(e) {
+    var t = e.target; if (!t || !CUR) return;
+    if (t.id === 'npj-th') { var v = t.value; patchMeta(CUR, function (m) { m.curTid = v; }); render(); }
+    else if (t.id === 'npj-webok') { var on = !!t.checked; patchMeta(CUR, function (m) { m.webOk = on; }); render(); }
+    else if (t.getAttribute && t.getAttribute('data-inc')) { var id = t.getAttribute('data-inc'), chk = !!t.checked; patchMeta(CUR, function (m) { var th = thById(m, id); if (th) th.inc = chk; }); render(); }
+  }
+
   function onKey() { /* 手機版：Enter 換行，按「送出」才送出 */ }
-  function sendQ(pre) {
+  function sendQ(pre, forceWeb, redo) {
     var el = $('#npj-q'), q = (pre || (el && el.value) || '').trim(); if (!q || !CUR || BUSY.ask) return;
-    var name = CUR;
-    patchMeta(name, function (m) { m.qa.push({ role: 'user', text: q, ts: Date.now() }); });
+    var name = CUR, tid = '';
+    patchMeta(name, function (m) {
+      var th = curTh(m);
+      if (!th) { th = { id: 't' + Date.now(), title: '新的問答對話', ts: Date.now(), qa: [], inc: true }; m.threads.push(th); }
+      m.curTid = th.id; tid = th.id;
+      th.qa.push({ role: 'user', text: redo ? '🌐（改用網路搜尋）' + q : q, ts: Date.now() });
+      if (th.title === '新的問答對話' || th.title === '知識庫問答') th.title = clip(q.replace(/\s+/g, ' '), 24);
+    });
     if (el) el.value = '';
     run('ask', '問答', function () {
-      return ask(name, q).then(function (r) { patchMeta(name, function (m) { m.qa.push({ role: 'ai', text: r.text, sources: r.sources, ts: Date.now() }); if (m.qa.length > 60) m.qa = m.qa.slice(-60); }); });
+      return ask(name, q, { tid: tid, forceWeb: !!forceWeb }).then(function (r) {
+        patchMeta(name, function (m) { var th = thById(m, tid); if (!th) return; th.qa.push({ role: 'ai', text: r.text, sources: r.sources, web: !!r.web, webSources: r.webSources || [], ts: Date.now() }); if (th.qa.length > 80) th.qa = th.qa.slice(-80); });
+      });
     });
+  }
+  function openExt(u) {
+    u = String(u || ''); if (!/^https?:\/\//i.test(u)) return;
+    try { if (H && typeof H.openExternal === 'function') { H.openExternal(u); return; } } catch (e) { /* 落到 window.open */ }
+    window.open(u, '_blank', 'noopener');
   }
   function pickNotes() {
     var S = state(), name = CUR, sel = {}; meta(name).noteIds.forEach(function (id) { sel[String(id)] = 1; });
@@ -551,15 +655,18 @@
   function onClick(e) {
     var t = e.target, el;
     if ((el = t.closest('[data-tab]'))) { TAB = el.getAttribute('data-tab'); render(); return; }
+    if ((el = t.closest('[data-ext]'))) { openExt(el.getAttribute('data-ext')); return; }
+    if (t.closest('[data-inc]')) return;
+    if ((el = t.closest('[data-th]'))) { var tid0 = el.getAttribute('data-th'); patchMeta(CUR, function (m) { m.curTid = tid0; }); TAB = 'qa'; render(); return; }
     if ((el = t.closest('[data-chat]'))) { var sid = el.getAttribute('data-chat'); closeWin(); if (H && H.openChat) H.openChat(sid); return; }
     if ((el = t.closest('[data-sug]'))) { sendQ(el.getAttribute('data-sug')); return; }
     if ((el = t.closest('[data-unlink]'))) { var id = el.getAttribute('data-unlink'); patchMeta(CUR, function (m) { m.noteIds = m.noteIds.filter(function (x) { return String(x) !== String(id); }); }); render(); return; }
     if ((el = t.closest('.npj-cite'))) {
-      var msg = t.closest('.npj-msg'), q = meta(CUR).qa[+msg.getAttribute('data-i')], s = q && q.sources && q.sources[+el.getAttribute('data-cite') - 1];
+      var msg = t.closest('.npj-msg'), q = curQa(CUR)[+msg.getAttribute('data-i')], s = q && q.sources && q.sources[+el.getAttribute('data-cite') - 1];
       if (s) openSource(s); return;
     }
     if ((el = t.closest('[data-src]'))) {
-      var msg2 = t.closest('.npj-msg'), q2 = meta(CUR).qa[+msg2.getAttribute('data-i')], s2 = q2 && q2.sources && q2.sources[+el.getAttribute('data-src')];
+      var msg2 = t.closest('.npj-msg'), q2 = curQa(CUR)[+msg2.getAttribute('data-i')], s2 = q2 && q2.sources && q2.sources[+el.getAttribute('data-src')];
       if (s2) openSource(s2); return;
     }
     el = t.closest('[data-a]'); if (!el) return;
@@ -578,14 +685,35 @@
     else if (a === 'export') { var fmt = $('#npj-fmt').value; run('exp', '輸出', function () { return doExport(name, fmt); }); }
     else if (a === 'ppt') run('ppt', '產生簡報', function () { return makePpt(name); });
     else if (a === 'ask') sendQ();
-    else if (a === 'clear-qa') { patchMeta(name, function (m3) { m3.qa = []; }); render(); }
-    else if (a === 'copy-ans') { var qa = meta(name).qa[+el.getAttribute('data-i')]; try { navigator.clipboard.writeText(mdToText(qa.text)); toast('✅ 已複製'); } catch (er2) { toast('複製失敗'); } }
+    else if (a === 'clear-qa') { patchMeta(name, function (m3) { var th = curTh(m3); if (th) th.qa = []; }); render(); }
+    else if (a === 'go-qa') { TAB = 'qa'; render(); }
+    else if (a === 'new-th') {
+      var cm = meta(name), cth = curTh(cm);
+      if (cth && !cth.qa.length) { TAB = 'qa'; render(); return; }
+      patchMeta(name, function (m4) { var id = 't' + Date.now(); m4.threads.push({ id: id, title: '新的問答對話', ts: Date.now(), qa: [], inc: true }); m4.curTid = id; }); TAB = 'qa'; render();
+      setTimeout(function () { var q = $('#npj-q'); if (q) q.focus(); }, 30);
+    }
+    else if (a === 'ren-th') {
+      var rth = curTh(meta(name)); if (!rth) return;
+      Promise.resolve(window.prompt('這段問答對話的名稱', rth.title)).then(function (v) { v = (v == null ? '' : String(v)).trim(); if (!v) return; patchMeta(name, function (m5) { var x = thById(m5, rth.id); if (x) x.title = clip(v, 40); }); render(); });
+    }
+    else if (a === 'del-th') {
+      var dth = curTh(meta(name)); if (!dth) return;
+      Promise.resolve((typeof window.showConfirm === 'function' ? window.showConfirm : function (m) { return window.confirm(m); })('要刪除問答對話「' + dth.title + '」嗎？（' + dth.qa.length + ' 則訊息，之後的問答、摘要與記憶不會再用到它）')).then(function (ok) { if (!ok) return; patchMeta(name, function (m6) { m6.threads = m6.threads.filter(function (x) { return x.id !== dth.id; }); if (m6.curTid === dth.id) m6.curTid = ''; }); render(); });
+    }
+    else if (a === 'web-ans') {
+      var ths = curQa(name), idx = +el.getAttribute('data-i'), uq = null;
+      for (var k = idx - 1; k >= 0; k--) if (ths[k] && ths[k].role === 'user') { uq = ths[k]; break; }
+      if (uq) sendQ(uq.text, true, true);
+    }
+    else if (a === 'copy-ans') { var qa = curQa(name)[+el.getAttribute('data-i')]; try { navigator.clipboard.writeText((qa.web ? '【網路搜尋結果】\n' : '') + mdToText(qa.text) + ((qa.webSources || []).length ? '\n\n來源：\n' + qa.webSources.map(function (w, k) { return (k + 1) + '. ' + (w.title || '') + ' ' + w.uri; }).join('\n') : '')); toast('✅ 已複製'); } catch (er2) { toast('複製失敗'); } }
     else if (a === 'note-ans') {
-      var qa2 = meta(name).qa[+el.getAttribute('data-i')], prevQ = meta(name).qa[+el.getAttribute('data-i') - 1];
-      if (H && H.saveNote) { H.saveNote({ title: '專案問答：' + clip(prevQ ? prevQ.text : name, 30), html: mdToHtml(qa2.text).replace(/<a class="npj-cite"[^>]*>(\d+)<\/a>/g, '[$1]') + '<p><small>來源：' + esc((qa2.sources || []).map(function (s, k) { return '[' + (k + 1) + '] ' + s.title; }).join('、')) + '</small></p>' }); toast('✅ 已存成筆記'); }
+      var qaL = curQa(name), qa2 = qaL[+el.getAttribute('data-i')], prevQ = qaL[+el.getAttribute('data-i') - 1];
+      if (H && H.saveNote) { H.saveNote({ title: '專案問答：' + clip(prevQ ? prevQ.text : name, 30), html: (qa2.web ? '<p><b>🌐 以下內容來自網路搜尋結果（Google 搜尋），不是專案資料</b></p>' : '') + mdToHtml(qa2.text).replace(/<a class="npj-cite"[^>]*>(\d+)<\/a>/g, '[$1]') + '<p><small>來源：' + esc((qa2.sources || []).map(function (s, k) { return '[' + (k + 1) + '] ' + s.title; }).join('、')) + '</small></p>' + ((qa2.webSources || []).length ? '<p><small>網路來源：</small></p><ul>' + qa2.webSources.map(function (w) { return '<li><a href="' + esc(w.uri) + '">' + esc(w.title || w.uri) + '</a></li>'; }).join('') + '</ul>' : '') }); toast('✅ 已存成筆記'); }
     }
   }
   function openSource(s) {
+    if (s.type === 'qa') { patchMeta(CUR, function (m) { m.curTid = s.id; }); TAB = 'qa'; render(); return; }
     if (s.type === 'chat') { closeWin(); if (H && H.openChat) H.openChat(s.id); }
     else if (H && H.openNote) { closeWin(); H.openNote(s.id); }
   }
