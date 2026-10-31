@@ -419,6 +419,39 @@ public final class NovaProactive {
         return s == null ? "" : s;
     }
 
+    /* ───────── 自主任務結束：把 NOVA 帶回前景（v2.6.103） ───────── */
+
+    static final String CHANNEL_TASK = "nova_autotask";
+
+    /**
+     * 自主任務完成／失敗時叫回 NOVA：先直接開啟主畫面（Android 10 以後背景啟動 Activity 常被系統擋下，所以不保證成功），
+     * 同時發一則高優先通知（Android 14 以前還帶全螢幕意圖，會直接跳出；之後點通知即可）。
+     */
+    static void bringToFront(Context c, String title, String text) {
+        Intent open = new Intent(c, MainActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        try { c.startActivity(open); } catch (Exception e) { /* 被系統擋下就靠通知 */ }
+        NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL_TASK) == null) {
+            NotificationChannel ch = new NotificationChannel(CHANNEL_TASK, "NOVA 自主任務結果", NotificationManager.IMPORTANCE_HIGH);
+            ch.setDescription("自主任務完成或失敗時提醒你回到 NOVA");
+            nm.createNotificationChannel(ch);
+        }
+        PendingIntent pi = PendingIntent.getActivity(c, 7302, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String t = text == null ? "" : text;
+        NotificationCompat.Builder b = new NotificationCompat.Builder(c, CHANNEL_TASK)
+                .setSmallIcon(c.getApplicationInfo().icon)
+                .setContentTitle(title == null || title.length() == 0 ? "NOVA 自主任務" : title)
+                .setContentText(t)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(t))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .setFullScreenIntent(pi, true);
+        nm.notify(9990, b.build());
+    }
+
     /* ───────── 小工具 ───────── */
 
     private static String two(int n) { return n < 10 ? "0" + n : String.valueOf(n); }

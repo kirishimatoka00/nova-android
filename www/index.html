@@ -2264,8 +2264,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.102';
+        const NOVA_APP_VERSION = '2.6.103';
         const NOVA_CHANGELOG = [
+            { v: '2.6.103', date: '2026-10-31', notes: [
+                '自主任務結束（完成、失敗、逾時、達回合上限、錯誤中止）時一定叫回 NOVA（新檔 nova-autoreport.js v1.0.0；原生 NovaProactive 新增 bringToFront，需重新打包 APK 才有原生那一段）：先用執行器的 shell 執行 am start 開啟 NOVA（不受 Android 背景啟動限制），還在背景就呼叫原生外掛直接開啟並發高優先通知（Android 14 以前帶全螢幕意圖）；你自己中斷的不會跳。Manifest 新增 USE_FULL_SCREEN_INTENT。',
+                '對標桌面版 v3.31.63：任務結束在對話區印「📊 這次自主任務用量」——呼叫次數、輸入（含快取命中與百分比）、輸出、思考、合計 tokens、估算費用（僅 Gemini 3.6／3.7／3.8 Flash 有價格資料）；做法是在 fetch 統一記錄所有 Gemini 回應的 usageMetadata（規劃、判斷、聯網搜尋都算）。最近 30 次存在 localStorage nova_auto_usage_history。',
+                '對標桌面版 v3.31.65：「提示詞＋元件清單」判斷器加入 Gemini 明確快取——第 3 次判斷起把每回合相同的固定規則存成 cachedContents，之後只送快取名稱＋步驟歷史／元件清單／截圖；前綴不足 6000 字元、建立失敗或快取請求被拒都自動退回完整提示詞，任務結束主動刪除快取。Computer Use 判斷器（Interactions API）由伺服器端保存對話狀態，不適用。',
+                '設定頁自主任務區塊新增三個開關（皆預設開啟）：完成或失敗時自動跳回 NOVA、任務結束顯示 token 用量、提示詞明確快取。【未在真實 Gemini／真機驗證】'
+            ] },
             { v: '2.6.102', date: '2026-10-30', notes: [
                 '「主動說話」訊息數量改為可設定（nova-proactive.js v1.1.0，僅 www，不需重新打包原生）：每天則數改成可輸入 1–12；新增「帶給 AI 的對話」兩項——開頭設定 0／3／6／10／20 則、最近 8／16／30／50／80 則（原本固定 6＋16）；總量上限由 9000 字提高到 24000 字，太長時從開頭設定之後最舊的開始丟。'
             ] },
@@ -7749,7 +7755,9 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
             // 像錯誤的 ⚠️ 警告——實際上文字有成功打進去，只是走的是備援路徑而已。
             let setTextRpcKnownBroken = false;
 
+            var _lastStatusText = '';   // v2.6.103：結束時通知／跳回 NOVA 要用
             function setStatus(text, ok) {
+                _lastStatusText = String(text == null ? '' : text);
                 const dot = document.getElementById('autotask-status-dot');
                 const label = document.getElementById('autotask-status-text');
                 const stopBtn = document.getElementById('autotask-stop-btn');
@@ -8417,19 +8425,29 @@ ${_webOn ? '{"type":"web_search","query":"搜尋關鍵字","nearby":true或false
 ${elementsText ? '\n' + elementsText : ''}`;
                 const sysPrompt = textMode ? textPrompt : visionPrompt;
 
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: textMode ? [{ text: sysPrompt }] : [
-                                { text: sysPrompt },
-                                { inline_data: { mime_type: 'image/jpeg', data: screenshotB64 } }
-                            ]
-                        }],
-                        generationConfig: { temperature: 0.2 }
-                    })
-                });
+                // v2.6.103：提示詞明確快取——把「步驟歷史」之前每回合都相同的固定規則存成 Gemini 快取（第 3 次判斷起），失敗一律退回完整提示詞（nova-autoreport.js）
+                const _payload = {
+                    contents: [{
+                        parts: textMode ? [{ text: sysPrompt }] : [
+                            { text: sysPrompt },
+                            { inline_data: { mime_type: 'image/jpeg', data: screenshotB64 } }
+                        ]
+                    }],
+                    generationConfig: { temperature: 0.2 }
+                };
+                const _judgeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${NOVA_GEMINI_MODEL_DEFAULT}:generateContent?key=${key}`;
+                let _cacheUse = null;
+                try {
+                    const _cut = sysPrompt.indexOf('已經執行過的步驟歷史：');
+                    if (window.NovaAutoCache && _cut > 0) _cacheUse = await NovaAutoCache.apply(_payload, { model: NOVA_GEMINI_MODEL_DEFAULT, key, prefix: sysPrompt.slice(0, _cut), full: sysPrompt, image: textMode ? null : screenshotB64 });
+                } catch (_) { _cacheUse = null; }
+                let res = await fetch(_judgeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_payload) });
+                if (!res.ok && _cacheUse) {
+                    let _why = 'HTTP ' + res.status;
+                    try { const _ej = await res.clone().json(); if (_ej && _ej.error && _ej.error.message) _why += ' ' + _ej.error.message; } catch (_) {}
+                    _cacheUse.fail(_why); _cacheUse.restore();
+                    res = await fetch(_judgeUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(_payload) });
+                }
                 if (!res.ok) throw new Error('Gemini 判斷失敗 HTTP ' + res.status);
                 const data = await res.json();
                 let txt = (((data.candidates || [])[0] || {}).content || {}).parts?.map(p => p.text).join('') || '';
@@ -8672,6 +8690,8 @@ ${elementsText ? '\n' + elementsText : ''}`;
                 // + Screen Wake Lock + 定時喚醒），自主任務一樣需要長時間背景等待網路回應，借用同一套機制即可。
                 enableBackgroundMode();
                 showFloatingStopButton();
+                try { if (window.NovaAutoReport) NovaAutoReport.begin({ goal: String(goal).replace(/\n\n【目前定位[\s\S]*$/, '') }); } catch (_) {}   // v2.6.103：開始記錄 token 用量
+                _lastStatusText = '';
                 const settings = appState.autoTaskSettings || { maxRounds: 10, roundTimeoutSec: 120 };
                 const maxRounds = settings.maxRounds || 10;
                 const roundTimeoutMs = (settings.roundTimeoutSec || 120) * 1000;
@@ -9169,6 +9189,10 @@ ${elementsText ? '\n' + elementsText : ''}`;
                             history: history.slice(-12).map(h => ({ round: h.round, action: h.action && h.action.type, say: h.action && h.action.say, result: String(h.result || '').slice(0, 120) })) };
                         if (window.NovaSkillUI && !opts.fromReplay) NovaSkillUI.onTaskEnd(lastRun);
                     } catch (_) { /* ignore */ }
+                    // v2.6.103：用量統計＋釋放快取＋完成／失敗時跳回 NOVA（要在關閉背景保活之前，網路與 shell 才還能用）
+                    try {
+                        if (window.NovaAutoReport) await NovaAutoReport.finish({ status: finishedDone ? 'done' : (cancelRequested ? 'cancelled' : 'failed'), goal: String(goal).replace(/\n\n【目前定位[\s\S]*$/, ''), detail: _lastStatusText, shell: shellExec });
+                    } catch (_) { /* 結束處理失敗不影響任務結果 */ }
                     // 只有在沒有其他功能（錄音／即時翻譯／連續模式）還需要保活機制時才關閉，
                     // 避免自主任務結束時，順手把其他正在進行中的背景保活也一起關掉。
                     try {
@@ -21760,7 +21784,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.0.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

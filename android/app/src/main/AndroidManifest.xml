@@ -119,6 +119,8 @@
     <!-- v2.6.24：自主任務需要查詢／啟動任意已安裝 App（Android 11+ 套件可見性） -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- v2.6.103：自主任務結束時把 NOVA 叫回前景（全螢幕通知） -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

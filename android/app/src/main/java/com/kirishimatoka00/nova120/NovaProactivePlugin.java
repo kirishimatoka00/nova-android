@@ -126,6 +126,17 @@ public class NovaProactivePlugin extends Plugin {
         }
     }
 
+    /** v2.6.103：自主任務結束時把 NOVA 帶回前景（並發通知）。 */
+    @PluginMethod
+    public void bringToFront(PluginCall call) {
+        try {
+            NovaProactive.bringToFront(getContext(), call.getString("title", ""), call.getString("text", ""));
+            call.resolve(new JSObject().put("ok", true));
+        } catch (Exception e) {
+            call.reject("bringToFront 失敗：" + e.getMessage());
+        }
+    }
+
     @PluginMethod
     public void clearAll(PluginCall call) {
         NovaProactive.clearAll(getContext());
