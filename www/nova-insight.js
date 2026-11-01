@@ -1,4 +1,4 @@
-/* nova-insight.js — v1.1.1 (2026-11-01)
+/* nova-insight.js — v1.2.0 (2026-11-01)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
@@ -10,6 +10,7 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.2.0 2026-11-01  圖層抽屜新增「中央氣象署（CWA）授權碼」欄位（存本機、不同步）；來源狀態不計入選用來源（Reddit）的失敗。資料層見 nova-insight-core.js v1.2.0。
  *   v1.1.1 2026-11-01  直播頁說明文字改成「自訂頻道與桌面同步」（資料層見 nova-insight-core.js v1.1.0）。
  *   v1.1.0 2026-11-01  ①平面地圖（Leaflet）改回與桌面一致的 3D 立體地球（globe.gl＋貼圖，移除 vendor/leaflet）；②圖層／篩選抽屜移出地圖容器：上下滑動只捲抽屜（overscroll-behavior、touch-action），不再帶動地圖；
  *                      ③抽屜層級改為蓋過底部分頁列（整個視窗高度）；④+選單按鈕補 --pc 顏色變數，風格與其他按鈕一致。
@@ -233,7 +234,7 @@
       return '<div class="card" data-act="evopen" data-id="' + esc(e.id) + '"><div style="font-weight:600"><span class="dot" style="background:' + (DOMCOL[e.domain] || '#94a3b8') + '"></span>' + esc(e.title) + '</div><div class="sm mut">' + esc(DOMZH[e.domain] || e.domain) + ' · 嚴重度 ' + e.severity + ' · ' + esc(e.source) + (e.n_sources > 1 ? '等 ' + e.n_sources + ' 家' : '') + ' · ' + ago(e.ts) + (e.city && city(e.city) ? ' · ' + esc(city(e.city).zh) : '') + '</div></div>';
     }).join('') + srcStatus();
   }
-  function srcStatus() { if (!S.status.length) return ''; var ok = S.status.filter(function (s) { return s.ok; }).length; return '<div class="sm mut" style="margin-top:6px">來源 ' + ok + '/' + S.status.length + ' 成功' + S.status.filter(function (s) { return !s.ok; }).slice(0, 6).map(function (s) { return '；' + esc(s.name) + '：' + esc(s.error); }).join('') + '</div>'; }
+  function srcStatus() { var st = S.status.filter(function (s) { return !s.hidden; }); if (!st.length) return ''; var ok = st.filter(function (s) { return s.ok; }).length; return '<div class="sm mut" style="margin-top:6px">來源 ' + ok + '/' + st.length + ' 成功' + st.filter(function (s) { return !s.ok; }).slice(0, 6).map(function (s) { return '；' + esc(s.name) + '：' + esc(s.error); }).join('') + '</div>'; }
   function spark(vals) { if (!vals || vals.length < 2) return ''; var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), w = 60, h = 20, rg = mx - mn || 1; return '<svg width="' + w + '" height="' + h + '"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="' + vals.map(function (v, i) { return (i * w / (vals.length - 1)).toFixed(1) + ',' + (h - (v - mn) / rg * (h - 2) - 1).toFixed(1); }).join(' ') + '"/></svg>'; }
   function tMk() {
     var h = '<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="mkrefresh">' + (S.mkBusy ? '載入中…' : '⟳ 重新整理') + '</button><span class="sm mut">5 分鐘快取 · 點一列看一年走勢</span></div>';
@@ -319,6 +320,7 @@
       '<div style="padding-left:20px"><button class="btn sm" data-act="flcadd">＋ 自訂區域（中心＋半徑）</button></div>' +
       (S.fl.on ? '<div class="sm mut" style="margin-top:6px">' + (S.fl.busy ? '更新中…' : S.fl.err ? '⚠ ' + esc(S.fl.err) : S.fl.at ? S.fl.list.length + ' 架（台灣航空 ' + S.fl.tw + '）· ' + esc(S.fl.src) + ' · ' + Math.round((Date.now() - S.fl.at) / 1000) + ' 秒前' : '') + '</div>' : '') + (S.fl.emg && S.fl.emg.length ? '<div class="sm dn">⚠ 緊急：' + S.fl.emg.map(function (e) { return esc((e.callsign || e.icao) + ' ' + e.why); }).join('、') + '</div>' : '') +
       '<div class="sm mut" style="margin:6px 0 0">資料來自民間 ADS-B 接收站（airplanes.live），洋面與關閉 ADS-B 的飛機看不到；半徑最大 250 海浬，多個區域會依序查詢（每次間隔約 1 秒）。不顯示船位。</div>' +
+      '<div class="sm mut" style="margin:12px 0 4px">中央氣象署（CWA）授權碼</div><input class="in" id="nin-cwa" autocomplete="off" placeholder="CWA-XXXXXXXX-…（可空白）" value="' + esc(C.cwa.get()) + '"><div class="row" style="margin-top:6px"><button class="btn sm" data-act="cwasave">儲存並重新整理</button></div><div class="sm mut">填了才會抓氣象署的顯著有感地震與小區域有感地震（帶震央與震度）。只存在這支手機，不同步、不上傳。</div>' +
       '<div class="sm mut" style="margin:12px 0 4px">地球</div><label style="display:flex;align-items:center;gap:10px;min-height:44px"><input type="checkbox" data-chg="rot"' + (S.rot ? ' checked' : '') + ' style="width:22px;height:22px">自動旋轉（碰一下就暫停）</label>';
     $('nin-draw').innerHTML = h;
   }
@@ -377,6 +379,7 @@
         case 'draw': return drawOpen(!S.draw); case 'drawclose': return drawOpen(false);
         case 'refresh': S.mk = null; loadMarkets(true); return loadEvents(true);
         case 'sync': { var ds = W.NovaDataSync; if (!ds || !ds.run) return toast('同步模組未載入'); try { var out = await ds.run(true), r = out && out.insight; toast(!r ? '同步進行中' : r.error ? '同步失敗：' + r.error : r.skipped ? '同步已關閉' : '☁️ ' + r.text, 5000); } catch (er) { toast('同步失敗：' + er.message, 5000); } return; }
+        case 'cwasave': { try { C.cwa.set($('nin-cwa').value); } catch (er) { return toast(er.message, 4500); } toast(C.cwa.get() ? '已儲存氣象署授權碼，重新整理中…' : '已清除氣象署授權碼'); drawOpen(false); return loadEvents(true); }
         case 'clearcity': S.city = ''; drawMap(); return render();
         case 'evopen': return showEvent(id);
         case 'hours': S.hours = parseInt(el.getAttribute('data-h'), 10); savePrefs(); drawMap(); return render();
