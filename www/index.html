@@ -2264,8 +2264,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.109';
+        const NOVA_APP_VERSION = '2.6.110';
         const NOVA_CHANGELOG = [
+            { v: '2.6.110', date: '2026-11-01', notes: [
+                'Project Insight／NovaResearch 依手機試用回饋調整（nova-insight.js v1.1.0、nova-research-ui.js v1.1.0；僅 www，不需重新打包原生）：①+選單「研發」「Insight」鈕補上顏色變數，邊框與文字色和其他按鈕一致。②Insight 圖層／篩選抽屜移出地圖容器，上下滑動只捲抽屜、不再帶動地球；抽屜層級改為蓋過底部分頁列（整個視窗高度）。',
+                'Insight 地圖改回與桌面一致的 3D 立體地球（globe.gl＋貼圖放在 www/vendor/globe/，約 4.5MB；原平面地圖 Leaflet 移除）：單指轉動、雙指縮放、點城市圓柱看該城事件與天氣、點 📷／航班看資訊；圖層抽屜可關自動旋轉；WebGL 載入失敗時自動退回只用列表。',
+                'NovaResearch 情報同步（對標桌面 nova-research.js v1.2.0）：有選專案時，搜尋有結果就自動存成「情報」（同專案同查詢覆蓋同一份）、AI 摘要完成後更新同一份，重搜同查詢保留舊摘要，才能隨專案同步到桌面；情報頁新增「已存的情報」清單（含桌面同步過來的），可載入或刪除。沒選專案時不會存。【未在真機驗證；地球在無頭 Chromium（軟體 WebGL）確認會繪出、抽屜蓋過分頁列】'
+            ] },
             { v: '2.6.109', date: '2026-11-01', notes: [
                 'Project Insight 輕量版移植到手機（階段 3；對標桌面 nova-insight.js／nova_insight.py；僅 www，不需重新打包原生）：+選單新增「Insight」鈕→全螢幕頁，上方平面地圖（Leaflet＋OpenStreetMap，離線時底圖空白但標記仍在）、下方可拉高的底部抽屜，左上 ☰ 開圖層／篩選抽屜；返回鍵先關抽屜再關視窗；按鈕與列高 ≥44px，桌面的 hover 提示改成點一下。',
                 '抽屜分頁：事件（RSS／GDACS／USGS 等來源合併、領域與嚴重度分類，與桌面同一套規則，點事件看詳情、可翻成中文）、市場（指數與走勢）、直播（桌面同一份預設頻道，可自行貼頻道網址／@帳號／直播影片網址新增、移除、還原，只存本機）、鏡頭（只有自訂：圖片快照、YouTube、串流、網頁，可指定經緯度顯示在地圖上）、個股（搜尋、美台股各 5 檔自選、一年走勢）、預判、交易（虛擬買賣與持倉、顯示桌面產生的日誌）。',
@@ -21885,7 +21890,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.0.0"></script><script src="./nova-research-ui.js?v=1.0.0"></script><script src="./nova-insight-core.js?v=1.0.0"></script><script src="./nova-insight.js?v=1.0.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.1.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.0.0"></script><script src="./nova-research-ui.js?v=1.1.0"></script><script src="./nova-insight-core.js?v=1.0.0"></script><script src="./nova-insight.js?v=1.1.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.1.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
