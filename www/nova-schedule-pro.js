@@ -1,10 +1,13 @@
-/* nova-schedule-pro.js — v1.0.0 (2026-10-11)
+/* nova-schedule-pro.js — v1.1.0 (2026-11-01)
  * 手機版「任務管理」對標桌面 v3.7.0+：新增任務視窗分成「🤖 AI排程任務」與「🔔 一般提醒」兩個分頁。
  *   AI排程任務：到時間讓 AI 實際執行（一般對話／聯網查詢／生成圖片／AI 自主模式／技能範本重播），資料格式與聊天室語意排程
  *   （askScheduleTaskType）完全一致：isAutoTask / taskQuery / taskType（replay 另有 replayFile / replayLoopCount），
  *   觸發邏輯在 index.html 的 checkReminders。一般提醒：純鬧鐘＋通知，不呼叫 AI。
  *   兩者都可「同步到手機行事曆」（CalEngine）。桌面版的「同步到 Google 行事曆」依賴桌面 sidecar，手機版沒有，所以不放（評估見回覆）。
  * 版本紀錄
+ *   v1.1.0 2026-11-01  排程管理列表分類對標桌面 v3.86.0：分成「未完成」（一般提醒）／「AI 排程任務」／「已完成」三區，每區可收合並顯示筆數（記在 localStorage nova_todo_sections_v1）。
+ *                      AI 任務跑完（非循環）自動移到「已完成」並記 doneAt；觸發到跑完之間顯示「⏳ 執行中」（aiRunningAt，30 分鐘沒收尾視為結束）；舊資料用 alerted 推算，不搬資料。
+ *                      本檔新增 _novaTodoIsAI／_novaTodoAiRunning／_novaTodoAiFinished／_novaTodoIsDone／_novaTodoSecOpen／_novaRenderScheduleSections；index.html 的 renderTodos／toggleTodo／編輯儲存／checkReminders 對應接上（見 index.html 版本 2.6.106）。
  *   v1.0.0 2026-10-11  首版：移植桌面的新增任務邏輯（分頁切換、執行方式、技能範本選單、重複、行事曆同步）。
  */
 (function () {
@@ -105,4 +108,54 @@
       showToast(type === 'ai' ? '✅ 已建立 AI 排程任務' : ('✅ 已新增提醒' + (alertTime ? '' : '（未設定時間）')));
     }
   };
+
+  /* ───────── v1.1.0：排程管理三分區（對標桌面 v3.86.0） ───────── */
+  W._novaTodoIsAI = function (t) { return !!(t && (t.isAutoTask || t.isAutoSearch)); };
+  W._novaTodoAiRunning = function (t) { return !!(t && t.aiRunningAt && !t.done && Date.now() - t.aiRunningAt < 30 * 60 * 1000); };
+  W._novaTodoAiFinished = function (t) { return W._novaTodoIsAI(t) && !(t.repeatInterval > 0) && t.alerted === true && !W._novaTodoAiRunning(t); };
+  W._novaTodoIsDone = function (t) { return !!t.done || W._novaTodoAiFinished(t); };
+  W._novaTodoFmt = function (ts) {
+    try { return new Date(ts).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }); } catch (e) { return ''; }
+  };
+  W._novaTodoSecOpen = function () {
+    var o = { open: true, ai: true, done: true };
+    try { var v = JSON.parse(localStorage.getItem('nova_todo_sections_v1') || 'null'); if (v && typeof v === 'object') o = Object.assign(o, v); } catch (e) {}
+    return o;
+  };
+  W._novaRenderScheduleSections = function (el, todoBadge) {
+    var isDone = W._novaTodoIsDone, isAI = W._novaTodoIsAI, fmt = W._novaTodoFmt;
+    var card = function (t) {
+      var d = isDone(t), running = W._novaTodoAiRunning(t);
+      var runBadge = running ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style="background:rgba(120,53,15,.55);color:#fcd34d">⏳ 執行中</span>' : '';
+      var doneAt = (d && t.doneAt) ? ' ・ 完成於 ' + esc(fmt(t.doneAt)) : '';
+      var on = t.alertEnabled !== false;
+      return '<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in">'
+        + '<div class="flex items-center space-x-4"><button onclick="toggleTodo(' + t.id + ')" class="text-slate-500 hover:text-blue-400"><i class="ph' + (d ? '-fill ph-check-circle text-green-500' : ' ph-circle') + ' text-2xl"></i></button>'
+        + '<div><p class="text-base ' + (d ? 'line-through text-slate-600' : 'text-slate-200') + ' flex items-center gap-1.5 flex-wrap">' + todoBadge(t) + runBadge + '<span>' + esc(t.text) + '</span></p>'
+        + '<span class="text-xs text-slate-500">' + esc(t.time) + doneAt + '</span></div></div>'
+        + '<div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(' + t.id + ')" class="' + (on ? 'text-yellow-500' : 'text-slate-600') + ' hover:text-yellow-400 p-2" title="' + (on ? '關閉提醒' : '開啟提醒') + '"><i class="ph-bold ' + (on ? 'ph-bell-ringing' : 'ph-bell-slash') + '"></i></button>'
+        + '<button onclick="openTodoEdit(\'' + t.id + '\')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button>'
+        + '<button onclick="deleteTodo(\'' + t.id + '\')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>';
+    };
+    var all = (W.appState && appState.todos) || [];
+    var secs = [
+      { key: 'open', icon: 'ph-fill ph-list-checks text-blue-400', title: '未完成', hint: '', list: all.filter(function (t) { return !isDone(t) && !isAI(t); }) },
+      { key: 'ai', icon: 'ph-fill ph-robot text-sky-400', title: 'AI 排程任務', hint: '到時間會自動呼叫 AI 執行；跑完（非循環）會自動移到「已完成」', list: all.filter(function (t) { return !isDone(t) && isAI(t); }) },
+      { key: 'done', icon: 'ph-fill ph-check-circle text-green-500', title: '已完成', hint: '', list: all.filter(isDone).sort(function (a, b) { return (b.doneAt || b._syncTs || 0) - (a.doneAt || a._syncTs || 0); }) }
+    ];
+    var op = W._novaTodoSecOpen();
+    el.innerHTML = secs.map(function (sc) {
+      return '<details data-todo-sec="' + sc.key + '" ' + (op[sc.key] !== false ? 'open' : '') + ' style="margin-bottom:1.25rem"><summary class="cursor-pointer select-none flex items-center gap-2 flex-wrap" style="margin-bottom:.75rem;list-style:none"><i class="' + sc.icon + '"></i><span class="text-sm font-bold text-slate-300">' + sc.title + '</span><span class="text-xs text-slate-500">' + sc.list.length + '</span>' + (sc.hint ? '<span class="text-xs text-slate-600">' + sc.hint + '</span>' : '') + '</summary><div class="space-y-3">' + (sc.list.map(card).join('') || '<p class="text-slate-600 text-sm text-center py-3">無</p>') + '</div></details>';
+    }).join('');
+    if (!el._novaSecBound) {
+      el._novaSecBound = true;
+      el.addEventListener('toggle', function (ev) {
+        var d = ev.target; if (!d || !d.getAttribute || !d.hasAttribute('data-todo-sec')) return;
+        var o = W._novaTodoSecOpen(); o[d.getAttribute('data-todo-sec')] = d.open;
+        try { localStorage.setItem('nova_todo_sections_v1', JSON.stringify(o)); } catch (e) {}
+      }, true);
+    }
+  };
+  // 分區函式是在 renderTodos 第一次執行之後才載入，載入完補畫一次
+  try { if (typeof renderTodos === 'function' && W.appState && appState.todos) renderTodos(); } catch (e) {}
 })();

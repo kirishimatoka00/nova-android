@@ -2264,8 +2264,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.105';
+        const NOVA_APP_VERSION = '2.6.106';
         const NOVA_CHANGELOG = [
+            { v: '2.6.106', date: '2026-11-01', notes: [
+                '排程管理分類對標桌面版 v3.86.0（nova-schedule-pro.js v1.1.0；僅 www，不需重新打包原生）：列表分成「未完成」（一般提醒）、「AI 排程任務」（AI 排程／自主任務／技能範本重播）、「已完成」三區，每區可收合並顯示筆數（記在 localStorage nova_todo_sections_v1）。',
+                'AI 排程任務跑完（非循環）自動標成已完成並移到「已完成」（記 doneAt，顯示「完成於…」），循環任務一直留在 AI 區；觸發到跑完之間顯示「⏳ 執行中」（aiRunningAt，30 分鐘沒收尾視為結束）；舊資料（已觸發過、沒有 done 欄位）用 alerted 推算直接歸到已完成，不搬資料。',
+                'index.html 只改：renderTodos 改呼叫分區渲染（沒載入時退回原清單）、首頁迷你待辦只顯示未完成前 3 筆、toggleTodo 已執行完的 AI 任務不能勾選重開、編輯儲存時 AI 任務重設時間會回到 AI 區、checkReminders 觸發時寫 aiRunningAt 並於結尾標成已完成。未包含桌面的「進度註解」。【未在真機驗證】'
+            ] },
             { v: '2.6.105', date: '2026-10-31', notes: [
                 '專案頁「知識庫問答」對標桌面版 v3.92.0（nova-projects.js v1.1.0；僅 www，不需重新打包原生）：① 專案資料沒有相關內容時自動連網搜尋（Gemini googleSearch grounding），答案上方標示「來自網路搜尋」並列出來源連結，每則專案資料回答多一顆「🌐 用網路搜尋再查」，問答頁有「資料不足時連網搜尋」開關（預設開）；② 可開新問答對話（切換／＋新對話／改名／刪除，自動歸在該專案，舊版單一問答自動轉成第一段）；③ 總覽新增「知識庫問答對話」卡片，打勾的問答對話會和專案對話、關聯筆記一起成為後續問答、AI 摘要、AI 專案記憶的資料來源。',
                 'index.html 只改 NovaProjects.init：新增 search（呼叫 Gemini generateContent + google_search，回傳文字與來源）與 openExternal。私密對話仍不會進專案，也不會被搜尋。【未在真機驗證】'
@@ -10825,7 +10830,12 @@ msg.files : (msg.file ? [msg.file] : []);
 
         window.toggleTodo = function(id) {
             const t = appState.todos.find(x => String(x.id) === String(id));
-            if(t) { t.done = !t.done; saveToDB('todos', t); renderTodos(); }
+            if(t) {
+                // v2.6.106：已經執行完畢的 AI 排程任務不能用勾選「重開」（alerted 仍為 true，不會再執行）
+                if (window._novaTodoAiFinished && window._novaTodoAiFinished(t)) { showToast('這個 AI 任務已經執行完畢；要再執行一次，請按「編輯」設定新的時間'); return; }
+                t.done = !t.done; if (t.done) t.doneAt = Date.now(); else delete t.doneAt;
+                saveToDB('todos', t); renderTodos();
+            }
         };
         
         window.toggleTodoAlarm = function(id) {
@@ -10898,6 +10908,8 @@ msg.files : (msg.file ? [msg.file] : []);
                 t.alertEnabled = true;
                 t.alerted = false; 
                 t.repeatInterval = repeatVal;
+                // v2.6.106：AI 任務重新設定時間 = 重新排程，從「已完成」回到「AI 排程任務」
+                if (t.isAutoTask || t.isAutoSearch) { t.done = false; delete t.doneAt; delete t.aiRunningAt; }
             } else { 
                 t.alertTime = null; 
                 t.time = '未設定提醒'; 
@@ -13632,8 +13644,9 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 }
                 return badges;
             };
-            if(el) el.innerHTML=appState.todos.map(t=>`<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in"><div class="flex items-center space-x-4"><button onclick="toggleTodo(${t.id})" class="text-slate-500 hover:text-blue-400"><i class="ph${t.done?'-fill ph-check-circle text-green-500':' ph-circle'} text-2xl"></i></button><div><p class="text-base ${t.done?'line-through text-slate-600':'text-slate-200'} flex items-center gap-1.5 flex-wrap">${todoBadge(t)}<span>${escapeHtml(t.text)}</span></p><span class="text-xs text-slate-500">${t.time}</span></div></div><div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(${t.id})" class="${t.alertEnabled !== false ? 'text-yellow-500' : 'text-slate-600'} hover:text-yellow-400 p-2" title="${t.alertEnabled !== false ? '關閉提醒' : '開啟提醒'}"><i class="ph-bold ${t.alertEnabled !== false ? 'ph-bell-ringing' : 'ph-bell-slash'}"></i></button><button onclick="openTodoEdit('${t.id}')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button><button onclick="deleteTodo('${t.id}')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>`).join('')||'<p class="text-slate-500 text-center mt-10">無任務</p>'; 
-            if(mini) mini.innerHTML=appState.todos.slice(0,3).map(t=>`<div class="flex items-center space-x-3 p-2 bg-slate-950/50 rounded-lg border border-slate-800/50"><div class="w-1.5 h-8 rounded-full ${t.done?'bg-green-500':'bg-blue-500'}"></div><div class="flex-1 min-w-0"><p class="text-xs truncate ${t.done?'line-through text-slate-600':'text-slate-300'}">${escapeHtml(t.text)}</p></div></div>`).join('')||'<p class="text-xs text-slate-500 text-center">無待辦</p>'; 
+            if(el && typeof window._novaRenderScheduleSections === 'function') window._novaRenderScheduleSections(el, todoBadge);
+            else if(el) el.innerHTML=appState.todos.map(t=>`<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in"><div class="flex items-center space-x-4"><button onclick="toggleTodo(${t.id})" class="text-slate-500 hover:text-blue-400"><i class="ph${t.done?'-fill ph-check-circle text-green-500':' ph-circle'} text-2xl"></i></button><div><p class="text-base ${t.done?'line-through text-slate-600':'text-slate-200'} flex items-center gap-1.5 flex-wrap">${todoBadge(t)}<span>${escapeHtml(t.text)}</span></p><span class="text-xs text-slate-500">${t.time}</span></div></div><div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(${t.id})" class="${t.alertEnabled !== false ? 'text-yellow-500' : 'text-slate-600'} hover:text-yellow-400 p-2" title="${t.alertEnabled !== false ? '關閉提醒' : '開啟提醒'}"><i class="ph-bold ${t.alertEnabled !== false ? 'ph-bell-ringing' : 'ph-bell-slash'}"></i></button><button onclick="openTodoEdit('${t.id}')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button><button onclick="deleteTodo('${t.id}')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>`).join('')||'<p class="text-slate-500 text-center mt-10">無任務</p>'; 
+            if(mini) mini.innerHTML=appState.todos.filter(x=>!(window._novaTodoIsDone?window._novaTodoIsDone(x):x.done)).slice(0,3).map(t=>`<div class="flex items-center space-x-3 p-2 bg-slate-950/50 rounded-lg border border-slate-800/50"><div class="w-1.5 h-8 rounded-full ${t.done?'bg-green-500':'bg-blue-500'}"></div><div class="flex-1 min-w-0"><p class="text-xs truncate ${t.done?'line-through text-slate-600':'text-slate-300'}">${escapeHtml(t.text)}</p></div></div>`).join('')||'<p class="text-xs text-slate-500 text-center">無待辦</p>'; 
         }
 
         // --- UI 渲染功能 (資料夾與筆記) ---
@@ -20461,6 +20474,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                             t.alerted = false; // 保持未提醒狀態以利下次觸發
                         } else {
                             t.alerted = true; 
+                            if (t.isAutoTask || t.isAutoSearch) t.aiRunningAt = Date.now();   // v2.6.106：標記「執行中」，跑完才移到已完成
                         }
                         saveToDB('todos', t); 
                         renderTodos();
@@ -20613,6 +20627,13 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                                     osc2.start(); gain2.gain.exponentialRampToValueAtTime(0.00001, alarmAudioCtx.currentTime + 0.5);
                                 }, 1000);
                             } catch(e) {}
+                        }
+                        // v2.6.106：AI 排程任務跑完（非循環）→ 標成已完成，移到「已完成」區；循環任務留在 AI 區等下一次
+                        if ((t.isAutoTask || t.isAutoSearch) && !(t.repeatInterval > 0)) {
+                            t.done = true; t.doneAt = Date.now(); delete t.aiRunningAt;
+                            saveToDB('todos', t); renderTodos();
+                        } else if (t.aiRunningAt) {
+                            delete t.aiRunningAt; saveToDB('todos', t); renderTodos();
                         }
                     }
                 }
@@ -21824,7 +21845,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.0.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.1.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
