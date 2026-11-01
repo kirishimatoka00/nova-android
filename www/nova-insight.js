@@ -1,8 +1,8 @@
-/* nova-insight.js — v1.2.1 (2026-11-01)
+/* nova-insight.js — v1.3.0 (2026-11-01)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
- *   ・地球：與桌面相同的 3D 立體地球（globe.gl，檔案在 ./vendor/globe/）；單指轉動、雙指縮放，點城市圓柱看該城事件，點 📷／航班看資訊；圖層抽屜可關自動旋轉。載入失敗時只用列表。
+ *   ・地球：與桌面相同的 3D 立體地球（globe.gl，檔案在 ./vendor/globe/）；單指轉動、雙指縮放，點城市水波附近看該城事件，點 📷／航班看資訊；圖層抽屜可關自動旋轉。載入失敗時只用列表。
  *   ・船位（AIS）完全不做。航班依區域設定，預設只開「台灣周邊」，可勾選其他預設區域或自訂中心＋半徑；圖層預設關閉，開啟後每 45 秒更新。
  *   ・鏡頭：只有自訂鏡頭（圖片快照／YouTube／串流／網頁連結），不接 Windy、不接政府鏡頭。
  *   ・直播：與桌面同一份預設頻道，可新增（貼 UC 頻道 ID／@帳號／頻道網址／直播影片網址）、移除、還原；自訂頻道會跟桌面同步（隱藏的預設頻道只存本機）。
@@ -10,6 +10,7 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.3.0 2026-11-01  螢幕小，地球上的事件不再用光柱：城市與事件座標改用不同顏色的細小水波（顏色＝領域，波幅與速度＝嚴重度，同時最多 70 個）；點地球時依距離挑最近的事件點（手指比水波粗），原本的光柱與點擊目標移除。氣象署事件合併修正見 nova-insight-core.js v1.3.1。
  *   v1.2.1 2026-11-01  氣象署授權碼欄位說明改成「會隨 Insight 同步」（資料層見 nova-insight-core.js v1.3.0）。
  *   v1.2.0 2026-11-01  圖層抽屜新增「中央氣象署（CWA）授權碼」欄位（存本機、不同步）；來源狀態不計入選用來源（Reddit）的失敗。資料層見 nova-insight-core.js v1.2.0。
  *   v1.1.1 2026-11-01  直播頁說明文字改成「自訂頻道與桌面同步」（資料層見 nova-insight-core.js v1.1.0）。
@@ -140,7 +141,7 @@
         .backgroundImageUrl(TEX + 'night-sky.png').globeImageUrl(TEX + 'earth-blue-marble.jpg').bumpImageUrl(TEX + 'earth-topology.png')
         .showAtmosphere(true).atmosphereColor('#5b8cff').atmosphereAltitude(0.18)
         .pointLat('lat').pointLng('lng').pointAltitude('alt').pointRadius('rad').pointColor('color').pointResolution(8)
-        .onPointClick(onPoint)
+        .onPointClick(onPoint).onGlobeClick(onGlobe)
         .ringLat('lat').ringLng('lng').ringColor(function (d) { return function (t) { return hexA(d.color, 1 - t); }; }).ringMaxRadius('maxR').ringPropagationSpeed('speed').ringRepeatPeriod('period')
         .labelLat('lat').labelLng('lng').labelText('text').labelSize(0.9).labelDotRadius(0).labelColor(function () { return 'rgba(230,240,255,.92)'; }).labelResolution(2).labelAltitude(0.012);
       try { g.renderer().setPixelRatio(Math.min(W.devicePixelRatio || 1, 2)); } catch (e) { /* */ }
@@ -168,24 +169,34 @@
     else if (d.cam) { S.tab = 'cam'; S.camLive = d.cam.id; if (S.sheet === 'min') S.sheet = 'mid'; applySheet(); render(); }
     else if (d.flight) { var f = d.flight; toast('✈ ' + (f[1] || f[0]) + ' ' + (f[8] || '') + ' ' + (f[7] || '') + ' · ' + Math.round(f[4] * 3.28084 / 100) * 100 + ' ft · ' + Math.round(f[5] * 1.944) + ' kt', 4500); }
   }
+  /* 事件用「不同顏色的細小水波」標示（不用光柱）：水波顏色＝該處最主要的領域，波幅與速度隨嚴重度；點地球時找最近的事件點（手指比水波粗，所以用範圍挑選，不靠點中水波） */
+  var picks = [];
+  function angDist(la1, lo1, la2, lo2) { var r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2), b = Math.sin((lo2 - lo1) * r / 2), h = a * a + Math.cos(la1 * r) * Math.cos(la2 * r) * b * b; return 2 * Math.asin(Math.min(1, Math.sqrt(h))) / r; }
+  function onGlobe(c) {
+    if (!c || !picks.length) return; var alt = 2; try { alt = globe.pointOfView().altitude || 2; } catch (e) { /* */ }
+    var thr = Math.max(2.5, Math.min(12, alt * 4)), best = null, bd = 1e9;
+    picks.forEach(function (p) { var d = angDist(c.lat, c.lng, p.lat, p.lng) / (p.w || 1); if (d < bd) { bd = d; best = p; } });
+    if (best && bd <= thr) onPoint(best.d);
+  }
   function drawMap() {
     if (!globe) return;
-    var pts = [], rings = [], labels = [], byCity = {};
+    var pts = [], rings = [], labels = [], byCity = {}; picks = [];
     visibleEvents().forEach(function (e) {
-      if (e.lat != null && e.lon != null && isFinite(e.lat) && isFinite(e.lon)) { pts.push({ lat: e.lat, lng: e.lon, alt: 0.02 + e.severity * 0.012, rad: 0.3 + e.severity * 0.07, color: DOMCOL[e.domain] || '#94a3b8', event: e }); return; }
+      if (e.lat != null && e.lon != null && isFinite(e.lat) && isFinite(e.lon)) { rings.push({ lat: e.lat, lng: e.lon, color: DOMCOL[e.domain] || '#94a3b8', maxR: 1.6 + e.severity * 0.55, speed: 0.9 + e.severity * 0.15, period: 3000 - e.severity * 320, hot: e.hot }); picks.push({ lat: e.lat, lng: e.lon, d: { event: e }, w: 1 }); return; }
       if (!e.city) return; var s = byCity[e.city] || (byCity[e.city] = { n: 0, sev: 0, doms: {}, hot: 0 }); s.n++; s.sev = Math.max(s.sev, e.severity); s.doms[e.domain] = (s.doms[e.domain] || 0) + e.severity; s.hot += e.hot;
     });
     Object.keys(byCity).forEach(function (id) {
       var c = city(id), s = byCity[id]; if (!c) return; var top = Object.keys(s.doms).sort(function (a, b) { return s.doms[b] - s.doms[a]; })[0], col = DOMCOL[top] || '#94a3b8', sel = S.city === id;
-      pts.push({ lat: c.lat, lng: c.lon, alt: 0.012 + Math.min(0.3, s.n * 0.012 + s.sev * 0.02) + (sel ? 0.06 : 0), rad: (0.38 + Math.min(0.7, s.n * 0.03) + s.sev * 0.05) * (sel ? 1.5 : 1.15), color: sel ? '#ffffff' : col, cityId: id });
-      if (s.sev >= 4 && rings.length < 14) rings.push({ lat: c.lat, lng: c.lon, color: col, maxR: 4 + s.sev, speed: 2, period: 1700 });
+      rings.push({ lat: c.lat, lng: c.lon, color: sel ? '#ffffff' : col, maxR: (sel ? 3.8 : 1.7) + s.sev * 0.55 + Math.min(1, s.n * 0.05), speed: 0.9 + s.sev * 0.15, period: 3000 - s.sev * 320, hot: s.hot + (sel ? 99 : 0) });
+      picks.push({ lat: c.lat, lng: c.lon, d: { cityId: id }, w: 1 });
       labels.push({ lat: c.lat, lng: c.lon, text: c.en, hot: s.hot });
     });
+    rings.sort(function (a, b) { return b.hot - a.hot; }); rings = rings.slice(0, 70);
     labels.sort(function (a, b) { return b.hot - a.hot; }); labels = labels.slice(0, 12);
-    if (S.fl.on) S.fl.list.forEach(function (f) { var alt = f[4]; pts.push({ lat: f[3], lng: f[2], alt: 0.008, rad: C.isTwFlight(f) ? 0.22 : 0.14, color: C.isTwFlight(f) ? '#f43f5e' : alt > 7000 ? '#22d3ee' : alt > 3000 ? '#facc15' : '#fb923c', flight: f }); });
+    if (S.fl.on) S.fl.list.forEach(function (f) { var alt = f[4]; pts.push({ lat: f[3], lng: f[2], alt: 0.008, rad: C.isTwFlight(f) ? 0.2 : 0.12, color: C.isTwFlight(f) ? '#f43f5e' : alt > 7000 ? '#22d3ee' : alt > 3000 ? '#facc15' : '#fb923c', flight: f }); });
     C.cams.list().forEach(function (cm) {
       var p = cm.lat != null ? [cm.lat, cm.lon] : (city(cm.city) ? [city(cm.city).lat, city(cm.city).lon] : null); if (!p) return;
-      pts.push({ lat: p[0], lng: p[1], alt: 0.03, rad: 0.5, color: '#22d3ee', cam: cm });
+      pts.push({ lat: p[0], lng: p[1], alt: 0.006, rad: 0.28, color: '#22d3ee', cam: cm }); picks.push({ lat: p[0], lng: p[1], d: { cam: cm }, w: 0.6 });
     });
     try { globe.pointsData(pts).ringsData(rings).labelsData(labels); } catch (e) { /* */ }
   }
