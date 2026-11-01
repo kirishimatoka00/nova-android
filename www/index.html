@@ -2264,8 +2264,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.114';
+        const NOVA_APP_VERSION = '2.6.115';
         const NOVA_CHANGELOG = [
+            { v: '2.6.115', date: '2026-11-01', notes: [
+                'NovaResearch／Project Insight 的 API 金鑰可跨裝置同步（對標桌面 desktop-patch v3.104.0＋nova-insight.js v1.15.0；nova-research-core.js v1.2.0、nova-datasync.js v1.2.0、nova-insight-core.js v1.3.0、nova-research-ui.js v1.1.2、nova-insight.js v1.2.1；僅 www，不需重新打包原生）：研發的 Lens／EPO key／EPO secret／PatentsView／Semantic Scholar／NCBI／聯絡信箱，隨 NOVA_Research_Sync.json 的「__keys__/all」同步（遠端沒有的欄位會清除，對方沒有這筆不會刪你的金鑰）；Insight 的 Windy、aisstream、政府鏡頭設定（TDX／TfL／中央氣象署）、FMP／SEC 設定隨 NOVA_Insight_Sync.json 同步。',
+                '手機只用到其中的中央氣象署授權碼（改存 nova_insight_govcam_v1.cwa，與桌面同一份設定，舊版 nova_insight_cwa_key 自動搬移；TDX／TfL 欄位原樣保留回傳）；Windy、AIS、FMP 等手機沒有對應功能，只負責保存與回傳，不會弄丟。研發設定視窗存檔後會立刻觸發同步。',
+                '【安全提醒】金鑰會明文寫進你 Google 雲端硬碟的兩個同步檔，任何能開啟該檔的人都看得到；不想同步請在研發設定視窗關閉同步開關，或不要分享這兩個檔。用模擬雲端檔測過桌面→手機、手機→桌面、清除傳播、舊授權碼搬移。【未在真機驗證】'
+            ] },
             { v: '2.6.114', date: '2026-11-01', notes: [
                 'Project Insight 事件來源四項調整（對標桌面 nova_insight.py v1.11.0＋nova-insight.js v1.14.0；nova-insight-core.js v1.2.0、nova-insight.js v1.2.0；僅 www，不需重新打包原生）：①財經 RSS 新增 WSJ Markets，取代已失效的 Yahoo Finance（2.6.111 已先移除）。②Reddit（r/worldnews、r/MachineLearning）失敗時不顯示，也不計入「來源 N/M 成功」。③GDELT 改成每次重新整理只查一組關鍵字（戰爭／災害／政治輪流），各組結果留存合併，不再一次連查三組造成逾時。',
                 '④新增中央氣象署地震（顯著有感地震 E-A0015-001、小區域有感地震 E-A0016-001，官方來源、帶震央座標與最大震度）：Insight 左上 ☰ 圖層抽屜新增「中央氣象署（CWA）授權碼」欄位，填入並按「儲存並重新整理」才會抓；授權碼只存在這支手機（不同步到 Drive、不寫進錯誤訊息）。解析與桌面 Python 版用同一份樣本逐欄比對一致。【未用真實授權碼連過氣象署，欄位若與官方實際回應有差異，請看來源狀態的錯誤訊息】'
@@ -21905,7 +21910,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.1.1"></script><script src="./nova-research-ui.js?v=1.1.1"></script><script src="./nova-insight-core.js?v=1.2.0"></script><script src="./nova-insight.js?v=1.2.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.1.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.0"></script><script src="./nova-insight.js?v=1.2.1"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

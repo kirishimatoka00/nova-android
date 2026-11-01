@@ -1,4 +1,4 @@
-/* nova-research-core.js — v1.1.1 (2026-11-01)
+/* nova-research-core.js — v1.2.0 (2026-11-01)
  * NovaResearch（研發情報 × 實驗系統）手機版「引擎層」：把桌面 python-engine/nova_research.py v1.1.0 的功能改成純 JS，
  * 在手機 WebView 內執行，不需要 sidecar。介面在 nova-research-ui.js。
  * 對應關係（桌面 → 手機）：
@@ -8,9 +8,10 @@
  *   監看      watch_run＋排程（App 開著時每 5 分鐘檢查到期的監看；桌面是引擎背景執行緒，手機沒有等價物）
  *   計算      make_doe（拉丁超立方／全因子／面心 CCD）、desirability、純 JS 高斯過程＋期望改善量（optimize）、色差 CIEDE2000、受限物質快篩、內建種子清單
  * 不做：RDKit 分子描述符（手機沒有）、scikit-learn 路徑（只用桌面也有的純程式高斯過程）。
- * 金鑰：localStorage nova_research_keys（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱），刻意不同步、不進 Drive。
+ * 金鑰：localStorage nova_research_keys（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱）；v1.2.0 起隨 NOVA_Research_Sync.json 的「__keys__/all」同步（明文，與桌面相同）。
  * 事件：資料新增／修改／刪除時發 nova-research-changed（nova-datasync.js 用來觸發同步）；同步套用後由 nova-datasync.js 發 nova-research-synced。
  * 版本紀錄
+ *   v1.2.0 2026-11-01  API 金鑰可跨裝置同步（對標桌面 index.html desktop-patch v3.104.0）：saveKeys 存檔後發 nova-research-changed 觸發同步；同步套用金鑰時用 saveKeys(patch, true) 靜默寫入。金鑰仍存 localStorage nova_research_keys。
  *   v1.1.1 2026-11-01  v1.1.0 仍失敗的真正原因：能在「文件」建新檔（探測成功），但資料夾裡已有、不是本 App 建立的同名檔（桌面專案 id）沒有權限覆寫（EACCES）。
  *                      改成逐筆退路：寫入失敗的那一筆改存 App 私有資料夾；刪除時文件裡刪不掉的用墓碑（localStorage nova_research_tomb）擋掉，之後同 id 再寫入就解除。
  *   v1.1.0 2026-11-01  修「同步失敗：writeFile EACCES」：沒有「所有檔案存取」權限時 Documents 不能寫。儲存層啟動時先試寫 Documents，失敗就請求權限、仍失敗改存 App 私有資料夾（DATA），
@@ -162,10 +163,11 @@
 
   /* ───────── 金鑰 ───────── */
   function loadKeys() { try { var d = JSON.parse(LS.getItem('nova_research_keys') || '{}'); return d && typeof d === 'object' ? d : {}; } catch (e) { return {}; } }
-  function saveKeys(patch) {
+  function saveKeys(patch, silent) {
     var cur = loadKeys();
     KEY_FIELDS.forEach(function (k) { if (patch && k in patch && patch[k] != null) { var v = String(patch[k]).trim(); if (v) cur[k] = v; else delete cur[k]; } });
     try { LS.setItem('nova_research_keys', JSON.stringify(cur)); } catch (e) { /* */ }
+    if (!silent) emit('nova-research-changed');   // 金鑰也會同步，存檔後觸發同步
     return cur;
   }
 

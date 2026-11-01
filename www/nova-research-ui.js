@@ -1,10 +1,11 @@
-/* nova-research-ui.js — v1.1.1 (2026-11-01)
+/* nova-research-ui.js — v1.1.2 (2026-11-01)
  * NovaResearch（研發情報 × 實驗系統）手機版介面。引擎與儲存在 nova-research-core.js，雲端同步在 nova-datasync.js（檔名 NOVA_Research_Sync.json，與桌面互通）。
  * 入口：+選單「研發」鈕 → 全螢幕 #nrs-win（含安全區；Android 返回鍵先關抽屜、再關視窗）。
  * 手機版版面：頂列（返回／專案切換／同步／設定）＋橫向膠囊分頁（專案／情報／監看／材料／實驗／最佳化／報告）；內容一律單欄卡片；
  *   新增與編輯都用底部抽屜；實驗工作表改成「每筆實驗一張可編輯卡片」（輸入離開焦點即存檔）；觸控目標 ≥44px；桌面 hover 提示改成點一下展開。
  * 注入：NovaResearchUI.init({ llm({system,user,timeoutMs}), toast(msg,ms), saveNote({title,html}) })。沒有 llm 時情報摘要與報告生成按鈕會提示「模型尚未就緒」。
  * 版本紀錄
+ *   v1.1.2 2026-11-01  設定視窗金鑰說明改成「會隨研發同步」；同步套用金鑰後重新讀取設定（見 nova-research-core.js v1.2.0／nova-datasync.js v1.2.0）。
  *   v1.1.1 2026-11-01  設定視窗顯示實際儲存位置（Documents／App 私有），私有時提供「授權所有檔案存取」鈕（配合 nova-research-core.js v1.1.0 的寫入退路）。
  *   v1.1.0 2026-11-01  情報自動存進專案（對標桌面 nova-research.js v1.2.0）：有選專案時搜尋有結果就自動存、AI 摘要完成後更新同一份（同專案同查詢覆蓋，不會越存越多），重搜同查詢保留舊摘要；
  *                      ＋選單「研發」鈕補 --pc 顏色變數（nova-ui.css §15 靠它上邊框與文字色），風格與其他按鈕一致；新增「已存的情報」清單（含桌面同步過來的），可載入、刪除。
@@ -492,7 +493,7 @@
     var k = C.keys.load(), ds = W.NovaDataSync, lab = { lens_token: 'Lens 專利 token', epo_key: 'EPO OPS key', epo_secret: 'EPO OPS secret', patentsview_key: 'PatentsView key', s2_key: 'Semantic Scholar key（可空白）', ncbi_key: 'NCBI key（可空白）', contact_email: '聯絡信箱（OpenAlex／Crossref 禮貌池，可空白）' };
     var info = ds && ds.lastInfo ? ds.lastInfo('research') : null, sdir = null, nf = null;
     try { sdir = await C.store.dir(); nf = W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.NovaFiles; } catch (e) { /* */ }
-    var h = '<h3>設定</h3><div class="sm mut" style="margin-bottom:8px">金鑰只存在這支手機，不會同步到 Drive。</div>' + C.KEY_FIELDS.map(function (f) { return '<label class="f">' + esc(lab[f] || f) + '<input class="in" data-k="' + f + '" value="' + esc(k[f] || '') + '" autocomplete="off"></label>'; }).join('') +
+    var h = '<h3>設定</h3><div class="sm mut" style="margin-bottom:8px">金鑰會隨 NovaResearch 一起同步到 Google 雲端硬碟（明文，與桌面共用）；不想同步請關閉下方的同步開關。</div>' + C.KEY_FIELDS.map(function (f) { return '<label class="f">' + esc(lab[f] || f) + '<input class="in" data-k="' + f + '" value="' + esc(k[f] || '') + '" autocomplete="off"></label>'; }).join('') +
       (ds ? '<label class="f" style="display:flex;align-items:center;gap:8px;color:var(--t)"><input type="checkbox" id="nrs-dson" style="width:22px;height:22px"' + (ds.isEnabled('research') ? ' checked' : '') + '> 與 Google Drive 同步 NovaResearch 資料（NOVA_Research_Sync.json）</label><div class="sm mut">' + (info ? '上次同步 ' + ago(info.at) + '（' + esc(info.text) + '）' : '尚未同步過') + '。儲存位置：' + esc(C.store.adapterName() === 'filesystem' ? (sdir === 'DOCUMENTS' ? '手機「文件/NOVA_Research」資料夾' : 'App 私有資料夾（尚未取得檔案存取權限，資料仍會同步到 Drive）') : '瀏覽器暫存') + '</div>' + (sdir === 'DATA' && nf && nf.requestAccess ? '<div style="margin-top:6px"><button class="btn sm" data-sa="perm">授權所有檔案存取（改存「文件」資料夾）</button><div class="sm mut">授權後請完全關閉 App 再開啟；原本存的資料會自動併入。</div></div>' : '') : '') +
       '<div class="acts"><button class="btn" data-sa="cancel">取消</button><button class="btn pri" data-sa="ok">儲存</button></div>';
     var v = await sheet(h, function (box) {
