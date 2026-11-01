@@ -1,10 +1,11 @@
-/* nova-schedule-pro.js — v1.1.0 (2026-11-01)
+/* nova-schedule-pro.js — v1.2.0 (2026-11-01)
  * 手機版「任務管理」對標桌面 v3.7.0+：新增任務視窗分成「🤖 AI排程任務」與「🔔 一般提醒」兩個分頁。
  *   AI排程任務：到時間讓 AI 實際執行（一般對話／聯網查詢／生成圖片／AI 自主模式／技能範本重播），資料格式與聊天室語意排程
  *   （askScheduleTaskType）完全一致：isAutoTask / taskQuery / taskType（replay 另有 replayFile / replayLoopCount），
  *   觸發邏輯在 index.html 的 checkReminders。一般提醒：純鬧鐘＋通知，不呼叫 AI。
  *   兩者都可「同步到手機行事曆」（CalEngine）。桌面版的「同步到 Google 行事曆」依賴桌面 sidecar，手機版沒有，所以不放（評估見回覆）。
  * 版本紀錄
+ *   v1.2.0 2026-11-01  每筆排程可自己加「進度註解」（對標桌面 v3.86.0 ②）：輸入框按 Enter（輸入法選字中的 Enter 不算）或按「加入」，帶時間戳記，可逐則刪除；存在 todo.progressNotes: [{id, ts, text}]，隨 saveToDB 一起存／同步（整筆為單位）。重畫列表時保留尚未送出的輸入內容與游標。新增 addTodoNote／deleteTodoNote。
  *   v1.1.0 2026-11-01  排程管理列表分類對標桌面 v3.86.0：分成「未完成」（一般提醒）／「AI 排程任務」／「已完成」三區，每區可收合並顯示筆數（記在 localStorage nova_todo_sections_v1）。
  *                      AI 任務跑完（非循環）自動移到「已完成」並記 doneAt；觸發到跑完之間顯示「⏳ 執行中」（aiRunningAt，30 分鐘沒收尾視為結束）；舊資料用 alerted 推算，不搬資料。
  *                      本檔新增 _novaTodoIsAI／_novaTodoAiRunning／_novaTodoAiFinished／_novaTodoIsDone／_novaTodoSecOpen／_novaRenderScheduleSections；index.html 的 renderTodos／toggleTodo／編輯儲存／checkReminders 對應接上（見 index.html 版本 2.6.106）。
@@ -124,18 +125,24 @@
   };
   W._novaRenderScheduleSections = function (el, todoBadge) {
     var isDone = W._novaTodoIsDone, isAI = W._novaTodoIsAI, fmt = W._novaTodoFmt;
+    // 重畫會洗掉正在打的註解，先記起來、畫完還原（含游標所在的那一格）
+    var keep = {}, focusId = null;
+    el.querySelectorAll('[data-todo-note-in]').forEach(function (inp) { if (inp.value) keep[inp.getAttribute('data-todo-note-in')] = inp.value; if (inp === document.activeElement) focusId = inp.getAttribute('data-todo-note-in'); });
     var card = function (t) {
       var d = isDone(t), running = W._novaTodoAiRunning(t);
       var runBadge = running ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0" style="background:rgba(120,53,15,.55);color:#fcd34d">⏳ 執行中</span>' : '';
       var doneAt = (d && t.doneAt) ? ' ・ 完成於 ' + esc(fmt(t.doneAt)) : '';
-      var on = t.alertEnabled !== false;
-      return '<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center hover:border-slate-600 transition-all slide-in">'
+      var on = t.alertEnabled !== false, sid = esc(String(t.id));
+      var notes = Array.isArray(t.progressNotes) ? t.progressNotes : [];
+      var noteRows = notes.map(function (n) { return '<div class="flex items-start gap-2 text-xs text-slate-400 py-0.5"><span class="text-slate-600 shrink-0">' + esc(fmt(n.ts)) + '</span><span class="flex-1" style="word-break:break-word;white-space:pre-wrap">' + esc(n.text) + '</span><button type="button" data-todo-note-del="' + sid + '" data-note-id="' + esc(String(n.id)) + '" class="text-slate-600 hover:text-red-400 shrink-0" title="刪除這則註解"><i class="ph-bold ph-x"></i></button></div>'; }).join('');
+      return '<div class="group bg-slate-900 p-4 rounded-xl border border-slate-800 hover:border-slate-600 transition-all slide-in" data-todo-card="' + sid + '"><div class="flex justify-between items-center">'
         + '<div class="flex items-center space-x-4"><button onclick="toggleTodo(' + t.id + ')" class="text-slate-500 hover:text-blue-400"><i class="ph' + (d ? '-fill ph-check-circle text-green-500' : ' ph-circle') + ' text-2xl"></i></button>'
         + '<div><p class="text-base ' + (d ? 'line-through text-slate-600' : 'text-slate-200') + ' flex items-center gap-1.5 flex-wrap">' + todoBadge(t) + runBadge + '<span>' + esc(t.text) + '</span></p>'
         + '<span class="text-xs text-slate-500">' + esc(t.time) + doneAt + '</span></div></div>'
         + '<div class="flex items-center space-x-2"><button onclick="toggleTodoAlarm(' + t.id + ')" class="' + (on ? 'text-yellow-500' : 'text-slate-600') + ' hover:text-yellow-400 p-2" title="' + (on ? '關閉提醒' : '開啟提醒') + '"><i class="ph-bold ' + (on ? 'ph-bell-ringing' : 'ph-bell-slash') + '"></i></button>'
         + '<button onclick="openTodoEdit(\'' + t.id + '\')" class="text-slate-500 hover:text-blue-400 p-2" title="編輯"><i class="ph-bold ph-pencil-simple"></i></button>'
-        + '<button onclick="deleteTodo(\'' + t.id + '\')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>';
+        + '<button onclick="deleteTodo(\'' + t.id + '\')" class="text-slate-500 hover:text-red-400 p-2" title="刪除"><i class="ph-bold ph-trash"></i></button></div></div>'
+        + '<div style="margin-top:8px;margin-left:2.5rem">' + noteRows + '<div class="flex items-center gap-2" style="margin-top:4px"><input type="text" data-todo-note-in="' + sid + '" maxlength="500" placeholder="加入進度註解…（Enter 送出）" autocomplete="off" class="flex-1 bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-3 py-1.5 min-w-0"><button type="button" data-todo-note-add="' + sid + '" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg whitespace-nowrap">加入</button></div></div></div>';
     };
     var all = (W.appState && appState.todos) || [];
     var secs = [
@@ -147,6 +154,11 @@
     el.innerHTML = secs.map(function (sc) {
       return '<details data-todo-sec="' + sc.key + '" ' + (op[sc.key] !== false ? 'open' : '') + ' style="margin-bottom:1.25rem"><summary class="cursor-pointer select-none flex items-center gap-2 flex-wrap" style="margin-bottom:.75rem;list-style:none"><i class="' + sc.icon + '"></i><span class="text-sm font-bold text-slate-300">' + sc.title + '</span><span class="text-xs text-slate-500">' + sc.list.length + '</span>' + (sc.hint ? '<span class="text-xs text-slate-600">' + sc.hint + '</span>' : '') + '</summary><div class="space-y-3">' + (sc.list.map(card).join('') || '<p class="text-slate-600 text-sm text-center py-3">無</p>') + '</div></details>';
     }).join('');
+    el.querySelectorAll('[data-todo-note-in]').forEach(function (inp) {
+      var k = inp.getAttribute('data-todo-note-in');
+      if (keep[k]) inp.value = keep[k];
+      if (focusId === k) { try { inp.focus(); var L = inp.value.length; inp.setSelectionRange(L, L); } catch (e) {} }
+    });
     if (!el._novaSecBound) {
       el._novaSecBound = true;
       el.addEventListener('toggle', function (ev) {
@@ -154,7 +166,39 @@
         var o = W._novaTodoSecOpen(); o[d.getAttribute('data-todo-sec')] = d.open;
         try { localStorage.setItem('nova_todo_sections_v1', JSON.stringify(o)); } catch (e) {}
       }, true);
+      var submit = function (id) {
+        var inp = el.querySelector('[data-todo-note-in="' + String(id).replace(/"/g, '') + '"]');
+        if (!inp) return;
+        var v = inp.value; inp.value = '';   // 先清空，重畫時才不會把已送出的字又還原回去
+        if (!W.addTodoNote(id, v)) inp.value = v;
+      };
+      el.addEventListener('click', function (ev) {
+        var a = ev.target.closest && ev.target.closest('[data-todo-note-add]');
+        if (a) { submit(a.getAttribute('data-todo-note-add')); return; }
+        var d = ev.target.closest && ev.target.closest('[data-todo-note-del]');
+        if (d) W.deleteTodoNote(d.getAttribute('data-todo-note-del'), d.getAttribute('data-note-id'));
+      });
+      el.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Enter' || ev.isComposing || ev.keyCode === 229) return;   // 注音／拼音選字時的 Enter 不算送出
+        var inp = ev.target.closest && ev.target.closest('[data-todo-note-in]');
+        if (inp) { ev.preventDefault(); submit(inp.getAttribute('data-todo-note-in')); }
+      });
     }
+  };
+  W.addTodoNote = function (id, text) {
+    var t = appState.todos.find(function (x) { return String(x.id) === String(id); });
+    text = String(text || '').trim();
+    if (!t || !text) return false;
+    if (!Array.isArray(t.progressNotes)) t.progressNotes = [];
+    t.progressNotes.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 6), ts: Date.now(), text: text.slice(0, 500) });
+    saveToDB('todos', t); renderTodos();
+    return true;
+  };
+  W.deleteTodoNote = function (id, noteId) {
+    var t = appState.todos.find(function (x) { return String(x.id) === String(id); });
+    if (!t || !Array.isArray(t.progressNotes)) return;
+    t.progressNotes = t.progressNotes.filter(function (n) { return String(n.id) !== String(noteId); });
+    saveToDB('todos', t); renderTodos();
   };
   // 分區函式是在 renderTodos 第一次執行之後才載入，載入完補畫一次
   try { if (typeof renderTodos === 'function' && W.appState && appState.todos) renderTodos(); } catch (e) {}
