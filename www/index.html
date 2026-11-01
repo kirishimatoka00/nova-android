@@ -2264,8 +2264,9 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.107';
+        const NOVA_APP_VERSION = '2.6.108';
         const NOVA_CHANGELOG = [
+                'NovaResearch（研發情報×實驗系統）移植到手機（階段 1~2；對標桌面 nova_research.py v1.1.0＋nova-research.js v1.1.0＋nova-data-sync.js v1.0.0；僅 www，不需重新打包原生）：+選單新增「研發」鈕→全螢幕頁，橫向膠囊分頁——專案（因子／目標／假說／標準色 Lab，三個範本）、情報（OpenAlex／Semantic Scholar／Crossref／PubMed／arXiv＋Lens／EPO／PatentsView 專利，去重合併，AI 摘要）、監看（定期重跑搜尋只收新的，App 開著時每 5 分鐘檢查到期的）、材料（內建 43 筆起點清單、PubChem 補資料與 GHS、22 項受限物質快篩）、實驗（每筆實驗一張卡片，輸入離開欄位即存檔，Lab 自動算 ΔE00）、最佳化（拉丁超立方／全因子／面心 CCD，高斯過程＋期望改善量建議下一批）、報告（AI 專案報告，可存成筆記）。資料存手機「文件/NOVA_Research」，與桌面同結構；Drive 同步檔 NOVA_Research_Sync.json 與桌面互通（三方比對、刪除傳播、大量刪除保護），在原本 Drive 同步後自動接著跑，並在資料改動 4 秒後、App 回到前景時觸發。引擎層純函式（色差、desirability、DoE、高斯過程）已用桌面 Python 模組逐項對照數值一致。金鑰（Lens／EPO／PatentsView…）只存本機不同步。沒有做：RDKit 描述符、CSV 匯入匯出。【未在真機驗證；網路來源與 Drive 實際連線沒連過真實服務】',
             { v: '2.6.107', date: '2026-11-01', notes: [
                 '排程管理新增「進度註解」，對標桌面版 v3.86.0 ②（nova-schedule-pro.js v1.2.0；僅 www，不需重新打包原生）：每筆排程下方可自己加註解，輸入框按 Enter（輸入法選字中的 Enter 不算）或按「加入」，帶時間戳記，可逐則刪除；存在每筆待辦的 progressNotes，隨 saveToDB 一起存／同步（整筆為單位）；重畫列表時保留未送出的輸入。index.html 只更新版本字串與 script 版本號。【未在真機驗證】'
             ] },
@@ -21848,7 +21849,24 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     if (document.readyState === 'complete') boot(); else window.addEventListener('load', function () { setTimeout(boot, 600); });
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-google.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script>
+/* v2.6.108：NovaResearch 接線（nova-research-ui.js）：模型呼叫、提示、存成筆記 */
+(function () {
+    function boot() {
+        if (!window.appState || !window.novaLeanLLM || !window.NovaResearchUI) return setTimeout(boot, 500);
+        NovaResearchUI.init({
+            llm: function (o) { return novaLeanLLM({ system: o.system, user: o.user, timeoutMs: o.timeoutMs }); },
+            toast: function (m, ms) { try { showToast(m, ms); } catch (e) { /* */ } },
+            saveNote: function (o) {
+                var note = { id: Date.now(), title: o.title, content: o.html, isHtml: true, date: new Date().toLocaleString(), type: 'text', folder: '未分類' };
+                appState.notes.unshift(note); saveToDB('notes', note); scheduleEmergencyBackup(); renderNotes();
+            }
+        });
+    }
+    boot();
+})();
+</script>
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.0.0"></script><script src="./nova-research-ui.js?v=1.0.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.0.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

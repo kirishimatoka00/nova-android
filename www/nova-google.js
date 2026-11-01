@@ -1,4 +1,4 @@
-/* nova-google.js — v1.3.0 (2026-10-17)
+/* nova-google.js — v1.4.0 (2026-11-01)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.4.0 2026-11-01  App v2.6.108：Drive 同步在記憶同步後接著呼叫 NovaDataSync.run（NovaResearch 研發資料 NOVA_Research_Sync.json；階段 3 起加 Insight 的 NOVA_Insight_Sync.json）；失敗只顯示提示，不影響筆記／記憶同步
  *   v1.3.0 2026-10-17  App v2.6.63：Gmail 信件改用 HTML 渲染（沙盒 iframe：無腳本、CSP 擋表單與框架；做法同桌面版）：cid 內嵌圖換成 data URI 永遠顯示、遠端圖片預設封鎖並可按「顯示圖片」放行、可切換純文字；連結用系統瀏覽器開。雲端硬碟清單（.ngd-row／對話框）補白晝模式配色。
  *   v1.2.1 2026-10-17  App v2.6.63：Google 整合頁加白晝模式（html.theme-light 下改用 --nv-* 色票：分頁、按鈕無框無底、輸入框、清單、文字色）
  *   v1.2.0 2026-10-11  「Docs」分頁改為「📁 雲端硬碟」（由 nova-gdrive.js 提供瀏覽／讀寫）；匯出內部存取點 _raw／_token／_has／_connected 給 nova-gdrive.js
@@ -222,6 +223,10 @@
         try { var mr = await W.NovaMemSync.sync({ interactive: !!manual }); if (!mr.skipped) { var d = W.NovaMemSync.describe(mr); s('nova_gmem_status', '🧠 記憶：✅ ' + now + (d ? '（' + d + '）' : '')); if (manual && d && d !== '沒有變動') toast('🧠 記憶同步：' + d, 6000); } }
         catch (e) { s('nova_gmem_status', '🧠 記憶：❌ ' + (e.message || e)); if (manual) toast('❌ 記憶同步失敗（筆記已同步）：' + (e.message || e), 6000); }
         var me = D.getElementById('ng-mem-status'); if (me) me.textContent = g('nova_gmem_status', '');
+      }
+      if (W.NovaDataSync && W.NovaDataSync.run) {
+        try { var dsr = await W.NovaDataSync.run(!!manual); if (dsr) { Object.keys(dsr).forEach(function (id) { var r = dsr[id] || {}; if (r.error) { if (manual) toast('❌ ' + id + ' 同步失敗：' + r.error, 6000); } else if (!r.skipped && r.text && r.text !== '沒有變動' && manual) toast('🔬 ' + id + ' 同步：' + r.text, 6000); }); } }
+        catch (e) { if (manual) toast('❌ 研發資料同步失敗（筆記已同步）：' + (e.message || e), 6000); }
       }
       if (manual) toast('☁️ 同步完成');
     } catch (e) { setStatus('❌ 同步失敗：' + (e.message || e)); if (manual) toast('❌ 同步失敗：' + (e.message || e), 5000); }
