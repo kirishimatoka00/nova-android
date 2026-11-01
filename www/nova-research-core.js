@@ -1,4 +1,4 @@
-/* nova-research-core.js — v1.0.0 (2026-11-01)
+/* nova-research-core.js — v1.1.0 (2026-11-01)
  * NovaResearch（研發情報 × 實驗系統）手機版「引擎層」：把桌面 python-engine/nova_research.py v1.1.0 的功能改成純 JS，
  * 在手機 WebView 內執行，不需要 sidecar。介面在 nova-research-ui.js。
  * 對應關係（桌面 → 手機）：
@@ -11,6 +11,8 @@
  * 金鑰：localStorage nova_research_keys（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱），刻意不同步、不進 Drive。
  * 事件：資料新增／修改／刪除時發 nova-research-changed（nova-datasync.js 用來觸發同步）；同步套用後由 nova-datasync.js 發 nova-research-synced。
  * 版本紀錄
+ *   v1.1.0 2026-11-01  修「同步失敗：writeFile EACCES」：沒有「所有檔案存取」權限時 Documents 不能寫。儲存層啟動時先試寫 Documents，失敗就請求權限、仍失敗改存 App 私有資料夾（DATA），
+ *                      讀取時兩處合併（同 id 取 updated 較新），刪除兩處都清；store.dir() 回報目前位置。
  *   v1.0.0 2026-11-01  首版，對標桌面 nova_research.py v1.1.0。純函式（色差、desirability、DoE、高斯過程、最佳化、解析器）在 Node 用桌面的 Python 模組逐項對照過數值；
  *                      網路來源的實際連線沒有驗證（桌面版同樣未驗證），Filesystem 儲存只用記憶體替身測過。【未在真機驗證】
  */
@@ -37,32 +39,48 @@
   var adapter = null, cache = {}, loaded = {};
   function capFS() { try { return root.Capacitor && root.Capacitor.Plugins && root.Capacitor.Plugins.Filesystem; } catch (e) { return null; } }
   function fsAdapter(fs) {
-    var D = 'DOCUMENTS';
+    var mode = null;   // 'DOCUMENTS'（公用「文件」資料夾，與桌面同名）或 'DATA'（App 私有；沒有檔案存取權限時的退路）
     function nm(f) { return typeof f === 'string' ? f : (f && f.name) || ''; }
+    async function probe() { try { await fs.writeFile({ path: ROOT + '/.probe', data: '1', directory: 'DOCUMENTS', encoding: 'utf8', recursive: true }); return true; } catch (e) { return false; } }
+    async function resolveMode() {
+      if (mode) return mode;
+      if (await probe()) mode = 'DOCUMENTS';
+      else { try { await fs.requestPermissions(); } catch (e) { /* */ } mode = (await probe()) ? 'DOCUMENTS' : 'DATA'; }
+      return mode;
+    }
+    async function listDir(kind, D) {
+      var r; try { r = await fs.readdir({ path: ROOT + '/' + kind, directory: D }); } catch (e) { return []; }
+      var out = [];
+      for (var i = 0; i < (r.files || []).length; i++) {
+        var n = nm(r.files[i]); if (!/\.json$/.test(n)) continue;
+        try { var x = await fs.readFile({ path: ROOT + '/' + kind + '/' + n, directory: D, encoding: 'utf8' }); var d = JSON.parse(x.data); if (d && typeof d === 'object' && !Array.isArray(d)) out.push(d); }
+        catch (e) {
+          try { var b = await fs.readFile({ path: ROOT + '/' + kind + '/' + n + '.bak', directory: D, encoding: 'utf8' }); var d2 = JSON.parse(b.data); if (d2 && typeof d2 === 'object') out.push(d2); } catch (e2) { /* 讀不到就略過 */ }
+        }
+      }
+      return out;
+    }
     return {
       name: 'filesystem',
+      dir: function () { return mode; },
+      init: resolveMode,
       list: async function (kind) {
-        var r; try { r = await fs.readdir({ path: ROOT + '/' + kind, directory: D }); } catch (e) { return []; }
-        var out = [];
-        for (var i = 0; i < (r.files || []).length; i++) {
-          var n = nm(r.files[i]); if (!/\.json$/.test(n)) continue;
-          try { var x = await fs.readFile({ path: ROOT + '/' + kind + '/' + n, directory: D, encoding: 'utf8' }); var d = JSON.parse(x.data); if (d && typeof d === 'object' && !Array.isArray(d)) out.push(d); }
-          catch (e) {
-            try { var b = await fs.readFile({ path: ROOT + '/' + kind + '/' + n + '.bak', directory: D, encoding: 'utf8' }); var d2 = JSON.parse(b.data); if (d2 && typeof d2 === 'object') out.push(d2); } catch (e2) { /* 讀不到就略過 */ }
-          }
-        }
-        return out;
+        var m = await resolveMode(), a = await listDir(kind, m), b = await listDir(kind, m === 'DOCUMENTS' ? 'DATA' : 'DOCUMENTS'), by = {};
+        a.concat(b).forEach(function (d) { if (!d || !d.id) return; var o = by[d.id]; if (!o || (d.updated || 0) > (o.updated || 0)) by[d.id] = d; });   // 兩處都有同一筆時取較新的
+        return Object.keys(by).map(function (k) { return by[k]; });
       },
       put: async function (kind, doc, prev) {
-        var p = ROOT + '/' + kind + '/' + doc.id + '.json';
+        var D = await resolveMode(), p = ROOT + '/' + kind + '/' + doc.id + '.json';
         if (prev) { try { await fs.writeFile({ path: p + '.bak', data: JSON.stringify(prev, null, 1), directory: D, encoding: 'utf8', recursive: true }); } catch (e) { /* */ } }
         await fs.writeFile({ path: p, data: JSON.stringify(doc, null, 1), directory: D, encoding: 'utf8', recursive: true });
       },
       del: async function (kind, doc) {
-        var t = now();
+        var t = now(), D = await resolveMode();
         try { await fs.writeFile({ path: ROOT + '/_deleted/' + kind + '_' + doc.id + '_' + Math.floor(t / 1000) + '.json', data: JSON.stringify(doc, null, 1), directory: D, encoding: 'utf8', recursive: true }); } catch (e) { /* */ }
-        try { await fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json', directory: D }); } catch (e) { /* */ }
-        try { await fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json.bak', directory: D }); } catch (e) { /* */ }
+        ['DOCUMENTS', 'DATA'].forEach(function (DD) {
+          fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json', directory: DD }).catch(function () { /* */ });
+          fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json.bak', directory: DD }).catch(function () { /* */ });
+        });
       }
     };
   }
@@ -713,7 +731,7 @@
   /* ───────── 對外 ───────── */
   var API = {
     version: VERSION, KINDS: KINDS, SOURCES: SOURCES, KEY_FIELDS: KEY_FIELDS,
-    store: { list: storeList, get: storeGet, put: storePut, del: storeDelete, dump: storeDump, apply: storeApply, setAdapter: setAdapter, adapterName: function () { return getAdapter().name; } },
+    store: { list: storeList, get: storeGet, put: storePut, del: storeDelete, dump: storeDump, apply: storeApply, setAdapter: setAdapter, adapterName: function () { return getAdapter().name; }, dir: async function () { var a = getAdapter(); if (a.init) await a.init(); return a.dir ? a.dir() : null; } },
     keys: { load: loadKeys, save: saveKeys },
     search: runSearch, resolve: pubchemResolve, ghs: pubchemGhs,
     watch: { run: watchRun, tick: watchTick, start: startScheduler, inbox: watchInbox, markRead: watchMarkRead },
