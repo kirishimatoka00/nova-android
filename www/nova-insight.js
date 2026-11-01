@@ -1,15 +1,16 @@
-/* nova-insight.js — v1.1.0 (2026-11-01)
+/* nova-insight.js — v1.1.1 (2026-11-01)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
  *   ・地球：與桌面相同的 3D 立體地球（globe.gl，檔案在 ./vendor/globe/）；單指轉動、雙指縮放，點城市圓柱看該城事件，點 📷／航班看資訊；圖層抽屜可關自動旋轉。載入失敗時只用列表。
  *   ・船位（AIS）完全不做。航班依區域設定，預設只開「台灣周邊」，可勾選其他預設區域或自訂中心＋半徑；圖層預設關閉，開啟後每 45 秒更新。
  *   ・鏡頭：只有自訂鏡頭（圖片快照／YouTube／串流／網頁連結），不接 Windy、不接政府鏡頭。
- *   ・直播：與桌面同一份預設頻道，可新增（貼 UC 頻道 ID／@帳號／頻道網址／直播影片網址）、移除、還原；只存在本機（與桌面一致，不同步）。
+ *   ・直播：與桌面同一份預設頻道，可新增（貼 UC 頻道 ID／@帳號／頻道網址／直播影片網址）、移除、還原；自訂頻道會跟桌面同步（隱藏的預設頻道只存本機）。
  *   ・版面：地圖在上、底部可展開的抽屜（事件／市場／直播／鏡頭／個股／預判／交易），圖層設定在左側抽屜；觸控目標 ≥44px。
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.1.1 2026-11-01  直播頁說明文字改成「自訂頻道與桌面同步」（資料層見 nova-insight-core.js v1.1.0）。
  *   v1.1.0 2026-11-01  ①平面地圖（Leaflet）改回與桌面一致的 3D 立體地球（globe.gl＋貼圖，移除 vendor/leaflet）；②圖層／篩選抽屜移出地圖容器：上下滑動只捲抽屜（overscroll-behavior、touch-action），不再帶動地圖；
  *                      ③抽屜層級改為蓋過底部分頁列（整個視窗高度）；④+選單按鈕補 --pc 顏色變數，風格與其他按鈕一致。
  *   v1.0.0 2026-11-01  首版。【未在真機驗證；地圖、網路來源、同步都只在 jsdom／模擬資料測過】
@@ -250,7 +251,7 @@
         all.map(function (ch) { return '<span class="chip" style="min-height:36px;line-height:30px;padding:2px 12px' + (ch.id === cur.id ? ';background:var(--ac);color:#fff;border-color:var(--ac)' : '') + '" data-act="livesel" data-id="' + esc(ch.id) + '">' + esc(ch.name) + '</span>' + (edit ? '<span class="chip dn" data-act="livedel" data-id="' + esc(ch.id) + '" style="min-height:36px;line-height:30px">✕</span>' : ''); }).join('') + '</div>';
     }
     h += '<div class="row" style="margin-top:6px"><button class="btn sm" data-act="liveadd">＋ 新增頻道</button>' + (all.length ? '<button class="btn sm" data-act="liveedit">' + (edit ? '完成' : '✎ 管理') + '</button><button class="btn sm" data-act="liveopen">用瀏覽器開啟</button>' : '') + (hid.length ? '<button class="btn sm" data-act="liverestore">還原預設（' + hid.length + '）</button>' : '') + '</div>';
-    return h + '<div class="sm mut" style="margin-top:6px">直播來自各台的 YouTube 頻道。畫面顯示「影片無法播放」代表目前沒有直播或不允許內嵌，請改用瀏覽器開啟，或用「✎ 管理」移除。頻道清單只存在這支手機（與桌面一致，不同步）。</div>';
+    return h + '<div class="sm mut" style="margin-top:6px">直播來自各台的 YouTube 頻道。畫面顯示「影片無法播放」代表目前沒有直播或不允許內嵌，請改用瀏覽器開啟，或用「✎ 管理」移除。自訂頻道會與桌面同步；隱藏的預設頻道只存這支手機。</div>';
   }
   function camView(cm) {
     if (cm.kind === 'image') return '<img class="cam camv" data-src="' + esc(cm.url) + '" src="' + esc(cm.url) + (cm.url.indexOf('?') >= 0 ? '&' : '?') + '_=' + Date.now() + '" alt="">';
