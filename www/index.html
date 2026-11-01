@@ -2264,8 +2264,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.111';
+        const NOVA_APP_VERSION = '2.6.112';
         const NOVA_CHANGELOG = [
+            { v: '2.6.112', date: '2026-11-01', notes: [
+                '再修 NovaResearch 同步失敗（nova-research-core.js v1.1.1；僅 www，不需重新打包原生）：v2.6.111 的探測能在「文件」資料夾建新檔，但資料夾裡已經有、不是本 App 建立的同名檔（例如桌面專案）沒有權限覆寫，仍然 EACCES。改成逐筆處理：寫入失敗的那一筆改存 App 私有資料夾，列表時兩處取較新的；刪除時「文件」裡刪不掉的舊檔用墓碑擋掉，之後同一筆再寫入就解除。用模擬檔案系統測過「已存在且不可覆寫的檔案」。【未在真機驗證】'
+            ] },
             { v: '2.6.111', date: '2026-11-01', notes: [
                 '修「NovaResearch 沒有跟桌面同步」（nova-research-core.js v1.1.0、nova-research-ui.js v1.1.1；僅 www，不需重新打包原生）：真機顯示「同步失敗：writeFile … EACCES (Permission denied)」——App 沒有「文件」資料夾的寫入權限，同步取回的資料寫不進去。儲存層現在啟動時先試寫「文件/NOVA_Research」，不行就請求權限，仍不行改存 App 私有資料夾；讀取兩處合併（同一筆取較新的），所以不用授權也能同步。',
                 '研發設定視窗會顯示實際儲存位置；存在私有資料夾時有「授權所有檔案存取」鈕（授權後完全關閉 App 再開，資料改存「文件/NOVA_Research」並自動併入舊資料）。',
@@ -21895,7 +21898,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.1.0"></script><script src="./nova-research-ui.js?v=1.1.1"></script><script src="./nova-insight-core.js?v=1.0.1"></script><script src="./nova-insight.js?v=1.1.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.1.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.1.1"></script><script src="./nova-research-ui.js?v=1.1.1"></script><script src="./nova-insight-core.js?v=1.0.1"></script><script src="./nova-insight.js?v=1.1.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.1.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

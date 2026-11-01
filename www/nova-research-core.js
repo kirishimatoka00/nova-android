@@ -1,4 +1,4 @@
-/* nova-research-core.js — v1.1.0 (2026-11-01)
+/* nova-research-core.js — v1.1.1 (2026-11-01)
  * NovaResearch（研發情報 × 實驗系統）手機版「引擎層」：把桌面 python-engine/nova_research.py v1.1.0 的功能改成純 JS，
  * 在手機 WebView 內執行，不需要 sidecar。介面在 nova-research-ui.js。
  * 對應關係（桌面 → 手機）：
@@ -11,6 +11,8 @@
  * 金鑰：localStorage nova_research_keys（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱），刻意不同步、不進 Drive。
  * 事件：資料新增／修改／刪除時發 nova-research-changed（nova-datasync.js 用來觸發同步）；同步套用後由 nova-datasync.js 發 nova-research-synced。
  * 版本紀錄
+ *   v1.1.1 2026-11-01  v1.1.0 仍失敗的真正原因：能在「文件」建新檔（探測成功），但資料夾裡已有、不是本 App 建立的同名檔（桌面專案 id）沒有權限覆寫（EACCES）。
+ *                      改成逐筆退路：寫入失敗的那一筆改存 App 私有資料夾；刪除時文件裡刪不掉的用墓碑（localStorage nova_research_tomb）擋掉，之後同 id 再寫入就解除。
  *   v1.1.0 2026-11-01  修「同步失敗：writeFile EACCES」：沒有「所有檔案存取」權限時 Documents 不能寫。儲存層啟動時先試寫 Documents，失敗就請求權限、仍失敗改存 App 私有資料夾（DATA），
  *                      讀取時兩處合併（同 id 取 updated 較新），刪除兩處都清；store.dir() 回報目前位置。
  *   v1.0.0 2026-11-01  首版，對標桌面 nova_research.py v1.1.0。純函式（色差、desirability、DoE、高斯過程、最佳化、解析器）在 Node 用桌面的 Python 模組逐項對照過數值；
@@ -65,25 +67,36 @@
       dir: function () { return mode; },
       init: resolveMode,
       list: async function (kind) {
-        var m = await resolveMode(), a = await listDir(kind, m), b = await listDir(kind, m === 'DOCUMENTS' ? 'DATA' : 'DOCUMENTS'), by = {};
+        var m = await resolveMode(), a = await listDir(kind, m), b = await listDir(kind, m === 'DOCUMENTS' ? 'DATA' : 'DOCUMENTS'), by = {}, tb = tomb();
         a.concat(b).forEach(function (d) { if (!d || !d.id) return; var o = by[d.id]; if (!o || (d.updated || 0) > (o.updated || 0)) by[d.id] = d; });   // 兩處都有同一筆時取較新的
-        return Object.keys(by).map(function (k) { return by[k]; });
+        return Object.keys(by).map(function (k) { return by[k]; }).filter(function (d) { var t = tb[kind + '/' + d.id]; return !(t && (d.updated || 0) * 1 <= t); });   // 刪不掉的舊檔用墓碑擋掉
       },
       put: async function (kind, doc, prev) {
-        var D = await resolveMode(), p = ROOT + '/' + kind + '/' + doc.id + '.json';
-        if (prev) { try { await fs.writeFile({ path: p + '.bak', data: JSON.stringify(prev, null, 1), directory: D, encoding: 'utf8', recursive: true }); } catch (e) { /* */ } }
-        await fs.writeFile({ path: p, data: JSON.stringify(doc, null, 1), directory: D, encoding: 'utf8', recursive: true });
+        var D = await resolveMode(), p = ROOT + '/' + kind + '/' + doc.id + '.json', body = JSON.stringify(doc, null, 1);
+        async function wr(dir) {
+          if (prev) { try { await fs.writeFile({ path: p + '.bak', data: JSON.stringify(prev, null, 1), directory: dir, encoding: 'utf8', recursive: true }); } catch (e) { /* */ } }
+          await fs.writeFile({ path: p, data: body, directory: dir, encoding: 'utf8', recursive: true });
+        }
+        try { await wr(D); }
+        catch (e) {   // 「文件」裡已存在、但不是這個 App 建立的檔案（例如別的來源放進去的）沒有權限覆寫 → 這一筆改存私有資料夾，列表時會取較新的
+          if (D === 'DATA') throw e; await wr('DATA');
+        }
+        var tb = tomb(); if (tb[kind + '/' + doc.id]) { delete tb[kind + '/' + doc.id]; saveTomb(tb); }
       },
       del: async function (kind, doc) {
-        var t = now(), D = await resolveMode();
-        try { await fs.writeFile({ path: ROOT + '/_deleted/' + kind + '_' + doc.id + '_' + Math.floor(t / 1000) + '.json', data: JSON.stringify(doc, null, 1), directory: D, encoding: 'utf8', recursive: true }); } catch (e) { /* */ }
-        ['DOCUMENTS', 'DATA'].forEach(function (DD) {
-          fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json', directory: DD }).catch(function () { /* */ });
-          fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json.bak', directory: DD }).catch(function () { /* */ });
-        });
+        var t = now(), D = await resolveMode(), left = false;
+        try { await fs.writeFile({ path: ROOT + '/_deleted/' + kind + '_' + doc.id + '_' + Math.floor(t / 1000) + '.json', data: JSON.stringify(doc, null, 1), directory: D, encoding: 'utf8', recursive: true }); } catch (e) { try { await fs.writeFile({ path: ROOT + '/_deleted/' + kind + '_' + doc.id + '_' + Math.floor(t / 1000) + '.json', data: JSON.stringify(doc, null, 1), directory: 'DATA', encoding: 'utf8', recursive: true }); } catch (e2) { /* */ } }
+        for (var i = 0; i < 2; i++) {
+          var DD = ['DOCUMENTS', 'DATA'][i];
+          try { await fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json', directory: DD }); } catch (e) { if (DD === 'DOCUMENTS' && /EACCES|denied|permission/i.test(String(e && e.message || e))) left = true; }
+          try { await fs.deleteFile({ path: ROOT + '/' + kind + '/' + doc.id + '.json.bak', directory: DD }); } catch (e) { /* */ }
+        }
+        if (left) { var tb = tomb(); tb[kind + '/' + doc.id] = Math.max(now(), (doc.updated || 0)) + 1; saveTomb(tb); }
       }
     };
   }
+  function tomb() { try { return JSON.parse(LS.getItem('nova_research_tomb') || '{}') || {}; } catch (e) { return {}; } }
+  function saveTomb(o) { try { LS.setItem('nova_research_tomb', JSON.stringify(o)); } catch (e) { /* */ } }
   function lsAdapter() {   // 沒有 Filesystem 外掛時（瀏覽器預覽）的退路
     function k(kind) { return 'nova_research_ls_' + kind; }
     function rd(kind) { try { return JSON.parse(LS.getItem(k(kind)) || '{}'); } catch (e) { return {}; } }
