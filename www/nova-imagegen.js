@@ -1,7 +1,11 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-imagegen.js — NOVA Android「生圖模式」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.118。a. 生圖歷史（最近生成）完整備份：每張生成的圖片自動上傳到 Google Drive「NOVA 圖片」資料夾，歷史清單（提示詞、模型、比例…）
+            經 NovaDataSync 以 NOVA_ImageGen_Sync.json 同步；重新安裝 App 並連上 Google 後，歷史清單會回來，縮圖需要時從 Drive 補抓回本機。
+            歷史上限由 24 張放寬到 300 張，縮圖改為捲到才載入。b. 最近生成可手動刪除：右上「管理」→ 點選圖片 → 刪除（可全選／清空）；
+            會移除清單項目、本機檔案（若該圖已送到對話則保留檔案）並把 Drive 備份移到垃圾桶（30 天內可還原）。
    v1.1.0 - App v2.6.69。生圖模型、圖片風格、圖片比例、解析度、生成張數全部改成下拉選單（原為晶片／卡片按鈕）。
    v1.0.0 - App v2.6.68。新增專門生成圖片的全螢幕介面（＋選單 →「生圖」）：
             a. 圖片描述　b. Gemini／Grok 生圖模型選擇　c. 解析度（依模型列出可用尺寸，並顯示約略像素）
@@ -171,6 +175,15 @@
         '#nig-root .nig-hg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 12px calc(env(safe-area-inset-bottom,0px) + 14px);overflow-y:auto}' +
         '#nig-root .nig-ht{aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--nv-card-2,#1e293b);border:1px solid var(--nv-line,#1e293b);cursor:pointer}' +
         '#nig-root .nig-ht img{width:100%;height:100%;object-fit:cover;display:block}' +
+        '#nig-root .nig-ht{position:relative}' +
+        '#nig-root .nig-ht.sel{outline:2px solid var(--nv-accent,#3b82f6);outline-offset:-2px}' +
+        '#nig-root .nig-chk{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.5);border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}' +
+        '#nig-root .nig-ht.sel .nig-chk{background:var(--nv-accent,#3b82f6)}' +
+        '#nig-root .nig-hbar{display:flex;align-items:center;gap:8px;padding:0 12px 10px;font-size:13px;color:var(--nv-text-2,#cbd5e1)}' +
+        '#nig-root .nig-hbar span{flex:1}' +
+        'html:root body #nig-root .nig-hbar button{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--nv-line-strong,#334155) !important;background:var(--nv-card-2,#1e293b) !important;color:var(--nv-text-2,#cbd5e1) !important;font-size:13px;font-weight:600}' +
+        'html:root body #nig-root .nig-hbar button.danger{color:#f87171 !important;border-color:#f87171 !important}' +
+        'html:root body #nig-root .nig-hbar button:disabled{opacity:.4}' +
         '#nig-root .nig-empty{padding:28px 12px;text-align:center;color:var(--nv-muted,#94a3b8);font-size:13px}';
 
     function injectCss() {
@@ -365,14 +378,107 @@
         throw new Error('Grok 回傳格式無法辨識');
     }
     function stamp() { var n = new Date(), p = function (x) { return String(x).padStart(2, '0'); }; return n.getFullYear() + p(n.getMonth() + 1) + p(n.getDate()) + '_' + p(n.getHours()) + p(n.getMinutes()) + p(n.getSeconds()); }
+    /* ───────── 歷史：備份／同步／刪除（v1.2.0） ───────── */
+    var DRIVE_FOLDER = 'NOVA 圖片', HCAP = 300, TRASH_KEY = 'nova_imggen_trash', failMap = {}, upBusy = false;
+    function hid(x) { return x.id || String(x.name || '').replace(/\.[^.]+$/, '') || ('t' + x.t); }
+    function loadH() { var h = []; try { h = JSON.parse(lsGet(HIST_KEY, '[]')) || []; } catch (e) { /* ignore */ } if (!Array.isArray(h)) h = []; h.forEach(function (x) { x.id = hid(x); }); return h; }
+    function saveH(h) { h.sort(function (a, b) { return (b.t || 0) - (a.t || 0); }); lsSet(HIST_KEY, JSON.stringify(h.slice(0, HCAP))); }
+    function sched() { try { if (W.NovaDataSync && W.NovaDataSync.schedule) W.NovaDataSync.schedule(); } catch (e) { /* ignore */ } }
+    function canDrive() { return !!(W.NovaGDrive && W.NovaGDrive.canUpload && W.NovaGDrive.canUpload()); }
+    function gConn() { return !!(W.NovaGoogle && W.NovaGoogle._connected && W.NovaGoogle._connected()); }
+    function blobToDataUri(b) { return new Promise(function (res, rej) { var fr = new FileReader(); fr.onloadend = function () { res(String(fr.result)); }; fr.onerror = rej; fr.readAsDataURL(b); }); }
+    function probe(src) {
+        return new Promise(function (res) {
+            var im = new Image(), done = false, t = setTimeout(function () { if (!done) { done = true; res(false); } }, 8000);
+            im.onload = function () { if (!done) { done = true; clearTimeout(t); res(true); } };
+            im.onerror = function () { if (!done) { done = true; clearTimeout(t); res(false); } };
+            im.src = src;
+        });
+    }
+    function refUsedByChat(ref) {
+        var arr = (W.appState && W.appState.messages) || [];
+        for (var i = 0; i < arr.length; i++) { var m = arr[i], fa = Array.isArray(m.files) ? m.files : (m.file ? [m.file] : []); for (var j = 0; j < fa.length; j++) if (fa[j] && fa[j].__fileRef === ref) return true; }
+        return false;
+    }
+    async function dropLocalFile(x) {
+        try { if (x && x.ref && W.NovaImageStore && W.NovaImageStore.remove && !refUsedByChat(x.ref)) await W.NovaImageStore.remove(x.ref); } catch (e) { /* ignore */ }
+    }
+    // 把還沒上傳的歷史圖片傳到 Drive（每次最多 limit 張）；回傳成功張數
+    async function backfill(limit) {
+        if (upBusy || !canDrive() || !W.NovaImageStore) return 0;
+        upBusy = true; var upd = {}, n = 0;
+        try {
+            var h = loadH();
+            for (var i = 0; i < h.length && n < limit; i++) {
+                var x = h[i]; if (x.did || !x.ref || (failMap[x.id] || 0) >= 2) continue;
+                try {
+                    var du = await W.NovaImageStore.readAsDataUri(x.ref, x.mime);
+                    if (!du) { failMap[x.id] = 9; continue; }
+                    var blob = await (await fetch(du)).blob();
+                    var up = await W.NovaGDrive.uploadBlob(blob, x.name || (x.id + '.png'), x.mime || blob.type || 'image/png', { folder: DRIVE_FOLDER });
+                    if (up && up.id) { upd[x.id] = up.id; n++; }
+                } catch (e) { failMap[x.id] = (failMap[x.id] || 0) + 1; if (!backfill._w) { backfill._w = 1; console.warn('[NovaImageGen] 備份失敗：', e && e.message || e); } }
+            }
+        } finally { upBusy = false; }
+        if (n) { var h2 = loadH(); h2.forEach(function (x) { if (upd[x.id] && !x.did) x.did = upd[x.id]; }); saveH(h2); }
+        return n;
+    }
+    async function trashRemote(dids) {
+        var q = []; try { q = JSON.parse(lsGet(TRASH_KEY, '[]')) || []; } catch (e) { q = []; }
+        dids.forEach(function (d) { if (d && q.indexOf(d) < 0) q.push(d); });
+        var left = [];
+        for (var i = 0; i < q.length; i++) {
+            var ok = false;
+            if (gConn() && W.NovaGoogle._drive && W.NovaGoogle._drive.trash) { try { await W.NovaGoogle._drive.trash(q[i]); ok = true; } catch (e) { ok = /404|not found/i.test(String(e && e.message)); } }
+            if (!ok) left.push(q[i]);
+        }
+        lsSet(TRASH_KEY, JSON.stringify(left.slice(0, 500)));
+    }
+    async function deleteHist(ids) {
+        var set = {}; ids.forEach(function (i) { set[i] = 1; });
+        var h = loadH(), gone = h.filter(function (x) { return set[x.id]; }), keep = h.filter(function (x) { return !set[x.id]; });
+        saveH(keep);
+        for (var i = 0; i < gone.length; i++) await dropLocalFile(gone[i]);
+        sched();
+        trashRemote(gone.map(function (x) { return x.did; })).catch(function () { /* 之後重試 */ });
+        return gone.length;
+    }
+    function dsItem(x) { return { id: x.id, name: x.name, mime: x.mime || 'image/png', prompt: x.prompt || '', model: x.model || '', ratio: x.ratio || '', size: x.size || '', style: x.style || '', t: x.t || 0, did: x.did || '' }; }
+    function registerSync(n) {
+        var S = W.NovaDataSync;
+        if (!S || !S.register) { if ((n || 0) < 60) setTimeout(function () { registerSync((n || 0) + 1); }, 500); return; }
+        S.register({
+            id: 'imggen', label: '生圖歷史', file: 'NOVA_ImageGen_Sync.json',
+            merge: function (k, a, b) { var o = Object.assign({}, a, b); o.did = (a && a.did) || (b && b.did) || ''; return o; },
+            collect: async function () { try { await backfill(8); } catch (e) { /* 傳不上去也照樣同步清單 */ } var L = {}; loadH().forEach(function (x) { L[x.id] = dsItem(x); }); return L; },
+            apply: async function (a) {
+                var h = loadH(), by = {}; h.forEach(function (x) { by[x.id] = x; });
+                Object.keys(a.put || {}).forEach(function (k) {
+                    var r = a.put[k]; if (!r || typeof r !== 'object') return; var l = by[k];
+                    if (l) { ['name', 'mime', 'prompt', 'model', 'ratio', 'size', 'style', 't'].forEach(function (f) { if (r[f] != null && r[f] !== '') l[f] = r[f]; }); if (r.did) l.did = r.did; }
+                    else { var nx = dsItem(r); nx.id = k; nx.ref = ''; h.push(nx); by[k] = nx; }
+                });
+                var del = a.del || [], goneItems = [];
+                if (del.length) { var ds = {}; del.forEach(function (k) { ds[k] = 1; }); goneItems = h.filter(function (x) { return ds[x.id]; }); h = h.filter(function (x) { return !ds[x.id]; }); }
+                saveH(h);
+                for (var i = 0; i < goneItems.length; i++) await dropLocalFile(goneItems[i]);
+            },
+            after: function () { try { if (D.getElementById('nig-layer') && D.querySelector('#nig-layer .nig-sheet')) histSheet(); } catch (e) { /* ignore */ } }
+        });
+    }
+    registerSync(0);
+    // 開機後與連上 Google 後，把舊的歷史圖片補傳（背景、每次少量）
+    setTimeout(function () { backfill(6).then(function (n) { if (n) sched(); }).catch(function () { /* ignore */ }); trashRemote([]).catch(function () { /* ignore */ }); }, 15000);
+
     async function persist(item) {
         item.name = 'NOVA_IMG_' + stamp() + '_' + Math.random().toString(36).slice(2, 6) + '.png';
         try { if (W.NovaImageStore) { var s = await W.NovaImageStore.save(item.dataUri, item.name); if (s) item.ref = s.__fileRef; item.mime = s && s.mimeType; } } catch (e) { /* 保留記憶體內的圖 */ }
         if (item.ref) {
             try {
-                var h = JSON.parse(lsGet(HIST_KEY, '[]')) || [];
-                h.unshift({ ref: item.ref, name: item.name, mime: item.mime || 'image/png', prompt: P.prompt.trim().slice(0, 300), model: P.model, ratio: P.ratio, size: P.size, style: P.style, t: Date.now() });
-                lsSet(HIST_KEY, JSON.stringify(h.slice(0, 24)));
+                var h = loadH();
+                h.unshift({ id: hid({ name: item.name }), ref: item.ref, name: item.name, mime: item.mime || 'image/png', prompt: P.prompt.trim().slice(0, 300), model: P.model, ratio: P.ratio, size: P.size, style: P.style, t: Date.now() });
+                saveH(h);
+                backfill(3).then(function (n) { if (n) sched(); }).catch(function () { /* ignore */ });
             } catch (e) { /* ignore */ }
         }
     }
@@ -417,15 +523,68 @@
         var r = P.results[i]; if (!r) return;
         D.getElementById('nig-layer').innerHTML = '<div class="nig-ov"><button class="nig-ib nv-keep" data-act="vclose" aria-label="關閉"><i class="ph-bold ph-x"></i></button><div class="nig-vimg"><img src="' + r.dataUri + '" alt=""></div></div>';
     }
+    var HM = { manage: false, sel: {}, ask: false };
+    var thumbQ = [], thumbRun = 0;
+    function dropEntry(id) { var h = loadH().filter(function (x) { return x.id !== id; }); saveH(h); sched(); }
+    function setRef(id, ref) { var h = loadH(); h.forEach(function (x) { if (x.id === id) x.ref = ref; }); saveH(h); }
+    async function loadThumb(el, x) {
+        var st = W.NovaImageStore;
+        try { if (x.ref && st) { var u = await st.resolveSrc(x.ref); if (u && await probe(u)) { el.src = u; return; } } } catch (e) { /* 試 Drive */ }
+        if (!x.did || !gConn()) return;
+        try {
+            var r = await W.NovaGoogle._raw('https://www.googleapis.com/drive/v3/files/' + x.did + '?alt=media');
+            if (r.status === 404) { dropEntry(x.id); var t = el.closest && el.closest('.nig-ht'); if (t) t.style.opacity = '.35'; return; }
+            if (!r.ok) return;
+            var du = await blobToDataUri(await r.blob()); el.src = du;
+            if (st) { try { var sv = await st.save(du, 'r_' + Math.random().toString(36).slice(2, 6) + '_' + (x.name || x.id + '.png')); if (sv && sv.__fileRef) setRef(x.id, sv.__fileRef); } catch (e) { /* 只顯示、不落地 */ } }
+        } catch (e) { /* ignore */ }
+    }
+    function pumpThumbs() {
+        while (thumbRun < 2 && thumbQ.length) {
+            var job = thumbQ.shift(); thumbRun++;
+            (function (j) { loadThumb(j.el, j.x).catch(function () { /* ignore */ }).then(function () { thumbRun--; pumpThumbs(); }); })(job);
+        }
+    }
     async function histSheet() {
-        var h = []; try { h = JSON.parse(lsGet(HIST_KEY, '[]')) || []; } catch (e) { /* ignore */ }
-        var g = h.length ? '<div class="nig-hg">' + h.map(function (x, i) { return '<div class="nig-ht" data-act="hitem" data-i="' + i + '"><img data-ref="' + esc(x.ref) + '" alt=""></div>'; }).join('') + '</div>' : '<div class="nig-empty">還沒有生成紀錄</div>';
-        D.getElementById('nig-layer').innerHTML = '<div class="nig-scrim" data-act="vclose"></div><div class="nig-sheet"><div class="nig-top" style="border:0;background:transparent;padding-top:12px"><div class="nig-title">最近生成</div><button class="nig-ib nv-keep" data-act="vclose" aria-label="關閉"><i class="ph-bold ph-x"></i></button></div>' + g + '</div>';
-        var imgs = D.querySelectorAll('#nig-layer img[data-ref]');
-        for (var k = 0; k < imgs.length; k++) (function (el) { W.NovaImageStore && W.NovaImageStore.resolveSrc(el.getAttribute('data-ref')).then(function (u) { if (u) el.src = u; }).catch(function () {}); })(imgs[k]);
+        var h = loadH(); thumbQ = [];
+        var nSel = Object.keys(HM.sel).length;
+        var g = h.length ? '<div class="nig-hg">' + h.map(function (x, i) {
+            var on = HM.manage && HM.sel[x.id];
+            return '<div class="nig-ht' + (on ? ' sel' : '') + '" data-act="' + (HM.manage ? 'hsel' : 'hitem') + '" data-i="' + i + '"><img data-i="' + i + '" alt="">' + (HM.manage ? '<span class="nig-chk">' + (on ? '<i class="ph-bold ph-check"></i>' : '') + '</span>' : '') + '</div>';
+        }).join('') + '</div>' : '<div class="nig-empty">還沒有生成紀錄</div>';
+        var bar = '';
+        if (HM.manage) {
+            bar = HM.ask
+                ? '<div class="nig-hbar"><span>確定刪除 ' + nSel + ' 張？（Drive 備份會移到垃圾桶）</span><button class="nv-keep" data-act="hno">取消</button><button class="nv-keep danger" data-act="hyes">刪除</button></div>'
+                : '<div class="nig-hbar"><span>已選 ' + nSel + ' 張</span><button class="nv-keep" data-act="hall">' + (nSel === h.length && h.length ? '取消全選' : '全選') + '</button><button class="nv-keep danger" data-act="hdel"' + (nSel ? '' : ' disabled') + '>刪除</button></div>';
+        }
+        D.getElementById('nig-layer').innerHTML = '<div class="nig-scrim" data-act="vclose"></div><div class="nig-sheet"><div class="nig-top" style="border:0;background:transparent;padding-top:12px"><div class="nig-title">最近生成' + (h.length ? '（' + h.length + '）' : '') + '</div>' +
+            (h.length ? '<button class="nig-ib nv-keep" data-act="hmanage" aria-label="管理" style="width:auto;padding:0 12px;font-size:13px">' + (HM.manage ? '完成' : '管理') + '</button>' : '') +
+            '<button class="nig-ib nv-keep" data-act="vclose" aria-label="關閉"><i class="ph-bold ph-x"></i></button></div>' + bar + g + '</div>';
+        var imgs = D.querySelectorAll('#nig-layer img[data-i]');
+        function enq(el) { var x = h[+el.getAttribute('data-i')]; if (x) { thumbQ.push({ el: el, x: x }); pumpThumbs(); } }
+        if ('IntersectionObserver' in W) {
+            var io = new IntersectionObserver(function (es) { es.forEach(function (en) { if (en.isIntersecting) { io.unobserve(en.target); enq(en.target); } }); }, { root: D.querySelector('#nig-layer .nig-hg'), rootMargin: '200px' });
+            for (var k = 0; k < imgs.length; k++) io.observe(imgs[k]);
+        } else for (var k2 = 0; k2 < imgs.length; k2++) enq(imgs[k2]);
+        if (canDrive()) backfill(6).then(function (n) { if (n) sched(); }).catch(function () { /* ignore */ });
+    }
+    function histManageAct(a, i) {
+        var h = loadH();
+        if (a === 'hmanage') { HM.manage = !HM.manage; HM.sel = {}; HM.ask = false; }
+        else if (a === 'hsel') { var x = h[i]; if (x) { if (HM.sel[x.id]) delete HM.sel[x.id]; else HM.sel[x.id] = 1; HM.ask = false; } }
+        else if (a === 'hall') { if (Object.keys(HM.sel).length === h.length) HM.sel = {}; else { HM.sel = {}; h.forEach(function (x) { HM.sel[x.id] = 1; }); } HM.ask = false; }
+        else if (a === 'hdel') { if (Object.keys(HM.sel).length) HM.ask = true; }
+        else if (a === 'hno') HM.ask = false;
+        else if (a === 'hyes') {
+            var ids = Object.keys(HM.sel); HM.sel = {}; HM.ask = false;
+            deleteHist(ids).then(function (n) { toast('🗑️ 已刪除 ' + n + ' 張'); if (!loadH().length) HM.manage = false; histSheet(); });
+            return;
+        }
+        histSheet();
     }
     function histPick(i) {
-        var h = []; try { h = JSON.parse(lsGet(HIST_KEY, '[]')) || []; } catch (e) { /* ignore */ }
+        var h = loadH();
         var x = h[i]; if (!x) return;
         P.prompt = x.prompt || ''; lsSet(DRAFT_KEY, P.prompt);
         if (x.model) P.model = x.model; if (x.ratio) P.ratio = x.ratio; if (x.size) P.size = x.size; if (x.style) P.style = x.style;
@@ -445,7 +604,8 @@
         switch (a) {
             case 'close': close(); break;
             case 'vclose': D.getElementById('nig-layer').innerHTML = ''; break;
-            case 'hist': histSheet(); break;
+            case 'hist': HM.manage = false; HM.sel = {}; HM.ask = false; histSheet(); break;
+            case 'hmanage': case 'hsel': case 'hall': case 'hdel': case 'hno': case 'hyes': histManageAct(a, i); break;
             case 'hitem': histPick(i); break;
             case 'go': generate(); break;
             case 'prov': { var cur = modelOf(P.model); if (cur.prov !== v) { P.model = MODELS.filter(function (x) { return x.prov === v; })[0].id; clamp(); savePrefs(); render(); } break; }
@@ -483,6 +643,6 @@
     }
     function close() { if (!root) return; P.open = false; root.classList.remove('nig-open'); D.getElementById('nig-layer').innerHTML = ''; }
 
-    W.NovaImageGen = { open: open, close: close, version: '1.1.0', _models: MODELS };
+    W.NovaImageGen = { open: open, close: close, version: '1.2.0', _models: MODELS };
     W.openImageGen = open;
 })();

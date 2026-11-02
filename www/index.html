@@ -2264,8 +2264,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.117';
+        const NOVA_APP_VERSION = '2.6.118';
         const NOVA_CHANGELOG = [
+            { v: '2.6.118', date: '2026-11-02', notes: [
+                '生圖模式歷史完整備份（nova-imagegen.js v1.2.0；僅 www，不需重新打包原生）：每張生成的圖會自動上傳到 Google Drive「NOVA 圖片」資料夾，「最近生成」清單（提示詞、模型、比例等）經 NovaDataSync 以 NOVA_ImageGen_Sync.json 同步；重新安裝 App 後連上 Google，清單會回來，縮圖在捲到時才從 Drive 補抓回本機。需要已連接 Google 並授權雲端硬碟；舊的歷史圖片會在背景分批補傳。歷史上限由 24 張放寬到 300 張。尚未在實機驗證。',
+                '生圖模式「最近生成」可手動刪除：右上「管理」→ 點選圖片（可全選）→ 刪除。會移除清單項目與本機檔案（已送到對話的圖片保留檔案），並把 Drive 備份移到垃圾桶（30 天內可在 Drive 還原）；離線時刪除會在下次連線後補做。'
+            ] },
             { v: '2.6.117', date: '2026-11-02', notes: [
                 'Insight 地球可以再放大（nova-insight.js v1.3.1；僅 www，不需重新打包原生）：最近縮放距離由 160 縮到 106，雙指可以貼近到看得清楚城市周邊；縮放速度加快 30%；開啟時預設視角拉近（高度 2.4→1.9），地球在畫面上本來就比較大。【未在真機驗證】'
             ] },
@@ -21917,7 +21921,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>
