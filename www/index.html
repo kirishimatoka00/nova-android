@@ -2264,8 +2264,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.116';
+        const NOVA_APP_VERSION = '2.6.117';
         const NOVA_CHANGELOG = [
+            { v: '2.6.117', date: '2026-11-02', notes: [
+                'Insight 地球可以再放大（nova-insight.js v1.3.1；僅 www，不需重新打包原生）：最近縮放距離由 160 縮到 106，雙指可以貼近到看得清楚城市周邊；縮放速度加快 30%；開啟時預設視角拉近（高度 2.4→1.9），地球在畫面上本來就比較大。【未在真機驗證】'
+            ] },
             { v: '2.6.116', date: '2026-11-01', notes: [
                 'Insight 氣象署地震修正（對標桌面 nova_insight.py v1.11.1；nova-insight-core.js v1.3.1）：氣象署與 USGS 的地震標題是同一個範本，被「標題相似度合併」誤併成一筆，所以氣象署抓到好幾十則，列表與地球上卻幾乎看不到。這兩個來源改成各自獨立（仍以相同網址合併）；氣象署標題尾端加台灣時間（例「M4.2 地震：花蓮縣政府東方 25.0 公里（11/01 07:58）」），同地點同規模的兩次地震才不會同一筆。用 8 筆同範本地震測過全部保留。',
                 'Insight 地球標示改版（nova-insight.js v1.3.0）：螢幕小，事件不再用大光柱，改用不同顏色的細小水波（顏色＝領域，波幅與速度＝嚴重度，同時最多 70 個；選到的城市用白色較大水波）。手指比水波粗，所以點地球時會挑離手指最近的事件點，點到城市看該城事件、點到事件看詳情；鏡頭仍是小點，航班維持細小點。【未在真機驗證，只在無頭 Chromium 看過水波會畫出來；大小若不順眼告訴我調整】'
@@ -21914,7 +21917,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.0"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.1.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

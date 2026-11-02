@@ -1,4 +1,4 @@
-/* nova-insight.js — v1.3.0 (2026-11-01)
+/* nova-insight.js — v1.3.1 (2026-11-02)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
@@ -10,6 +10,7 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.3.1 2026-11-02  地球可以放得更大：最近距離 160→106（可貼近到看得出城市周邊），縮放速度 ×1.3，開啟時預設視角由高度 2.4 拉近到 1.9（地球在畫面上較大）。
  *   v1.3.0 2026-11-01  螢幕小，地球上的事件不再用光柱：城市與事件座標改用不同顏色的細小水波（顏色＝領域，波幅與速度＝嚴重度，同時最多 70 個）；點地球時依距離挑最近的事件點（手指比水波粗），原本的光柱與點擊目標移除。氣象署事件合併修正見 nova-insight-core.js v1.3.1。
  *   v1.2.1 2026-11-01  氣象署授權碼欄位說明改成「會隨 Insight 同步」（資料層見 nova-insight-core.js v1.3.0）。
  *   v1.2.0 2026-11-01  圖層抽屜新增「中央氣象署（CWA）授權碼」欄位（存本機、不同步）；來源狀態不計入選用來源（Reddit）的失敗。資料層見 nova-insight-core.js v1.2.0。
@@ -145,10 +146,10 @@
         .ringLat('lat').ringLng('lng').ringColor(function (d) { return function (t) { return hexA(d.color, 1 - t); }; }).ringMaxRadius('maxR').ringPropagationSpeed('speed').ringRepeatPeriod('period')
         .labelLat('lat').labelLng('lng').labelText('text').labelSize(0.9).labelDotRadius(0).labelColor(function () { return 'rgba(230,240,255,.92)'; }).labelResolution(2).labelAltitude(0.012);
       try { g.renderer().setPixelRatio(Math.min(W.devicePixelRatio || 1, 2)); } catch (e) { /* */ }
-      var ctl = g.controls(); ctl.autoRotate = S.rot; ctl.autoRotateSpeed = 0.45; ctl.enableDamping = true; ctl.minDistance = 160; ctl.maxDistance = 520;
+      var ctl = g.controls(); ctl.autoRotate = S.rot; ctl.autoRotateSpeed = 0.45; ctl.enableDamping = true; ctl.minDistance = 106; ctl.maxDistance = 520; ctl.zoomSpeed = 1.3;
       ctl.addEventListener('start', function () { ctl.autoRotate = false; clearTimeout(rotTimer); });
       ctl.addEventListener('end', function () { clearTimeout(rotTimer); rotTimer = setTimeout(function () { if (S.open && !S.city && S.rot) ctl.autoRotate = true; }, 9000); });
-      g.pointOfView({ lat: 24, lng: 121, altitude: 2.4 }, 0);
+      g.pointOfView({ lat: 24, lng: 121, altitude: 1.9 }, 0);
       globe = g;
       if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(resizeGlobe); ro.observe(el); }
       drawMap();
