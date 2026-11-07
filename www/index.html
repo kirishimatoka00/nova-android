@@ -2264,8 +2264,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.120';
+        const NOVA_APP_VERSION = '2.6.121';
         const NOVA_CHANGELOG = [
+            { v: '2.6.121', date: '2026-11-07', notes: [
+                '多 Bot 新增 6 個工具（nova-experts-glue.js v1.3.0；僅 www）：document_read／file_write 透過 Termux 橋接讀寫手機檔案（docx／pptx／xlsx／pdf 走 markitdown；寫入限 Termux 家目錄與 ~/storage/shared，禁止隱藏檔，覆蓋或已存在一律要你確認，仍受「寫入總開關」限制；沒設定橋接時這兩個工具不會給 Bot 用）；insight_events／insight_markets／insight_predmarkets／research_substance／research_literature 直接用 App 內建的 Insight／Research 引擎查事件、指數、Polymarket 機率、PubChem 物質與 GHS、論文專利。尚未在實機驗證。'
+            ] },
             { v: '2.6.120', date: '2026-11-07', notes: [
                 '新增「多 Bot 模式」（移植桌面版 v3.112～3.114；新增 nova-bots.js／nova-bots-ui.js，nova-experts-glue.js v1.2.0；僅 www，不需重新打包原生）：Bot＝專家＋Bot 設定（可用工具、是否有長期記憶、能不能交辦他人）＋長期記憶，可互相交辦、討論、審稿。開啟方式：多專家模式 → 設定 → 「🤖 多 Bot」分頁打開模式開關（預設關閉），模式列就會多一個「🤖 多 Bot」，用「@Bot名 要做的事」交辦。',
                 '專家與 Bot 跨裝置同步（對應桌面版 v3.115）：專家清單、協作／會議／並行作業／多 Bot 設定、每位 Bot 的設定與長期記憶，經 Google Drive 的 NOVA_Bots_Sync.json 與桌面版雙向同步（需已連接 Google 並開啟 Drive 同步；不同步各裝置自己的開關、寫入總開關與金鑰）。刪除一位專家時，它的 Bot 設定與記憶也會在另一台一起移除。「🤖 多 Bot」分頁頂端有「同步專家與 Bot」開關。',
@@ -21820,7 +21823,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.2.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
+<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.3.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>

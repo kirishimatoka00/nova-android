@@ -1,7 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.2.0
+   版本：v1.3.0
    版本紀錄：
+   v1.3.0 - App v2.6.121。多 Bot 新增 6 個工具：document_read（讀 Termux 裡的檔案；docx／pptx／xlsx／pdf 走橋接的 markitdown）、file_write（寫檔到 Termux 家目錄或
+            ~/storage/shared；已存在或 overwrite 一律高風險要確認；禁止隱藏檔與 ~/nova_bridge）、insight_events／insight_markets／insight_predmarkets（用內建 NovaInsightCore）、
+            research_substance／research_literature（用內建 NovaResearchCore）。document_read／file_write 沒設定 Termux 橋接時會從給模型的工具清單排除（botUnsupported()）。
+            仍不支援：Gmail 草稿／寄信／垃圾桶、Outlook、行事曆、排程。
    v1.2.0 - App v2.6.120。移植桌面版 v3.112.0～v3.115.0：① 多 Bot 模式（模式列新增「🤖 多 Bot」，開關在管理視窗「🤖 多 Bot」分頁，預設關閉；引擎 nova-bots.js、介面 nova-bots-ui.js；
             Bot＝專家＋Bot 設定（工具／記憶／可交辦）＋長期記憶，可互相交辦、討論、審稿）；② 專家與 Bot 跨裝置同步：在 NovaDataSync 註冊 'bots'（檔案 NOVA_Bots_Sync.json，鍵格式與桌面版相同：
             expert/<id>、cfg/<設定鍵>、profile/<id>、mem/<botId>/<noteId>；不同步各裝置自己的開關、寫入總開關、排程與金鑰），專家／設定／Bot 設定／記憶一有變動就觸發同步（nova-bots-changed）。
@@ -1268,10 +1272,23 @@ window.NovaExpertsGlue = (function () {
     //      其餘（Gmail 草稿與寄信、Outlook、行事曆、本機檔案、Insight／Research 查詢）手機版不支援，會從給模型的工具清單排除（設定資料不動）。
     // ═══════════════════════════════════════════════════════════
     const BOTS_RT = { store: null, storeP: null };
-    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list', 'document_read', 'insight_events', 'insight_markets', 'insight_predmarkets',
-        'research_substance', 'research_literature', 'gmail_draft', 'gmail_send', 'gmail_trash', 'file_write'];
+    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list', 'gmail_draft', 'gmail_send', 'gmail_trash'];
+    const BOT_NEEDS_TERMUX = ['document_read', 'file_write'];   // v1.3.0：走 Termux 橋接；沒設定橋接時，從給模型的工具清單排除
+    function botUnsupported() {
+        let ok = false; try { ok = !!(window.NovaTermux && window.NovaTermux.configured()); } catch (e) { /* ignore */ }
+        return BOT_UNSUPPORTED.concat(ok ? [] : BOT_NEEDS_TERMUX);
+    }
     function BOTS() { return window.NovaBots; }
-    try { if (BOTS()) BOTS().UNSUPPORTED = BOT_UNSUPPORTED.slice(); } catch (e) { /* ignore */ }
+    try { if (BOTS()) BOTS().UNSUPPORTED = botUnsupported(); } catch (e) { /* ignore */ }
+    // 手機版的工具說明（覆寫桌面版寫的 Windows 路徑與說明；只改給模型看的文字，不動設定資料）
+    try {
+        const TT = BOTS() && BOTS().TOOLS;
+        if (TT) {
+            if (TT.document_read) { TT.document_read.desc = '讀手機 Termux 裡的文字檔或 docx／pptx／xlsx／pdf（轉成文字，可用 start 續讀）。路徑限 Termux 家目錄或 ~/storage/shared；相對路徑從 ~/nova_work 算。'; TT.document_read.args = '{"path":"~/storage/shared/Documents/檔案.docx","start":0}'; }
+            if (TT.file_write) { TT.file_write.desc = '在手機 Termux 家目錄或 ~/storage/shared 底下寫文字檔（2MB 內）。檔案已存在或 overwrite=true 時需使用者確認才會覆蓋（舊檔留 .bak）；不能寫隱藏檔。相對路徑從 ~/nova_work 算。'; TT.file_write.args = '{"path":"~/storage/shared/Documents/NOVA輸出/報告.md","content":"文字內容"}'; }
+            if (TT.insight_markets) { TT.insight_markets.desc = '查主要股市指數、黃金、原油、比特幣、VIX 的延遲報價與漲跌幅（不含個股）。'; TT.insight_markets.args = '{"query":"黃金"}'; }
+        }
+    } catch (e) { /* ignore */ }
     function botsOn() { return !!BOTS() && !!window.NovaExpertTasks && localStorage.getItem(K_BOTS_MODE) === 'on'; }
     function setBotsOn(v) {
         try { localStorage.setItem(K_BOTS_MODE, v ? 'on' : 'off'); } catch (e) { /* ignore */ }
@@ -1340,6 +1357,79 @@ window.NovaExpertsGlue = (function () {
         if (!j.files || !j.files.length) throw new Error('找不到檔案「' + a.filename + '」');
         return j.files[0].id;
     }
+
+    // ── v1.3.0：Termux 檔案工具（document_read／file_write）──
+    // 做法：產生一小段 Python 丟給橋接的 /run 執行（參數用 JSON 字串字面值帶入，不拼接進程式碼）。
+    // 只允許 Termux 家目錄與 /storage/emulated/0（手機共用儲存空間）；寫入另外禁止隱藏檔／資料夾與 ~/nova_bridge。
+    function termuxPy(mode, a) {
+        const lit = JSON.stringify(JSON.stringify(a || {}));
+        return [
+            'import os, sys, json, base64',
+            'A = json.loads(' + lit + ')',
+            'MODE = ' + JSON.stringify(mode),
+            'HOME = os.path.realpath(os.path.expanduser("~"))',
+            'ROOTS = [HOME, "/storage/emulated/0"]',
+            'def out(o):',
+            '    sys.stdout.write("@@NOVA@@" + json.dumps(o, ensure_ascii=False))',
+            '    sys.exit(0)',
+            'raw = str(A.get("path") or "").strip()',
+            'if not raw: out({"ok": False, "error": "需要 path"})',
+            'p = os.path.expanduser(raw)',
+            'if not os.path.isabs(p): p = os.path.join(os.path.expanduser("~/nova_work"), p)',
+            'p = os.path.realpath(p)',
+            'if not any(p == r or p.startswith(r + os.sep) for r in ROOTS): out({"ok": False, "error": "路徑不在允許範圍（只能用 Termux 家目錄或 ~/storage/shared）：" + p})',
+            'if MODE == "write":',
+            '    rel = os.path.relpath(p, HOME) if p.startswith(HOME) else os.path.relpath(p, "/storage/emulated/0")',
+            '    if any(x.startswith(".") for x in rel.split(os.sep)) or rel.split(os.sep)[0] == "nova_bridge": out({"ok": False, "error": "不能寫入隱藏檔／隱藏資料夾或橋接程式資料夾：" + rel})',
+            '    if os.path.isdir(p): out({"ok": False, "error": "這是資料夾，不是檔案：" + p})',
+            '    exists = os.path.exists(p)',
+            '    if A.get("dry_run"): out({"ok": True, "exists": exists, "path": p, "size": os.path.getsize(p) if exists else 0})',
+            '    ow = A.get("overwrite") in (True, "true", 1)',
+            '    if exists and not ow: out({"ok": False, "error": "檔案已存在，需要 overwrite=true 才能覆蓋：" + p})',
+            '    data = str(A.get("content") or "")',
+            '    if len(data.encode("utf-8")) > 2000000: out({"ok": False, "error": "內容太大（上限 2 MB）"})',
+            '    os.makedirs(os.path.dirname(p), exist_ok=True)',
+            '    if exists:',
+            '        import shutil',
+            '        try: shutil.copyfile(p, p + ".bak")',
+            '        except Exception: pass',
+            '    with open(p, "w", encoding="utf-8", newline="") as f: f.write(data)',
+            '    out({"ok": True, "path": p, "bytes": len(data.encode("utf-8")), "overwritten": exists})',
+            'if not os.path.isfile(p): out({"ok": False, "error": "找不到檔案：" + p})',
+            'st = int(A.get("start") or 0); mx = max(500, min(int(A.get("max_chars") or 12000), 40000))',
+            'ext = os.path.splitext(p)[1].lower()',
+            'TEXT = (".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".log", ".xml", ".html", ".htm", ".yaml", ".yml", ".ini", ".py", ".js", ".ts", ".css", ".sh", ".srt", ".vtt", ".toml", ".sql", ".tex", ".rst", "")',
+            'size = os.path.getsize(p)',
+            'if ext in TEXT:',
+            '    if size > 50000000: out({"ok": False, "error": "檔案太大（>50 MB）"})',
+            '    raw_b = open(p, "rb").read()',
+            '    if b"\\x00" in raw_b[:4096]: out({"ok": False, "error": "這看起來是二進位檔，無法當文字讀取：" + p})',
+            '    text = raw_b.decode("utf-8", "replace")',
+            'else:',
+            '    sys.path.insert(0, os.path.expanduser("~/nova_bridge"))',
+            '    try:',
+            '        import nova_tools',
+            '        r = nova_tools.markitdown_convert(os.path.basename(p), base64.b64encode(open(p, "rb").read()).decode("ascii"), 2000000)',
+            '        text = r.get("markdown") or ""',
+            '    except Exception as e:',
+            '        out({"ok": False, "error": str(getattr(e, "detail", None) or e)})',
+            'total = len(text)',
+            'out({"ok": True, "path": p, "total_chars": total, "start": st, "text": text[st:st + mx], "has_more": st + mx < total})',
+        ].join('\n');
+    }
+    async function termuxFile(mode, a) {
+        const T0 = window.NovaTermux;
+        if (!T0 || !T0.configured()) return { success: false, text: '這個工具需要 Termux 橋接（設定 → 🔌 工具 → Termux 橋接）。' };
+        let r;
+        try { r = await T0.toolPost('/run', { code: termuxPy(mode, a), timeout: 120 }, 150000); }
+        catch (e) { return { success: false, text: 'Termux 橋接連不上：' + ((e && e.message) || e) }; }
+        const so = String((r && r.stdout) || ''), i = so.lastIndexOf('@@NOVA@@');
+        if (i < 0) return { success: false, text: 'Termux 執行失敗：' + String((r && (r.stderr || r.error)) || so || '沒有輸出').slice(0, 400) };
+        let j; try { j = JSON.parse(so.slice(i + 8)); } catch (e) { return { success: false, text: 'Termux 回傳格式錯誤' }; }
+        if (!j.ok) return { success: false, text: j.error || '失敗' };
+        return { success: true, j: j };
+    }
+    function fmtCites(items, f) { return items.map(f).join('\n') || '（沒有結果）'; }
     async function botNative(name, a) {
         a = a || {};
         try {
@@ -1375,6 +1465,57 @@ window.NovaExpertsGlue = (function () {
                 const r = await G._raw(url); if (!r.ok) throw new Error('讀取失敗 HTTP ' + r.status);
                 return { success: true, text: '檔案：' + meta.name + '\n\n' + (await r.text()).slice(0, 12000) };
             }
+            if (name === 'document_read') {
+                const r = await termuxFile('read', a); if (!r.success) return r;
+                const j = r.j;
+                return { success: true, text: '檔案：' + j.path + '\n總字數：' + j.total_chars + '｜本次從第 ' + j.start + ' 字起' + (j.has_more ? '（還有後續，請用 start=' + (j.start + j.text.length) + ' 繼續讀）' : '（已到結尾）') + '\n\n' + j.text };
+            }
+            if (name === 'insight_events') {
+                const C = window.NovaInsightCore; if (!C) return { success: false, text: 'Insight 引擎沒有載入' };
+                let st = C.events.cached(); if (!st.events.length || Date.now() / 1000 - st.at > 900) { try { st = await C.events.get(false); } catch (e) { /* 用快取 */ } }
+                const hrs = Math.min(168, Math.max(1, parseInt(a.hours, 10) || 24)), minSev = Math.min(5, Math.max(1, parseInt(a.min_severity, 10) || 1)), lim = Math.min(30, Math.max(1, parseInt(a.limit, 10) || 12));
+                const kws = String(a.query || '').toLowerCase().split(/\s+/).filter(Boolean), cut = Date.now() / 1000 - hrs * 3600, dom = String(a.domain || '').trim();
+                const list = (st.events || []).filter(function (e) {
+                    if (e.ts < cut || (e.severity || 1) < minSev || (dom && e.domain !== dom)) return false;
+                    const hay = ((e.title || '') + ' ' + (e.summary || '') + ' ' + (e.city || '')).toLowerCase(); return kws.every(function (k) { return hay.indexOf(k) >= 0; });
+                }).slice(0, lim);
+                if (!list.length) return { success: true, text: '（過去 ' + hrs + ' 小時沒有符合的事件' + ((st.events || []).length ? '' : '；目前也沒有事件資料，可能是網路問題') + '）' };
+                return { success: true, text: fmtCites(list, function (e) { return '[' + (e.domain || '') + ' 嚴重度' + (e.severity || 1) + '] ' + (e.title || '') + '｜' + new Date(e.ts * 1000).toISOString().slice(0, 16).replace('T', ' ') + 'Z｜' + (e.src || e.source || '') + '｜' + (e.url || ''); }) };
+            }
+            if (name === 'insight_markets') {
+                const C = window.NovaInsightCore; if (!C) return { success: false, text: 'Insight 引擎沒有載入' };
+                const d = await C.markets(false); const q = String(a.query || '').trim().toLowerCase();
+                const ms = (d.markets || []).filter(function (m) { return !q || (m.symbol + ' ' + m.name + ' ' + (m.en || '') + ' ' + (m.city || '') + ' ' + (m.country || '') + ' ' + (m.kind || '')).toLowerCase().indexOf(q) >= 0; });
+                if (!ms.length) return { success: true, text: d.ok ? '（沒有符合「' + q + '」的指數）' : '目前取不到報價（網路或來源問題）' };
+                return { success: true, text: '延遲報價（約 15 分鐘或前一收盤）：\n' + fmtCites(ms, function (m) { return m.name + '（' + m.symbol + '）' + m.price + ' ' + (m.currency || '') + '｜漲跌 ' + (m.change_pct == null ? '—' : m.change_pct + '%'); }) };
+            }
+            if (name === 'insight_predmarkets') {
+                const C = window.NovaInsightCore; if (!C) return { success: false, text: 'Insight 引擎沒有載入' };
+                const q = String(a.query || '').trim(); if (!q) return { success: false, text: '需要 query（英文關鍵字）' };
+                const d = await C.predmarkets(q);
+                if (!(d.markets || []).length) return { success: true, text: '（Polymarket 上沒有與「' + q + '」相關、仍在進行的市場）' };
+                return { success: true, text: fmtCites(d.markets, function (m) { return m.question + '｜「是」機率 ' + Math.round(m.yes * 1000) / 10 + '%｜成交量 ' + (m.volume == null ? '—' : Math.round(m.volume)) + '｜截止 ' + String(m.end || '').slice(0, 10) + '｜' + m.url; }) };
+            }
+            if (name === 'research_substance') {
+                const C = window.NovaResearchCore; if (!C) return { success: false, text: 'Research 引擎沒有載入' };
+                const q = String(a.query || '').trim(); if (!q) return { success: false, text: '需要 query（名稱、CAS 或 smiles:xxx）' };
+                const r = await C.resolve(q); if (!r.found) return { success: true, text: '（PubChem 找不到「' + q + '」）' };
+                let g = null; try { g = await C.ghs(r.cid); } catch (e) { /* 沒有 GHS 也照回 */ }
+                let t = r.title + '｜分子式 ' + r.formula + '｜分子量 ' + r.mw + '｜CAS ' + (r.cas.join(', ') || '—') + '\nIUPAC：' + r.iupac + '\nSMILES：' + r.smiles + '\n同義詞：' + r.synonyms.slice(0, 8).join('、') + '\n' + r.url;
+                if (g && g.found) t += '\nGHS：警示語 ' + (g.signal || '—') + '｜象形圖 ' + (g.pictograms.join(', ') || '—') + '\n' + g.h.map(function (h) { return h.code + ' ' + h.text; }).join('\n') + '\nP 碼：' + g.p.join(' ');
+                else t += '\nGHS：PubChem 沒有這個物質的 GHS 分類（不代表安全）';
+                return { success: true, text: t };
+            }
+            if (name === 'research_literature') {
+                const C = window.NovaResearchCore; if (!C) return { success: false, text: 'Research 引擎沒有載入' };
+                const q = String(a.query || '').trim(); if (!q) return { success: false, text: '需要 query（英文關鍵字較佳）' };
+                const kind = String(a.kind || 'all'), n = Math.min(15, Math.max(3, parseInt(a.n, 10) || 8)), keys = Object.keys(C.SOURCES);
+                const srcs = keys.filter(function (k) { return kind === 'all' || C.SOURCES[k][1] === kind; });
+                const r = await C.search(q, srcs, n, parseInt(a.year_from, 10) || undefined);
+                const notes = Object.keys(r.sources || {}).filter(function (k) { return !r.sources[k].ok; }).map(function (k) { return r.sources[k].label + '：' + (r.sources[k].skipped ? '未設定金鑰，已略過' : r.sources[k].error); });
+                const items = (r.items || []).slice(0, n);
+                return { success: true, text: fmtCites(items, function (it) { return '• ' + (it.title || '') + '｜' + (it.year || '') + '｜' + ((it.authors || []).slice(0, 3).join(', ')) + '｜' + (it.venue || it.source || '') + '｜' + (it.url || (it.doi ? 'https://doi.org/' + it.doi : '')); }) + (notes.length ? '\n（來源備註：' + notes.join('；') + '）' : '') };
+            }
             if (name === 'insight_weather') {
                 const city = String(a.city || '').trim(); let lat = parseFloat(a.lat), lon = parseFloat(a.lon), label = city;
                 if (isNaN(lat) || isNaN(lon)) {
@@ -1393,6 +1534,12 @@ window.NovaExpertsGlue = (function () {
     async function botWrite(name, a) {
         a = a || {};
         try {
+            if (name === 'file_write') {
+                const r = await termuxFile('write', a); if (!r.success) return r;
+                const j = r.j;
+                if (a.dry_run) return { success: true, data: { exists: !!j.exists, path: j.path, size: j.size }, text: '' };
+                return { success: true, data: { path: j.path }, text: '已' + (j.overwritten ? '覆蓋' : '寫入') + '檔案 ' + j.path + '（' + j.bytes + ' bytes）' };
+            }
             const G = gNeed('drive', '雲端硬碟'); const D = window.NovaGDrive;
             if (name === 'drive_write') {
                 if (!D || !D.uploadBlob) return { success: false, text: 'Drive 上傳模組沒有載入' };
@@ -1535,6 +1682,7 @@ window.NovaExpertsGlue = (function () {
     // ── 開始一批多 Bot 任務（結構同 startBatch；執行器換成 NovaBots.runBatch）──
     async function startBotBatch(sid, tasks, settings, request, o) {
         o = o || {};
+        try { BOTS().UNSUPPORTED = botUnsupported(); } catch (e) { /* ignore */ }   // Termux 橋接可能剛設定好
         const store = await getBotStore();
         const bs = loadBSettings();
         const profiles = await loadProfilesMap(store);
@@ -1569,6 +1717,7 @@ window.NovaExpertsGlue = (function () {
     }
     // ── 「🤖 多 Bot」分頁（介面在 nova-bots-ui.js）──
     function renderBotsTab(body, rerender) {
+        try { if (BOTS()) BOTS().UNSUPPORTED = botUnsupported(); } catch (e) { /* ignore */ }
         if (!window.NovaBotsUI) { body.appendChild(mk('div', 'color:#f87171;', '找不到多 Bot 介面（nova-bots-ui.js 沒有載入）')); return; }
         // 同步開關（專家＋Bot；仍需先在 Google 整合開啟 Drive 同步）
         const ds = window.NovaDataSync;
