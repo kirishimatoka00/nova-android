@@ -2264,8 +2264,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.121';
+        const NOVA_APP_VERSION = '2.6.122';
         const NOVA_CHANGELOG = [
+            { v: '2.6.122', date: '2026-11-07', notes: [
+                'Google 整合新增授權項目「Gmail 寫入」（gmail.modify；nova-google.js v1.5.0、nova-experts-glue.js v1.4.0；僅 www）：多 Bot 可用 gmail_draft（存草稿）、gmail_send（寄信，每次跳確認，排程不可用）、gmail_trash（移到垃圾桶，可還原）。「連接」分頁新增「目前實際拿到的授權」清單。要用的話：Google Cloud「資料存取權」先加 gmail.modify → App 的 Google 整合勾選「Gmail 寫入」→ 重新按「連接 Google」。舊授權不會自動升級。尚未在實機驗證。'
+            ] },
             { v: '2.6.121', date: '2026-11-07', notes: [
                 '多 Bot 新增 6 個工具（nova-experts-glue.js v1.3.0；僅 www）：document_read／file_write 透過 Termux 橋接讀寫手機檔案（docx／pptx／xlsx／pdf 走 markitdown；寫入限 Termux 家目錄與 ~/storage/shared，禁止隱藏檔，覆蓋或已存在一律要你確認，仍受「寫入總開關」限制；沒設定橋接時這兩個工具不會給 Bot 用）；insight_events／insight_markets／insight_predmarkets／research_substance／research_literature 直接用 App 內建的 Insight／Research 引擎查事件、指數、Polymarket 機率、PubChem 物質與 GHS、論文專利。尚未在實機驗證。'
             ] },
@@ -21823,7 +21826,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.3.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
+<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.4.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>
@@ -21933,7 +21936,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.4.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.5.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

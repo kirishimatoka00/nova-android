@@ -1,4 +1,4 @@
-/* nova-google.js — v1.4.0 (2026-11-01)
+/* nova-google.js — v1.5.0 (2026-11-07)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.5.0 2026-11-07  App v2.6.122：新增授權項目「Gmail 寫入」（gmail.modify：建草稿、寄信、移到垃圾桶；不能永久刪除）。選了它就不必再勾「Gmail 唯讀」（has('gmail') 兩者任一都算）；新增 gmailDraft／gmailSend／gmailTrash（RFC822＋UTF-8 base64，標頭擋換行注入、收件者驗證格式）；『連接』分頁新增「目前實際拿到的授權」清單（讀 token 裡的 scope，不用去 Google 後台猜）。舊 token 不會自動升級，要勾選後重新按「連接 Google」。
  *   v1.4.0 2026-11-01  App v2.6.108：Drive 同步在記憶同步後接著呼叫 NovaDataSync.run（NovaResearch 研發資料 NOVA_Research_Sync.json；階段 3 起加 Insight 的 NOVA_Insight_Sync.json）；失敗只顯示提示，不影響筆記／記憶同步
  *   v1.3.0 2026-10-17  App v2.6.63：Gmail 信件改用 HTML 渲染（沙盒 iframe：無腳本、CSP 擋表單與框架；做法同桌面版）：cid 內嵌圖換成 data URI 永遠顯示、遠端圖片預設封鎖並可按「顯示圖片」放行、可切換純文字；連結用系統瀏覽器開。雲端硬碟清單（.ngd-row／對話框）補白晝模式配色。
  *   v1.2.1 2026-10-17  App v2.6.63：Google 整合頁加白晝模式（html.theme-light 下改用 --nv-* 色票：分頁、按鈕無框無底、輸入框、清單、文字色）
@@ -23,7 +24,7 @@
   var DEFAULT_REDIR = 'https://kirishimatoka00.github.io/nova-android/oauth.html';
   var SCHEME = 'nova120://oauth';
   var SYNC_NAME = 'NOVA_Sync_Bundle.json';
-  var SCOPES = { drive: 'https://www.googleapis.com/auth/drive', gmail: 'https://www.googleapis.com/auth/gmail.readonly', docs: 'https://www.googleapis.com/auth/documents' };
+  var SCOPES = { drive: 'https://www.googleapis.com/auth/drive', gmail: 'https://www.googleapis.com/auth/gmail.readonly', docs: 'https://www.googleapis.com/auth/documents', gmailmod: 'https://www.googleapis.com/auth/gmail.modify' };
   function g(k, d) { try { var v = LS.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function s(k, v) { try { LS.setItem(k, v); } catch (e) {} }
   function toast(m, d) { try { W.showToast(m, d); } catch (e) {} }
@@ -33,7 +34,9 @@
   function saveTokens(t) { s('nova_google_tokens', JSON.stringify(t)); }
   function scopesSel() { try { return JSON.parse(g('nova_google_scopes', '["drive","gmail","docs"]')); } catch (e) { return ['drive', 'gmail', 'docs']; } }
   function connected() { var t = tokens(); return !!(t && (t.refresh_token || t.access_token)); }
-  function has(sc) { var t = tokens(); return !!(t && (t.scope || '').indexOf(SCOPES[sc]) !== -1); }
+  function has(sc) { var t = tokens(); if (!t) return false; var sp = (t.scope || '').split(/\s+/); if (sc === 'gmail') return sp.indexOf(SCOPES.gmail) !== -1 || sp.indexOf(SCOPES.gmailmod) !== -1; return sp.indexOf(SCOPES[sc]) !== -1; }
+  var SC_NAMES = { 'https://www.googleapis.com/auth/drive': 'Drive（完整）', 'https://www.googleapis.com/auth/gmail.readonly': 'Gmail 唯讀', 'https://www.googleapis.com/auth/gmail.modify': 'Gmail 寫入（草稿／寄信／垃圾桶）', 'https://www.googleapis.com/auth/documents': 'Docs', openid: '身分（openid）', email: '電子郵件地址' };
+  function grantedList() { var t = tokens(); return t ? (t.scope || '').split(/\s+/).filter(Boolean).map(function (x) { return SC_NAMES[x] || x; }) : []; }
 
   /* ───────── OAuth（PKCE） ───────── */
   function b64url(buf) { var b = ''; new Uint8Array(buf).forEach(function (x) { b += String.fromCharCode(x); }); return btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
@@ -247,6 +250,37 @@
     var ids = (j.messages || []).map(function (m) { return m.id; });
     return await Promise.all(ids.map(function (id) { return apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id + '?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date'); }));
   }
+
+  /* Gmail 寫入（需要「Gmail 寫入」授權 gmail.modify）*/
+  function needMod() { if (!has('gmailmod')) throw new Error('目前的 Google 授權不含「Gmail 寫入」。請到 Google 整合 → 連接，勾選「Gmail 寫入」後重新按「連接 Google」。'); }
+  function cleanHdr(v) { return String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
+  function addrList(v, label, req) {
+    var arr = String(v || '').split(/[,;，；]/).map(cleanHdr).filter(Boolean);
+    if (req && !arr.length) throw new Error('需要' + label);
+    arr.forEach(function (x) { var m = x.match(/<([^<>]+)>\s*$/), a = m ? m[1] : x; if (!/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(a)) throw new Error(label + '格式不對：' + x); });
+    return arr.join(', ');
+  }
+  function b64urlStr(str) { var by = new TextEncoder().encode(str), b = ''; by.forEach(function (x) { b += String.fromCharCode(x); }); return btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function b64std(str) { var by = new TextEncoder().encode(str), b = ''; by.forEach(function (x) { b += String.fromCharCode(x); }); return btoa(b).replace(/(.{76})/g, '$1\r\n'); }
+  function buildRaw(o) {
+    var to = addrList(o.to, '收件者', true), cc = addrList(o.cc, '副本', false), bcc = addrList(o.bcc, '密件副本', false), sub = cleanHdr(o.subject);
+    var h = ['To: ' + to]; if (cc) h.push('Cc: ' + cc); if (bcc) h.push('Bcc: ' + bcc);
+    h.push('Subject: ' + (sub ? '=?UTF-8?B?' + b64std(sub).replace(/\r\n/g, '') + '?=' : ''));
+    h.push('MIME-Version: 1.0', 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64');
+    return b64urlStr(h.join('\r\n') + '\r\n\r\n' + b64std(String(o.body || '')));
+  }
+  async function gmailDraft(o) {
+    needMod(); var j = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: { raw: buildRaw(o) } }) });
+    return { id: j.id, messageId: j.message && j.message.id };
+  }
+  async function gmailSend(o) {
+    needMod(); var j = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: buildRaw(o) }) });
+    return { id: j.id, threadId: j.threadId };
+  }
+  async function gmailTrash(id) {
+    needMod(); id = String(id || '').trim(); if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) throw new Error('信件 id 格式不對');
+    var j = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id + '/trash', { method: 'POST' }); return { id: j.id };
+  }
   function b64dec(x) { try { var b = atob(x.replace(/-/g, '+').replace(/_/g, '/')); return decodeURIComponent(escape(b)); } catch (e) { try { return atob(x.replace(/-/g, '+').replace(/_/g, '/')); } catch (e2) { return ''; } } }
   function bodyOf(p) {
     if (!p) return ''; var plain = '', html = '';
@@ -397,11 +431,11 @@
     var b = D.getElementById('ng-body'), c = cfg();
     if (tab === 'main') {
       var sel = scopesSel();
-      b.innerHTML = '<div class="p-3 rounded-xl border ' + (connected() ? 'border-emerald-600/50 bg-emerald-900/20' : 'border-slate-700 bg-slate-900') + '">' + (connected() ? '✅ 已連接：' + esc(g('nova_google_email', '(帳號)')) : '尚未連接 Google 帳號') + '</div>' +
+      b.innerHTML = '<div class="p-3 rounded-xl border ' + (connected() ? 'border-emerald-600/50 bg-emerald-900/20' : 'border-slate-700 bg-slate-900') + '">' + (connected() ? '✅ 已連接：' + esc(g('nova_google_email', '(帳號)')) + '<div class="text-[11px] mt-1 text-slate-400">目前實際拿到的授權：' + (grantedList().map(esc).join('、') || '（沒有記錄）') + '</div>' : '尚未連接 Google 帳號') + '</div>' +
         '<label class="block text-xs text-slate-400">Client ID（Web 應用程式類型）</label><input id="ng-cid" class="' + IN + '" value="' + esc(c.id) + '" placeholder="xxxx.apps.googleusercontent.com">' +
         '<label class="block text-xs text-slate-400">Client Secret</label><input id="ng-sec" type="password" class="' + IN + '" value="' + esc(c.secret) + '">' +
         '<label class="block text-xs text-slate-400">轉址 URI（需先登錄到該用戶端的「已授權的重新導向 URI」）</label><input id="ng-red" class="' + IN + '" value="' + esc(c.redir) + '">' +
-        '<div class="flex flex-wrap gap-3 text-xs">' + ['drive', 'gmail', 'docs'].map(function (k) { return '<label class="flex items-center gap-1"><input type="checkbox" class="ng-sc" value="' + k + '"' + (sel.indexOf(k) !== -1 ? ' checked' : '') + '> ' + { drive: 'Drive（完整，才能讀到桌面版建立的同步檔）', gmail: 'Gmail 唯讀', docs: 'Docs' }[k] + '</label>'; }).join('') + '</div>' +
+        '<div class="flex flex-wrap gap-3 text-xs">' + ['drive', 'gmail', 'gmailmod', 'docs'].map(function (k) { return '<label class="flex items-center gap-1"><input type="checkbox" class="ng-sc" value="' + k + '"' + (sel.indexOf(k) !== -1 ? ' checked' : '') + '> ' + { drive: 'Drive（完整，才能讀到桌面版建立的同步檔）', gmail: 'Gmail 唯讀', gmailmod: 'Gmail 寫入（草稿／寄信／垃圾桶；含讀取）', docs: 'Docs' }[k] + '</label>'; }).join('') + '</div>' +
         '<div class="flex gap-2"><button class="' + BTN + 'ng-sky" onclick="NovaGoogle._saveCfg();NovaGoogle.connect()">連接 Google</button>' + (connected() ? '<button class="' + BTN + 'ng-gray" onclick="NovaGoogle.disconnect()">中斷連接</button>' : '') + '</div>' +
         '<details class="text-xs text-slate-400"><summary>授權後沒有自動跳回 App？</summary><p class="my-2">轉址頁會顯示一串網址；複製整串貼到下面按「完成連接」。</p><input id="ng-paste" class="' + IN + '" placeholder="貼上轉址後的完整網址或 code"><button class="' + BTN + 'ng-gray mt-2" onclick="NovaGoogle._paste()">完成連接</button></details>' +
         '<p class="text-[11px] text-slate-500">個人自用提示：OAuth 同意畫面若維持「測試中」，授權每 7 天會過期；切到「正式版」（不必送審）會出現未驗證警告但可繼續，授權不會過期。Gmail／Drive 完整權限屬 Google 的「受限範圍」。</p>';
@@ -473,7 +507,7 @@
   function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.style.display = 'flex'; render(); }
   function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
   W.NovaGoogle = { _raw: api, _token: accessToken, _has: has, _connected: connected, _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
-    gmailList: gmailList, gmailRead: gmailRead, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
+    gmailList: gmailList, gmailRead: gmailRead, gmailDraft: gmailDraft, gmailSend: gmailSend, gmailTrash: gmailTrash, grantedList: grantedList, _buildRaw: buildRaw, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
     _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
 
   /* 入口：+選單按鈕、設定頁按鈕、深度連結 */

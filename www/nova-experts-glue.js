@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.3.0
+   版本：v1.4.0
    版本紀錄：
+   v1.4.0 - App v2.6.122。多 Bot 開放 gmail_draft（存草稿，低風險）／gmail_send（寄信，高風險每次確認，排程不可用）／gmail_trash（移到垃圾桶，高風險）：用 NovaGoogle.gmailDraft／gmailSend／gmailTrash，
+            需要 Google 授權「Gmail 寫入」（gmail.modify）；沒有這個授權時三個工具從給模型的工具清單排除（botUnsupported()），呼叫時回傳說明怎麼重新授權。
    v1.3.0 - App v2.6.121。多 Bot 新增 6 個工具：document_read（讀 Termux 裡的檔案；docx／pptx／xlsx／pdf 走橋接的 markitdown）、file_write（寫檔到 Termux 家目錄或
             ~/storage/shared；已存在或 overwrite 一律高風險要確認；禁止隱藏檔與 ~/nova_bridge）、insight_events／insight_markets／insight_predmarkets（用內建 NovaInsightCore）、
             research_substance／research_literature（用內建 NovaResearchCore）。document_read／file_write 沒設定 Termux 橋接時會從給模型的工具清單排除（botUnsupported()）。
@@ -1272,11 +1274,13 @@ window.NovaExpertsGlue = (function () {
     //      其餘（Gmail 草稿與寄信、Outlook、行事曆、本機檔案、Insight／Research 查詢）手機版不支援，會從給模型的工具清單排除（設定資料不動）。
     // ═══════════════════════════════════════════════════════════
     const BOTS_RT = { store: null, storeP: null };
-    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list', 'gmail_draft', 'gmail_send', 'gmail_trash'];
+    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list'];
+    const BOT_NEEDS_GMAILMOD = ['gmail_draft', 'gmail_send', 'gmail_trash'];   // v1.4.0：需要 Google「Gmail 寫入」授權
     const BOT_NEEDS_TERMUX = ['document_read', 'file_write'];   // v1.3.0：走 Termux 橋接；沒設定橋接時，從給模型的工具清單排除
     function botUnsupported() {
         let ok = false; try { ok = !!(window.NovaTermux && window.NovaTermux.configured()); } catch (e) { /* ignore */ }
-        return BOT_UNSUPPORTED.concat(ok ? [] : BOT_NEEDS_TERMUX);
+        let gm = false; try { gm = !!(window.NovaGoogle && window.NovaGoogle._connected() && window.NovaGoogle._has('gmailmod')); } catch (e) { /* ignore */ }
+        return BOT_UNSUPPORTED.concat(ok ? [] : BOT_NEEDS_TERMUX, gm ? [] : BOT_NEEDS_GMAILMOD);
     }
     function BOTS() { return window.NovaBots; }
     try { if (BOTS()) BOTS().UNSUPPORTED = botUnsupported(); } catch (e) { /* ignore */ }
@@ -1539,6 +1543,13 @@ window.NovaExpertsGlue = (function () {
                 const j = r.j;
                 if (a.dry_run) return { success: true, data: { exists: !!j.exists, path: j.path, size: j.size }, text: '' };
                 return { success: true, data: { path: j.path }, text: '已' + (j.overwritten ? '覆蓋' : '寫入') + '檔案 ' + j.path + '（' + j.bytes + ' bytes）' };
+            }
+            if (name === 'gmail_draft' || name === 'gmail_send' || name === 'gmail_trash') {
+                const G0 = window.NovaGoogle; if (!G0 || !G0._connected || !G0._connected()) return { success: false, text: '尚未連接 Google（請到「Google 整合」連接並授權）' };
+                if (!G0._has('gmailmod')) return { success: false, text: '目前的 Google 授權不含「Gmail 寫入」。請到 Google 整合 → 連接，勾選「Gmail 寫入」後重新按「連接 Google」。' };
+                if (name === 'gmail_draft') { const r = await G0.gmailDraft(a); return { success: true, data: r, text: '已存成 Gmail 草稿（尚未寄出）id=' + r.id }; }
+                if (name === 'gmail_send') { const r = await G0.gmailSend(a); return { success: true, data: r, text: '已寄出郵件 id=' + r.id }; }
+                const r = await G0.gmailTrash(a.message_id); return { success: true, data: r, text: '已移到垃圾桶（可還原）id=' + r.id };
             }
             const G = gNeed('drive', '雲端硬碟'); const D = window.NovaGDrive;
             if (name === 'drive_write') {
