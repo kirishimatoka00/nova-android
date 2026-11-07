@@ -1,7 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.120。移植桌面版 v3.112.0～v3.115.0：① 多 Bot 模式（模式列新增「🤖 多 Bot」，開關在管理視窗「🤖 多 Bot」分頁，預設關閉；引擎 nova-bots.js、介面 nova-bots-ui.js；
+            Bot＝專家＋Bot 設定（工具／記憶／可交辦）＋長期記憶，可互相交辦、討論、審稿）；② 專家與 Bot 跨裝置同步：在 NovaDataSync 註冊 'bots'（檔案 NOVA_Bots_Sync.json，鍵格式與桌面版相同：
+            expert/<id>、cfg/<設定鍵>、profile/<id>、mem/<botId>/<noteId>；不同步各裝置自己的開關、寫入總開關、排程與金鑰），專家／設定／Bot 設定／記憶一有變動就觸發同步（nova-bots-changed）。
+            手機版差異：沒有 sidecar（資料存 localStorage）、不支援排程、工具只做手機做得到的（見下方「多 Bot 模式」區塊說明）；onTaskFinished 與任務看板補上「由某某交辦」「發言／審稿」顯示。
    v1.1.0 - App v2.6.58。移植桌面版 v3.66／v3.67「智慧分派」的專家部分：新增 autoRoute(text)（先問 Jev routeTask，不確定／失敗退回一次輕量 LLM 判斷；失敗一律回 chat）與 autoRouteAvailable()；
             dispatch(text, o) 新增 o.auto（對話區提示「AI 判斷這是需要多位專家分工的任務」）、o.skipConfirm（驗證通過就直接開工，驗證不過仍跳確認視窗）、o.reason。開關與送出掛鉤在 nova-autoroute.js。
    v1.0.0 - 初版（批次 4）。移植自 NOVA Desktop 的 index.html「NOVA-EXPERTS-GLUE」區塊（v3.5x，不改桌面版）：
@@ -21,6 +25,9 @@ window._novaExpState = { running: false, cancel: false, owner: null };
 window.NovaExpertsGlue = (function () {
     const K_EXPERTS = 'nova_experts_v1', K_SETTINGS = 'nova_experts_settings_v1', K_MODE = 'nova_experts_mode';
     const ENG = function () { return window.NovaExperts; };
+    const K_BOTS_MODE = 'nova_bots_mode', K_BOTS_SET = 'nova_bots_settings_v1';   // v1.2.0 多 Bot 模式
+    let _botsApplying = false;
+    function botsChanged() { if (_botsApplying) return; try { window.dispatchEvent(new Event('nova-bots-changed')); } catch (e) { /* ignore */ } }
     const css = function (el, s) { el.style.cssText = s; return el; };
     const mk = function (tag, style, text) { const e = document.createElement(tag); if (style) e.style.cssText = style; if (text != null) e.textContent = text; return e; };
     const T = {   // 主題色：吃 nova-ui.css 的 token，沒有就用深色預設
@@ -35,13 +42,13 @@ window.NovaExpertsGlue = (function () {
         if (!Array.isArray(list) || !list.length) return ENG().defaultExperts();
         return list.map(ENG().normalizeExpert);
     }
-    function saveExperts(list) { try { localStorage.setItem(K_EXPERTS, JSON.stringify(list.map(ENG().normalizeExpert))); } catch (e) { console.warn('[NOVA][專家] 儲存失敗', e); } }
+    function saveExperts(list) { try { localStorage.setItem(K_EXPERTS, JSON.stringify(list.map(ENG().normalizeExpert))); } catch (e) { console.warn('[NOVA][專家] 儲存失敗', e); } botsChanged(); }
     function loadSettings() {
         let s = null;
         try { s = JSON.parse(localStorage.getItem(K_SETTINGS) || 'null'); } catch (e) { s = null; }
         return ENG().normalizeSettings(s || {});
     }
-    function saveSettings(s) { try { localStorage.setItem(K_SETTINGS, JSON.stringify(ENG().normalizeSettings(s))); } catch (e) { /* ignore */ } }
+    function saveSettings(s) { try { localStorage.setItem(K_SETTINGS, JSON.stringify(ENG().normalizeSettings(s))); } catch (e) { /* ignore */ } botsChanged(); }
     function isOn() { return !!ENG() && localStorage.getItem(K_MODE) === 'on'; }
 
     // ── 模型解析 ──
@@ -207,17 +214,20 @@ window.NovaExpertsGlue = (function () {
         const small = function (label, fn, extra) { const b = mk('button', 'padding:2px 9px;border-radius:7px;border:1px solid ' + T.border + ';background:' + T.card2 + ';color:' + T.text + ';' + (extra || ''), label); b.onclick = fn; return b; };
         // 模式切換（協作報告／多專家會議）
         const seg = mk('div', 'display:inline-flex;border-radius:8px;overflow:hidden;border:1px solid rgba(168,85,247,.55);');
-        [['report', '🧑‍🔬 協作報告'], ['meeting', '🗣️ 多專家會議'], ['tasks', '⚡ 並行作業']].forEach(function (m) {
+        [['report', '🧑‍🔬 協作報告'], ['meeting', '🗣️ 多專家會議'], ['tasks', '⚡ 並行作業']].concat(botsOn() ? [['bots', '🤖 多 Bot']] : []).forEach(function (m) {
             const act = sub === m[0];
             const b = mk('button', 'padding:2px 10px;border:0;font-size:12px;font-weight:' + (act ? '700' : '400') + ';background:' + (act ? 'rgba(147,51,234,.55)' : 'transparent') + ';color:' + (act ? '#fff' : T.text) + ';', m[1]);
             if (act) b.className = 'nova-exp-seg-on';
-            b.onclick = function () { if (!act) { setSubMode(m[0]); showToast(m[0] === 'meeting' ? '🗣️ 已切換為【多專家會議】：專家會在對話裡一起跟你討論，說「請總結」收尾' : m[0] === 'tasks' ? '⚡ 已切換為【並行作業】：用「@專家 要做的事」交辦，多位專家同時開工，成品貼回對話' : '🧑‍🔬 已切換為【協作報告】：專家分工後產出一份完整報告'); } };
+            b.onclick = function () { if (!act) { setSubMode(m[0]); showToast(m[0] === 'meeting' ? '🗣️ 已切換為【多專家會議】：專家會在對話裡一起跟你討論，說「請總結」收尾' : m[0] === 'tasks' ? '⚡ 已切換為【並行作業】：用「@專家 要做的事」交辦，多位專家同時開工，成品貼回對話' : m[0] === 'bots' ? '🤖 已切換為【多 Bot】：用「@Bot名 要做的事」交辦，Bot 有記憶、會用工具，也能互相交辦' : '🧑‍🔬 已切換為【協作報告】：專家分工後產出一份完整報告'); } };
             seg.appendChild(b);
         });
         seg.className = 'nova-exp-seg';
         bar.appendChild(seg);
         const info = mk('span', 'color:' + T.muted + ';flex:0 0 100%;order:99;min-width:0;font-size:11px;line-height:1.5;');   // v3.54.1：說明文字獨立放在按鈕列下方，不再撐寬
-        if (sub === 'tasks') {
+        if (sub === 'bots') {
+            const ts = loadTSettings(); const act = activeTaskCount();
+            info.textContent = '🤖 多 Bot｜成員 ' + list.length + ' 位｜輸入「@Bot名 要做的事」交辦（可用 → 接力）｜Bot 會讀自己的記憶、用工具查資料、必要時互相交辦｜同時最多 ' + ts.concurrency + ' 項｜' + (act ? act + ' 項進行中' : '目前沒有進行中的任務');
+        } else if (sub === 'tasks') {
             const ts = loadTSettings(); const act = activeTaskCount();
             info.textContent = '成員 ' + list.length + ' 位｜輸入「@專家 要做的事」交辦，例如 @小白 做簡報 → @老王 蒐集資料｜同時最多 ' + ts.concurrency + ' 項｜' + (act ? act + ' 項進行中' : '目前沒有進行中的任務');
         } else if (sub === 'meeting') {
@@ -232,7 +242,7 @@ window.NovaExpertsGlue = (function () {
             info.textContent = '啟用 ' + list.length + ' 位專家｜' + (st.selection === 'all' ? '全員協作' : '自動挑選最多 ' + st.maxExperts + ' 位') + '｜交叉審閱 ' + st.crossReview + ' 輪｜' + (st.reviewer ? '含獨立審查' : '無審查') + '｜約 ' + ENG().estimateCalls(st, n) + ' 次模型呼叫';
         }
         bar.appendChild(info);
-        if (sub === 'tasks') {
+        if (sub === 'tasks' || sub === 'bots') {
             bar.appendChild(small('📋 任務看板' + (activeTaskCount() ? '（' + activeTaskCount() + '）' : ''), function () { toggleBoard(); }, TRT.boardOpen ? 'background:rgba(147,51,234,.35);' : ''));
         } else if (sub === 'meeting') {
             const meet2 = getMeet(appState.currentSessionId);
@@ -243,7 +253,7 @@ window.NovaExpertsGlue = (function () {
         } else {
             bar.appendChild(small('管理專家', function () { openManager('experts'); }));
         }
-        bar.appendChild(small('設定', function () { openManager(sub === 'meeting' ? 'meeting' : sub === 'tasks' ? 'tasks' : 'settings'); }));
+        bar.appendChild(small('設定', function () { openManager(sub === 'meeting' ? 'meeting' : sub === 'tasks' ? 'tasks' : sub === 'bots' ? 'bots' : 'settings'); }));
         const b3 = mk('button', 'padding:2px 9px;border-radius:7px;border:0;background:transparent;color:' + T.muted + ';', '關閉模式');
         b3.onclick = function () { toggle(); };
         bar.appendChild(b3);
@@ -253,7 +263,7 @@ window.NovaExpertsGlue = (function () {
         const on = isOn();
         localStorage.setItem(K_MODE, on ? 'off' : 'on');
         renderBar();
-        showToast(!on ? '🧑‍🔬 已開啟【多專家模式】（' + (subMode() === 'meeting' ? '多專家會議' : subMode() === 'tasks' ? '並行作業' : '協作報告') + '）：可在輸入框上方切換' : '🧑‍🔬 已關閉多專家模式');
+        showToast(!on ? '🧑‍🔬 已開啟【多專家模式】（' + (subMode() === 'meeting' ? '多專家會議' : subMode() === 'tasks' ? '並行作業' : subMode() === 'bots' ? '多 Bot' : '協作報告') + '）：可在輸入框上方切換' : '🧑‍🔬 已關閉多專家模式');
     }
 
     // ── 管理視窗 ──
@@ -294,7 +304,7 @@ window.NovaExpertsGlue = (function () {
         const body = mk('div', 'padding:14px 16px;overflow-y:auto;flex:1;');
         const render = function () {
             tabs.textContent = '';
-            [['experts', '專家'], ['settings', '協作設定'], ['meeting', '會議設定'], ['tasks', '並行設定']].forEach(function (t) {
+            [['experts', '專家'], ['settings', '協作設定'], ['meeting', '會議設定'], ['tasks', '並行設定'], ['bots', '🤖 多 Bot']].forEach(function (t) {
                 const b = mk('button', 'padding:4px 12px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ' + (ui.tab === t[0] ? '#9333ea' : T.border) + ';background:' + (ui.tab === t[0] ? 'rgba(147,51,234,.25)' : T.card2) + ';color:' + T.text + ';', t[1]);
                 if (ui.tab === t[0]) b.className = 'nova-exp-tab-on';
                 b.onclick = function () { ui.tab = t[0]; ui.editing = null; render(); };
@@ -304,6 +314,7 @@ window.NovaExpertsGlue = (function () {
             if (ui.tab === 'settings') renderSettings(body, render);
             else if (ui.tab === 'meeting') renderMeetingSettings(body, render);
             else if (ui.tab === 'tasks') renderTaskSettings(body, render);
+            else if (ui.tab === 'bots') renderBotsTab(body, render);
             else if (ui.editing) renderEditor(body, render);
             else renderList(body, render);
         };
@@ -661,10 +672,10 @@ window.NovaExpertsGlue = (function () {
     // ═══════════ 多專家會議（nova-meeting.js 的膠水層）═══════════
     const K_SUB = 'nova_experts_submode', K_MSET = 'nova_meeting_settings_v1', K_MEET = 'nova_meeting_state_v1';
     const MT = function () { return window.NovaMeeting; };
-    function subMode() { const v = localStorage.getItem(K_SUB); if (v === 'meeting' && MT()) return 'meeting'; if (v === 'tasks' && window.NovaExpertTasks) return 'tasks'; return 'report'; }
-    function setSubMode(m) { try { localStorage.setItem(K_SUB, (m === 'meeting' || m === 'tasks') ? m : 'report'); } catch (e) { /* ignore */ } renderBar(); }
+    function subMode() { const v = localStorage.getItem(K_SUB); if (v === 'meeting' && MT()) return 'meeting'; if (v === 'tasks' && window.NovaExpertTasks) return 'tasks'; if (v === 'bots' && botsOn()) return 'bots'; return 'report'; }
+    function setSubMode(m) { try { localStorage.setItem(K_SUB, (m === 'meeting' || m === 'tasks' || (m === 'bots' && botsOn())) ? m : 'report'); } catch (e) { /* ignore */ } renderBar(); }
     function loadMSettings() { let s = null; try { s = JSON.parse(localStorage.getItem(K_MSET) || 'null'); } catch (e) { s = null; } return MT().normalizeSettings(s || {}); }
-    function saveMSettings(s) { try { localStorage.setItem(K_MSET, JSON.stringify(MT().normalizeSettings(s))); } catch (e) { /* ignore */ } }
+    function saveMSettings(s) { try { localStorage.setItem(K_MSET, JSON.stringify(MT().normalizeSettings(s))); } catch (e) { /* ignore */ } botsChanged(); }
     function meetMap() { try { return JSON.parse(localStorage.getItem(K_MEET) || '{}') || {}; } catch (e) { return {}; } }
     function getMeet(sid) { return meetMap()[String(sid)] || null; }
     function setMeet(sid, v) { const m = meetMap(); if (v) m[String(sid)] = v; else delete m[String(sid)]; try { localStorage.setItem(K_MEET, JSON.stringify(m)); } catch (e) { /* ignore */ } }
@@ -816,7 +827,7 @@ window.NovaExpertsGlue = (function () {
         addMessage('🔄 已結束上一場會議（未總結）。接下來的發言會開啟一場新的會議。', 'system', null, [], null, null, sid);
         renderBar();
     }
-    function send(text) { const m = subMode(); return m === 'meeting' ? say(text) : m === 'tasks' ? dispatch(text) : ask(text); }
+    function send(text) { const m = subMode(); return m === 'meeting' ? say(text) : (m === 'tasks' || m === 'bots') ? dispatch(text) : ask(text); }
 
     // ── 成員命名視窗 ──
     function openRoster() {
@@ -899,7 +910,7 @@ window.NovaExpertsGlue = (function () {
     const ST_ICON = { pending: '⬜', waiting_dep: '⏳', queued: '🕓', running: '⚙️', done: '✅', failed: '❌', cancelled: '⏹', blocked: '🚫', interrupted: '⚠️' };
     const ST_TEXT = { pending: '待命', waiting_dep: '等上游完成', queued: '排隊中', running: '進行中', done: '完成', failed: '失敗', cancelled: '已取消', blocked: '被擋下', interrupted: '已中斷' };
     function loadTSettings() { let s = null; try { s = JSON.parse(localStorage.getItem(K_TSET) || 'null'); } catch (e) { s = null; } return TK().normalizeSettings(s || {}); }
-    function saveTSettings(s) { try { localStorage.setItem(K_TSET, JSON.stringify(TK().normalizeSettings(s))); } catch (e) { /* ignore */ } if (TRT.pool) TRT.pool.setLimit(TK().normalizeSettings(s).concurrency); }
+    function saveTSettings(s) { try { localStorage.setItem(K_TSET, JSON.stringify(TK().normalizeSettings(s))); } catch (e) { /* ignore */ } botsChanged(); if (TRT.pool) TRT.pool.setLimit(TK().normalizeSettings(s).concurrency); }
     function getPool() { if (!TRT.pool) TRT.pool = TK().createPool(loadTSettings().concurrency); return TRT.pool; }
     function isActiveStatus(s) { return s === 'pending' || s === 'waiting_dep' || s === 'queued' || s === 'running'; }
     function activeTaskCount() { let n = 0; TRT.batches.forEach(function (b) { b.tasks.forEach(function (t) { if (isActiveStatus(t.status)) n++; }); }); return n; }
@@ -954,7 +965,7 @@ window.NovaExpertsGlue = (function () {
                 const row = mk('div', 'display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid ' + T.border + ';border-radius:9px;margin-bottom:5px;background:' + T.card2 + ';');
                 row.appendChild(mk('span', 'flex:none;', ST_ICON[t.status] || '•'));
                 const mid = mk('div', 'flex:1;min-width:0;');
-                mid.appendChild(mk('div', 'font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', ((ex && ex.icon) || '🧑‍🔬') + ' ' + (t.assigneeName || '?') + '：' + t.title));
+                mid.appendChild(mk('div', 'font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', ((ex && ex.icon) || '🧑‍🔬') + ' ' + (t.assigneeName || '?') + '：' + t.title + (t.delegatedBy ? '　↳ ' + t.delegatedBy + ' 交辦' : '')));
                 const sub = (ST_TEXT[t.status] || t.status) + (t.status === 'running' && t.startedAt ? '　' + fmtDur(Date.now() - t.startedAt) : '') + (t.endedAt && t.startedAt && !isActiveStatus(t.status) ? '　耗時 ' + fmtDur(t.endedAt - t.startedAt) : '') + (t.note && isActiveStatus(t.status) ? '　' + t.note : '') + (t.error && !isActiveStatus(t.status) ? '　' + t.error : '');
                 mid.appendChild(mk('div', 'font-size:11px;color:' + (t.status === 'failed' || t.status === 'blocked' ? '#f87171' : T.muted) + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', sub));
                 row.appendChild(mid);
@@ -1004,10 +1015,18 @@ window.NovaExpertsGlue = (function () {
         const ex = loadExperts().filter(function (e) { return e.id === task.assigneeId; })[0];
         const origin = batch.sessionId;
         const dur = task.startedAt && task.endedAt ? '　耗時 ' + fmtDur(task.endedAt - task.startedAt) : '';
+        if (task.status === 'done' && task.result && task.kind === 'turn') {   // 多 Bot 的討論發言／審稿意見，貼成簡短氣泡
+            postTaskMessage(origin, task, ex, '💬 **' + (task.turnLabel || '發言') + '**（應「' + (task.delegatedBy || '?') + '」邀請）\n\n' + task.result.text, (task.result.sources || []).map(function (s0) { return { uri: s0.uri, title: s0.title }; }));
+            return;
+        }
         if (task.status === 'done' && task.result) {
             let sid = origin;
             if (batch.settings.separateChats) { sid = newSessionFor(task, batch.request); }
             let body = '**✅ 任務完成：' + task.title + '**（' + (TK().TYPES[task.type] || task.type) + dur + '）\n\n' + task.result.text;
+            if (task.delegatedBy) body = '↳ _由「' + task.delegatedBy + '」交辦_\n\n' + body;
+            if (task.result.steps && task.result.steps.length) body += '\n\n<sub>🔧 使用工具：' + task.result.steps.map(function (s1) { return s1.tool + (s1.ok ? '' : '✗'); }).join('、') + '</sub>';
+            if (task.result.memoryUsed) body += '　<sub>🧠 帶入 ' + task.result.memoryUsed + ' 則記憶</sub>';
+            if (task.result.partial) body += '\n\n<sub>⚠️ 這份成果沒有完整收尾（步數或呼叫額度用完），內容是蒐集到的原始資料，未經整理。</sub>';
             if (task.result.defanged) body += '\n\n<sub>⚠️ 內含的 Python／命令列程式碼已降級為純文字，不會自動執行。</sub>';
             if (task.result.kbNames && task.result.kbNames.length && task.type !== 'slides') body += '\n\n<sub>📚 參考知識庫：' + task.result.kbNames.join('、') + '</sub>';
             const srcs = (task.result.sources || []).map(function (s) { return { uri: s.uri, title: s.title }; });
@@ -1155,10 +1174,15 @@ window.NovaExpertsGlue = (function () {
             const v0 = TK().validateTasks(plan.tasks, experts.filter(function (e) { return e.enabled; }));
             if (v0 && v0.ok) ans = { tasks: v0.tasks, opts: { slidesImages: !!settings.slidesImages, separateChats: !!settings.separateChats } };
         }
+        if (!ans && botsOn() && isOn() && subMode() === 'bots' && !loadBSettings().confirmDispatch) {   // 多 Bot 可關閉派工確認
+            const v1 = TK().validateTasks(plan.tasks, experts.filter(function (e) { return e.enabled; }));
+            if (v1 && v1.ok) ans = { tasks: v1.tasks, opts: { slidesImages: !!settings.slidesImages, separateChats: !!settings.separateChats } };
+        }
         if (!ans) ans = await openDispatchConfirm(plan.tasks, experts, settings, plan.notes);
         if (!ans) { addMessage('已取消派工。', 'system', null, [], null, null, sid); return; }
         const eff = Object.assign({}, settings, { slidesImages: ans.opts.slidesImages, separateChats: ans.opts.separateChats });
-        startBatch(sid, ans.tasks, eff, text);
+        if (botsOn() && isOn() && subMode() === 'bots') startBotBatch(sid, ans.tasks, eff, text);
+        else startBatch(sid, ans.tasks, eff, text);
     }
 
     // ═══ v1.1.0：一般對話「智慧分派」判斷（只回傳判斷結果，不執行；執行與設定在 nova-autoroute.js）。失敗／不確定一律回 chat ═══
@@ -1232,6 +1256,338 @@ window.NovaExpertsGlue = (function () {
     }
 
 
+
+    // ═══════════════════════════════════════════════════════════
+    // ★ v1.2.0（App v2.6.120）：多 Bot 模式＋專家與 Bot 跨裝置同步（移植桌面版 v3.112.0～v3.115.0）
+    //   引擎 nova-bots.js、設定介面 nova-bots-ui.js 由桌面版移植。開關 nova_bots_mode，預設關閉＝完全是原本的多專家行為。
+    //   開啟後模式列多一個「🤖 多 Bot」子模式：沿用「並行作業」的派工、確認視窗、任務看板與成品貼回，執行器換成 NovaBots.runBatch
+    //   （長期記憶、工具迴圈、Bot 互相交辦／討論／審稿）。與桌面版的差異（誠實聲明）：
+    //   ① 沒有 sidecar：記憶與 Bot 設定存在 App 的 localStorage（用 NovaBots.createLocalStore），靠「同步專家與 Bot」跨裝置；
+    //   ② 不支援排程（手機沒有可靠的背景常駐）；③ 工具只做手機做得到的：知識庫／上網搜尋／讀網頁／記憶／Gmail 讀取（需已授權）／
+    //      Drive 列表與讀取、Google 文件、天氣，以及 Drive 寫入（新增低風險免確認；覆蓋、移動、刪除要確認）；
+    //      其餘（Gmail 草稿與寄信、Outlook、行事曆、本機檔案、Insight／Research 查詢）手機版不支援，會從給模型的工具清單排除（設定資料不動）。
+    // ═══════════════════════════════════════════════════════════
+    const BOTS_RT = { store: null, storeP: null };
+    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list', 'document_read', 'insight_events', 'insight_markets', 'insight_predmarkets',
+        'research_substance', 'research_literature', 'gmail_draft', 'gmail_send', 'gmail_trash', 'file_write'];
+    function BOTS() { return window.NovaBots; }
+    try { if (BOTS()) BOTS().UNSUPPORTED = BOT_UNSUPPORTED.slice(); } catch (e) { /* ignore */ }
+    function botsOn() { return !!BOTS() && !!window.NovaExpertTasks && localStorage.getItem(K_BOTS_MODE) === 'on'; }
+    function setBotsOn(v) {
+        try { localStorage.setItem(K_BOTS_MODE, v ? 'on' : 'off'); } catch (e) { /* ignore */ }
+        if (!v) { try { if (localStorage.getItem(K_SUB) === 'bots') localStorage.setItem(K_SUB, 'report'); } catch (e) { /* ignore */ } }
+        renderBar();
+    }
+    function loadBSettings() { let s = null; try { s = JSON.parse(localStorage.getItem(K_BOTS_SET) || 'null'); } catch (e) { s = null; } return BOTS().normalizeSettings(s || {}); }
+    function saveBSettings(s) { try { localStorage.setItem(K_BOTS_SET, JSON.stringify(BOTS().normalizeSettings(s))); } catch (e) { /* ignore */ } botsChanged(); }
+    function getBotStore() {
+        if (!BOTS_RT.storeP) BOTS_RT.storeP = Promise.resolve().then(function () { const s = BOTS().createLocalStore(localStorage); wrapBotStore(s); BOTS_RT.store = s; return s; });
+        return BOTS_RT.storeP;
+    }
+    async function loadProfilesMap(store) {
+        const map = {};
+        try { (await store.botList()).forEach(function (p) { map[p.id] = p; }); } catch (e) { /* 沒有設定就用預設 */ }
+        return map;
+    }
+    // ── 工具實作（手機版）──
+    function htmlToText(html, selector, maxChars) {
+        const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+        doc.querySelectorAll('script,style,noscript,svg,iframe,nav,footer,form').forEach(function (n) { n.remove(); });
+        let root = doc.body || doc.documentElement;
+        if (selector) { try { const el = doc.querySelector(selector); if (el) root = el; } catch (e) { /* 選擇器無效就用整頁 */ } }
+        const title = (doc.title || '').trim();
+        const txt = String(root.textContent || '').replace(/[ \t ]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
+        return ((title ? title + '\n\n' : '') + txt).slice(0, maxChars || 6000);
+    }
+    async function botWebFetch(o) {
+        const ctl = new AbortController(); const to = setTimeout(function () { ctl.abort(); }, 45000);
+        try {
+            const r = await fetch(o.url, { method: 'GET', headers: { 'Accept': 'text/html,application/xhtml+xml,text/plain,application/json' }, signal: ctl.signal });
+            if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+            const raw = await r.text();
+            const ct = (r.headers && r.headers.get && r.headers.get('content-type')) || '';
+            const isHtml = /html/i.test(ct) || /^\s*<(!doctype|html)/i.test(raw);
+            return { ok: true, text: isHtml ? htmlToText(raw, o.selector, o.max_chars) : raw.slice(0, o.max_chars || 6000) };
+        } catch (e) { return { ok: false, error: (e && e.name === 'AbortError') ? '讀取逾時' : ((e && e.message) || String(e)) }; }
+        finally { clearTimeout(to); }
+    }
+    async function botWebSearch(q, taskId) {
+        const r = await callModel({ model: resolveModel(''), system: '你是網路搜尋助理。用搜尋找出與問題最相關的最新資訊，條列重點與數字並標明來源網站；查不到就明說，不要編造。一律使用繁體中文（台灣）。', text: String(q || ''), search: true, thinking: 'low', maxOutputTokens: 3000, tag: 'Bot 搜尋', taskId: taskId });
+        return { text: (r && r.text) || '', sources: (r && r.sources) || [] };
+    }
+    function gNeed(sc, label) {
+        const G = window.NovaGoogle;
+        if (!G || !G._connected || !G._connected()) throw new Error('尚未連接 Google（請到「Google 整合」連接並授權）');
+        if (!G._has(sc)) throw new Error('目前的 Google 授權不含「' + label + '」，請到「Google 整合」重新授權');
+        return G;
+    }
+    async function gJson(G, url, opts) { const r = await G._raw(url, opts); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) { j = null; } if (!r.ok) throw new Error((j && j.error && j.error.message) || ('HTTP ' + r.status)); return j; }
+    function dayRange(v) {
+        const s = String(v || '').trim().toLowerCase(); if (!s) return null;
+        const mid = function (d) { d.setHours(0, 0, 0, 0); return d; };
+        let d0 = null;
+        if (s === 'today' || s === '今天') d0 = mid(new Date());
+        else if (s === 'yesterday' || s === '昨天') { d0 = mid(new Date()); d0.setDate(d0.getDate() - 1); }
+        else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) { const p = s.split('-'); d0 = new Date(+p[0], +p[1] - 1, +p[2], 0, 0, 0, 0); }
+        if (!d0 || isNaN(d0.getTime())) return null;
+        const d1 = new Date(d0.getTime()); d1.setDate(d1.getDate() + 1);
+        return { after: Math.floor(d0.getTime() / 1000), before: Math.floor(d1.getTime() / 1000) };
+    }
+    async function driveFindId(G, a) {
+        if (a.file_id) return String(a.file_id);
+        if (!a.filename) throw new Error('需要 file_id 或 filename');
+        const j = await gJson(G, 'https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent("name='" + String(a.filename).replace(/'/g, "\\'") + "' and trashed=false") + '&fields=files(id,name)&pageSize=5');
+        if (!j.files || !j.files.length) throw new Error('找不到檔案「' + a.filename + '」');
+        return j.files[0].id;
+    }
+    async function botNative(name, a) {
+        a = a || {};
+        try {
+            if (name === 'gmail_list') {
+                const G = gNeed('gmail', 'Gmail');
+                const max = Math.min(50, Math.max(1, parseInt(a.max_results, 10) || 20));
+                const q = []; if (a.query) q.push(String(a.query)); if (a.unread_only === true || a.unread_only === 'true') q.push('is:unread');
+                const dr = dayRange(a.date); if (dr) q.push('after:' + dr.after + ' before:' + dr.before);
+                const ms = await G.gmailList(q.join(' '), max);
+                const hv = function (m, n) { const h = ((m.payload && m.payload.headers) || []).find(function (x) { return x.name.toLowerCase() === n; }); return h ? h.value : ''; };
+                const messages = ms.map(function (m) { let when = ''; try { when = new Date(+m.internalDate).toISOString(); } catch (e) { when = hv(m, 'date'); } return { id: m.id, from: hv(m, 'from'), subject: hv(m, 'subject'), received: when, unread: (m.labelIds || []).indexOf('UNREAD') >= 0, snippet: m.snippet || '' }; });
+                const out = { messages: messages };
+                if (dr && messages.length < max) out.total = messages.length;   // 沒被上限截斷＝這就是該日期的實際總封數
+                return { success: true, text: JSON.stringify(out) };
+            }
+            if (name === 'gmail_read') {
+                const G = gNeed('gmail', 'Gmail'); const m = await G.gmailRead(String(a.message_id || ''));
+                return { success: true, text: '寄件者：' + m.from + '\n主旨：' + m.subject + '\n日期：' + m.date + '\n\n' + String(m.body || '').slice(0, Math.min(12000, parseInt(a.max_chars, 10) || 6000)) };
+            }
+            if (name === 'drive_list') {
+                const G = gNeed('drive', '雲端硬碟');
+                const qs = ['trashed=false']; if (a.query) qs.push("name contains '" + String(a.query).replace(/'/g, "\\'") + "'"); if (a.folder_id) qs.push("'" + String(a.folder_id).replace(/'/g, '') + "' in parents");
+                const j = await gJson(G, 'https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(qs.join(' and ')) + '&orderBy=modifiedTime desc&pageSize=' + Math.min(50, parseInt(a.max_results, 10) || 20) + '&fields=files(id,name,mimeType,modifiedTime,size)');
+                return { success: true, text: (j.files || []).map(function (f) { return f.name + '｜' + f.mimeType + '｜' + (f.modifiedTime || '') + '｜id=' + f.id; }).join('\n') || '（沒有符合的檔案）' };
+            }
+            if (name === 'drive_read' || name === 'docs_read') {
+                const G = gNeed(name === 'docs_read' ? 'docs' : 'drive', name === 'docs_read' ? 'Google 文件' : '雲端硬碟');
+                const id = await driveFindId(G, name === 'docs_read' ? { file_id: a.doc_id } : a);
+                const meta = await gJson(G, 'https://www.googleapis.com/drive/v3/files/' + id + '?fields=name,mimeType');
+                const isG = /^application\/vnd\.google-apps\./.test(meta.mimeType || '');
+                const url = isG ? 'https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=' + encodeURIComponent('text/plain') : 'https://www.googleapis.com/drive/v3/files/' + id + '?alt=media';
+                if (!isG && !/^text\/|json|xml|csv|markdown/.test(meta.mimeType || '')) return { success: false, text: '這個檔案不是文字類型（' + meta.mimeType + '），手機版無法讀取內容。' };
+                const r = await G._raw(url); if (!r.ok) throw new Error('讀取失敗 HTTP ' + r.status);
+                return { success: true, text: '檔案：' + meta.name + '\n\n' + (await r.text()).slice(0, 12000) };
+            }
+            if (name === 'insight_weather') {
+                const city = String(a.city || '').trim(); let lat = parseFloat(a.lat), lon = parseFloat(a.lon), label = city;
+                if (isNaN(lat) || isNaN(lon)) {
+                    if (!city) return { success: false, text: '需要 city 或 lat／lon' };
+                    const gj = await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=zh&name=' + encodeURIComponent(city))).json();
+                    const g0 = gj && gj.results && gj.results[0]; if (!g0) return { success: false, text: '找不到城市「' + city + '」' };
+                    lat = g0.latitude; lon = g0.longitude; label = g0.name + (g0.country ? '（' + g0.country + '）' : '');
+                }
+                const wj = await (await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3')).json();
+                return { success: true, text: label + ' 現在：' + JSON.stringify(wj.current || {}) + '\n未來三天：' + JSON.stringify(wj.daily || {}) };
+            }
+            return { success: false, text: '手機版沒有「' + name + '」這個工具。' };
+        } catch (e) { return { success: false, text: (e && e.message) || String(e) }; }
+    }
+    // ── 寫入動作（手機版只開放 Drive；Gmail 寫入需要 gmail.modify 之類授權，手機版沒有）──
+    async function botWrite(name, a) {
+        a = a || {};
+        try {
+            const G = gNeed('drive', '雲端硬碟'); const D = window.NovaGDrive;
+            if (name === 'drive_write') {
+                if (!D || !D.uploadBlob) return { success: false, text: 'Drive 上傳模組沒有載入' };
+                const blob = new Blob([String(a.content || '')], { type: a.mime_type || 'text/plain' });
+                let opts = {};
+                if (a.file_id || a.filename) opts.fileId = await driveFindId(G, a); else if (a.folder_id) opts.parent = String(a.folder_id);
+                const nm = a.name || a.filename || ('NOVA_Bot_' + Date.now() + '.txt');
+                const f = await D.uploadBlob(blob, nm, a.mime_type || 'text/plain', opts);
+                return { success: true, data: { id: f && f.id, name: nm }, text: '已' + (opts.fileId ? '覆蓋' : '新增') + '檔案「' + nm + '」id=' + (f && f.id) };
+            }
+            if (name === 'drive_create_folder') {
+                const body = { name: String(a.name || '新資料夾'), mimeType: 'application/vnd.google-apps.folder' }; if (a.parent_folder_id) body.parents = [String(a.parent_folder_id)];
+                const j = await gJson(G, 'https://www.googleapis.com/drive/v3/files?fields=id,name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                return { success: true, data: j, text: '已建立資料夾「' + j.name + '」id=' + j.id };
+            }
+            if (name === 'drive_move') {
+                const id = await driveFindId(G, a); if (!a.folder_id) return { success: false, text: '需要 folder_id' };
+                const cur = await gJson(G, 'https://www.googleapis.com/drive/v3/files/' + id + '?fields=parents');
+                const j = await gJson(G, 'https://www.googleapis.com/drive/v3/files/' + id + '?addParents=' + encodeURIComponent(a.folder_id) + '&removeParents=' + encodeURIComponent((cur.parents || []).join(',')) + '&fields=id,name', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                return { success: true, data: j, text: '已移動「' + j.name + '」' };
+            }
+            if (name === 'drive_delete') {
+                const id = await driveFindId(G, a); await G._drive.trash(id);
+                return { success: true, data: { id: id }, text: '已移到垃圾桶（30 天內可還原）id=' + id };
+            }
+            return { success: false, text: '手機版不支援寫入工具：' + name };
+        } catch (e) { return { success: false, text: (e && e.message) || String(e) }; }
+    }
+    // 確認視窗：多個 Bot 同時要確認時排隊；拒絕或 5 分鐘沒回應＝不執行
+    let _botConfirmQ = Promise.resolve();
+    function botConfirmAction(info) {
+        const run = function () {
+            return new Promise(function (resolve) {
+                const old = document.getElementById('nova-botconfirm-modal'); if (old) old.remove();
+                const overlay = mk('div', 'position:fixed;inset:0;z-index:9300;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:12px;');
+                overlay.id = 'nova-botconfirm-modal';
+                const card = mk('div', 'width:min(620px,100%);max-height:90vh;display:flex;flex-direction:column;background:' + T.card + ';color:' + T.text + ';border:2px solid #ef4444;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);');
+                const head = mk('div', 'padding:12px 16px;border-bottom:1px solid ' + T.border + ';');
+                head.appendChild(mk('b', 'font-size:15px;color:#ef4444;', '✍️ 確認寫入動作：' + info.label));
+                head.appendChild(mk('div', 'font-size:12px;color:' + T.muted + ';margin-top:3px;', (info.botName || 'Bot') + (info.taskTitle ? '（任務：' + info.taskTitle + '）' : '') + ' 想執行這個高風險動作。請看清楚內容再決定；信件或網頁裡的內容可能夾帶惡意指示。'));
+                const body = mk('pre', 'margin:0;padding:12px 16px;overflow:auto;flex:1;white-space:pre-wrap;word-break:break-word;font-size:13px;font-family:inherit;', info.detail || JSON.stringify(info.args || {}, null, 2));
+                const foot = mk('div', 'display:flex;gap:10px;justify-content:flex-end;padding:10px 16px;border-top:1px solid ' + T.border + ';');
+                let done = false, timer = null;
+                const finish = function (v) { if (done) return; done = true; clearTimeout(timer); overlay.remove(); resolve(v); };
+                const no = mk('button', btnStyle(false), '拒絕'); no.onclick = function () { finish(false); };
+                const yes = mk('button', btnStyle(true) + 'background:#ef4444;border-color:#ef4444;', '允許執行'); yes.onclick = function () { finish(true); };
+                foot.append(no, yes); card.append(head, body, foot); overlay.appendChild(card); document.body.appendChild(overlay);
+                timer = setTimeout(function () { finish(false); }, 5 * 60 * 1000);
+            });
+        };
+        const p = _botConfirmQ.then(run, run);
+        _botConfirmQ = p.catch(function () { return false; });
+        return p;
+    }
+
+    // ── 專家與 Bot 的跨裝置同步（與桌面版 v3.115.0 同格式：NOVA_Bots_Sync.json；鍵 expert/<id>、cfg/<localStorage 鍵>、profile/<id>、mem/<botId>/<noteId>）──
+    function wrapBotStore(s) {
+        if (!s || s._syncWrapped) return;
+        ['botPut', 'botDelete', 'memAdd', 'memEdit', 'memDelete', 'memClear'].forEach(function (m) {
+            const orig = s[m]; if (typeof orig !== 'function') return;
+            s[m] = async function () { const r = await orig.apply(s, arguments); botsChanged(); return r; };
+        });
+        s._syncWrapped = true;
+    }
+    const SYNC_CFG_KEYS = function () { return [K_SETTINGS, K_MSET, K_TSET, K_BOTS_SET]; };
+    const PER_DEVICE_BOT_FIELDS = ['writeEnabled', 'schedulerOn'];   // 寫入總開關與排程開關是各裝置自己的決定，不同步
+    async function botsSyncCollect() {
+        if (!ENG() || !BOTS()) throw new Error('專家／多 Bot 模組沒有載入');
+        const L = {};
+        let raw = null; try { raw = JSON.parse(localStorage.getItem(K_EXPERTS) || 'null'); } catch (e) { raw = null; }
+        const custom = Array.isArray(raw) && raw.length;   // 沒存過自訂清單＝還在用預設專家，不同步（免得把另一台刪掉的預設專家又加回來）
+        if (custom) raw.map(ENG().normalizeExpert).forEach(function (e) { if (e && e.id) L['expert/' + e.id] = e; });
+        SYNC_CFG_KEYS().forEach(function (k) {
+            const v = localStorage.getItem(k); if (v == null) return;
+            try { const o = JSON.parse(v); if (k === K_BOTS_SET && o && typeof o === 'object') PER_DEVICE_BOT_FIELDS.forEach(function (f) { delete o[f]; }); L['cfg/' + k] = o; } catch (e) { /* 壞掉的設定不同步 */ }
+        });
+        const st = await getBotStore();
+        const ids = custom ? raw.map(function (e) { return e && e.id; }).filter(Boolean) : ENG().defaultExperts().map(function (e) { return e.id; });
+        // Bot 設定與記憶只跟著「還存在的專家」走：刪掉一位專家，它的設定與記憶也會在另一台一起被移除
+        (await st.botList()).forEach(function (p) { if (!p || !p.id || ids.indexOf(p.id) < 0) return; const c = Object.assign({}, p); delete c.updated; L['profile/' + p.id] = c; });
+        for (let i = 0; i < ids.length; i++) {
+            const m = await st.memGet(ids[i]);
+            ((m && m.notes) || []).forEach(function (n) { if (n && n.id) L['mem/' + ids[i] + '/' + n.id] = { id: n.id, ts: n.ts || 0, text: n.text || '', kind: n.kind || 'fact', pinned: !!n.pinned, src: n.src || '' }; });
+        }
+        return L;
+    }
+    async function botsSyncApply(a) {
+        if (!ENG() || !BOTS()) throw new Error('專家／多 Bot 模組沒有載入');
+        const put = a.put || {}, del = a.del || [];
+        const keysOf = function (pre) { return Object.keys(put).filter(function (k) { return k.indexOf(pre) === 0; }); };
+        const delsOf = function (pre) { return del.filter(function (k) { return k.indexOf(pre) === 0; }); };
+        _botsApplying = true;
+        try {
+            if (keysOf('expert/').length || delsOf('expert/').length) {
+                let raw = null; try { raw = JSON.parse(localStorage.getItem(K_EXPERTS) || 'null'); } catch (e) { raw = null; }
+                let cur = (Array.isArray(raw) && raw.length) ? raw.map(ENG().normalizeExpert) : [];
+                delsOf('expert/').forEach(function (k) { const id = k.slice(7); cur = cur.filter(function (e) { return e.id !== id; }); });
+                keysOf('expert/').forEach(function (k) { const e = ENG().normalizeExpert(put[k]); const i = cur.findIndex(function (x) { return x.id === e.id; }); if (i >= 0) cur[i] = e; else cur.push(e); });
+                saveExperts(cur);
+            }
+            keysOf('cfg/').forEach(function (k) {
+                try {
+                    const key = k.slice(4); let o = put[k];
+                    if (SYNC_CFG_KEYS().indexOf(key) < 0) return;   // 只認自己的四個設定鍵，不讓遠端檔案寫入任意 localStorage 鍵
+                    if (key === K_BOTS_SET && o && typeof o === 'object') {   // 保留本機的各裝置專屬欄位
+                        let cur = {}; try { cur = JSON.parse(localStorage.getItem(K_BOTS_SET) || '{}') || {}; } catch (e) { cur = {}; }
+                        o = Object.assign({}, o); PER_DEVICE_BOT_FIELDS.forEach(function (f) { if (f in cur) o[f] = cur[f]; });
+                    }
+                    localStorage.setItem(key, JSON.stringify(o));
+                } catch (e) { /* ignore */ }
+            });
+            delsOf('cfg/').forEach(function (k) { try { const key = k.slice(4); if (SYNC_CFG_KEYS().indexOf(key) >= 0) localStorage.removeItem(key); } catch (e) { /* ignore */ } });
+            const needStore = keysOf('profile/').length || delsOf('profile/').length || keysOf('mem/').length || delsOf('mem/').length;
+            if (needStore) {
+                const st = await getBotStore();
+                for (const k of keysOf('profile/')) await st.botPut(Object.assign({}, put[k]));
+                for (const k of delsOf('profile/')) await st.botDelete(k.slice(8));
+                const byBot = {};
+                const slot = function (id) { return byBot[id] || (byBot[id] = { puts: [], dels: [] }); };
+                keysOf('mem/').forEach(function (k) { const i = k.indexOf('/', 4); slot(k.slice(4, i)).puts.push(put[k]); });
+                delsOf('mem/').forEach(function (k) { const i = k.indexOf('/', 4); slot(k.slice(4, i)).dels.push(k.slice(i + 1)); });
+                for (const id of Object.keys(byBot)) await st.memApply(id, byBot[id].puts, byBot[id].dels);
+            }
+        } finally { _botsApplying = false; }
+    }
+    function botsSyncAfter() { try { renderBar(); } catch (e) { /* ignore */ } }
+    function registerBotsSync(n) {
+        const S = window.NovaDataSync;
+        if (!S || !S.register) { if ((n || 0) < 60) setTimeout(function () { registerBotsSync((n || 0) + 1); }, 500); return; }
+        S.register({
+            id: 'bots', label: '專家與 Bot', file: 'NOVA_Bots_Sync.json',
+            collect: function () { return botsSyncCollect(); },
+            apply: function (a) { return botsSyncApply(a); },
+            after: function () { botsSyncAfter(); try { window.dispatchEvent(new CustomEvent('nova-bots-synced')); } catch (e) { /* ignore */ } }
+        });
+        window.addEventListener('nova-bots-changed', function () { try { if (S.touch) S.touch(); else S.schedule(); } catch (e) { /* ignore */ } });
+    }
+    registerBotsSync(0);
+
+    // ── 開始一批多 Bot 任務（結構同 startBatch；執行器換成 NovaBots.runBatch）──
+    async function startBotBatch(sid, tasks, settings, request, o) {
+        o = o || {};
+        const store = await getBotStore();
+        const bs = loadBSettings();
+        const profiles = await loadProfilesMap(store);
+        const experts = loadExperts();
+        const bid = 'b' + Date.now().toString(36);
+        const idMap = {}; tasks.forEach(function (t) { idMap[t.id] = bid + '_' + t.id; });
+        const run = tasks.map(function (t) { return Object.assign({}, t, { id: idMap[t.id], dependsOn: (t.dependsOn || []).map(function (d) { return idMap[d]; }).filter(Boolean), status: 'pending', calls: 0, depth: 0, ancestors: [] }); });
+        const batch = { id: bid, sessionId: sid, createdAt: Date.now(), request: request, tasks: run, settings: settings };
+        TRT.batches.push(batch); persistBatches();
+        const lines = run.map(function (t, i) {
+            const ups = (t.dependsOn || []).map(function (d) { const u = run.filter(function (x) { return x.id === d; })[0]; return u ? u.title : ''; }).filter(Boolean);
+            return (i + 1) + '. **' + t.assigneeName + '**：' + t.title + '（' + (TK().TYPES[t.type] || t.type) + '）' + (ups.length ? ' ← 等「' + ups.join('、') + '」完成後承接' : '');
+        }).join('\n');
+        addMessage('🤖 **已派工 ' + run.length + ' 項（多 Bot 模式）**（同時最多 ' + settings.concurrency + ' 項，其餘排隊）\n' + lines + '\n\nBot 會讀自己的記憶、用工具查資料（寫入類動作要總開關開啟、高風險要你確認）；做好的成品會貼回這個對話。', 'system', null, [], null, null, sid);
+        TRT.boardOpen = true; renderBoard(); renderBar();
+        const deps = {
+            callModel: callModel, kbRetrieve: kbRetrieve, resolveModel: resolveModel, defaultModel: defaultModel(), store: store,
+            webSearch: botWebSearch, webFetch: botWebFetch, callNative: botNative, legacyExecute: TK()._executeTask,
+            isTaskCancelled: function (id) { return TRT.cancelled.has(id); },
+            onTaskUpdate: function () { refreshBoard(); },
+            onTaskSpawn: function () { persistBatches(); refreshBoard(); },
+            onTaskDone: function (t) { onTaskFinished(batch, t); },
+            callWrite: botWrite, confirmAction: botConfirmAction,
+            onWrite: function (w) { if (w.ok) addMessage('✍️ **' + ((w.bot && w.bot.displayName) || 'Bot') + '** 已執行「' + w.label + '」' + (w.risk === 'high' ? '（已經你確認）' : '') + '：' + String(w.text || '').replace(/\s+/g, ' ').slice(0, 200), 'system', null, [], null, null, sid); }
+        };
+        try {
+            await BOTS().runBatch({ tasks: run, bots: experts, profiles: profiles, settings: bs, taskSettings: settings, deps: deps, pool: getPool(), idPrefix: bid + '_', workerModel: (settings.models && settings.models.worker) || '', source: o.source || 'manual', scheduleId: o.scheduleId || '' });
+            persistBatches(); refreshBoard();
+            if (batch.tasks.length > 1 || batch.tasks[0].status !== 'done') addMessage(batchSummary(batch), 'system', null, [], null, null, sid);
+        } catch (e) { addMessage('❌ 多 Bot 作業發生錯誤：' + ((e && e.message) || e), 'system', null, [], null, null, sid); }
+        return batch;
+    }
+    // ── 「🤖 多 Bot」分頁（介面在 nova-bots-ui.js）──
+    function renderBotsTab(body, rerender) {
+        if (!window.NovaBotsUI) { body.appendChild(mk('div', 'color:#f87171;', '找不到多 Bot 介面（nova-bots-ui.js 沒有載入）')); return; }
+        // 同步開關（專家＋Bot；仍需先在 Google 整合開啟 Drive 同步）
+        const ds = window.NovaDataSync;
+        if (ds && ds.isEnabled) {
+            const lab = mk('label', 'display:flex;align-items:center;gap:10px;min-height:40px;font-size:14px;margin-bottom:8px;');
+            const cb = mk('input'); cb.type = 'checkbox'; cb.checked = ds.isEnabled('bots'); cb.style.cssText = 'width:20px;height:20px;flex:none;accent-color:#9333ea;';
+            cb.onchange = function () { ds.setEnabled('bots', cb.checked); showToast(cb.checked ? '已開啟「同步專家與 Bot」（下次 Drive 同步時生效）' : '已關閉「同步專家與 Bot」'); };
+            lab.append(cb, document.createTextNode('同步專家與 Bot（專家清單、各項設定、Bot 設定與長期記憶；檔案 NOVA_Bots_Sync.json）'));
+            body.appendChild(lab);
+        }
+        const host = mk('div'); body.appendChild(host);
+        window.NovaBotsUI.render(host, {
+            mk: mk, T: T, btnStyle: btnStyle, fieldStyle: fieldStyle, labelEl: labelEl, showToast: showToast, experts: loadExperts,
+            isOn: botsOn, setOn: setBotsOn, getSettings: loadBSettings, saveSettings: saveBSettings, getStore: getBotStore,
+            runNow: function () { return Promise.resolve({ ok: false, note: '手機版不支援排程' }); }, schedulerStatus: function () { return null; },
+            rerender: rerender, onChanged: renderBar
+        });
+    }
+
     function init() {
         injectStyle();
         if (TK()) { try { loadBatches(); } catch (e) { /* ignore */ } }
@@ -1239,7 +1595,7 @@ window.NovaExpertsGlue = (function () {
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else setTimeout(init, 0);
 
-    return { isOn: isOn, toggle: toggle, ask: ask, say: say, send: send, dispatch: dispatch, autoRoute: autoRoute, autoRouteAvailable: autoRouteAvailable, toggleBoard: toggleBoard, summarizeNow: summarizeNow, newMeeting: newMeeting, openRoster: openRoster, subMode: subMode, setSubMode: setSubMode, openManager: openManager, loadExperts: loadExperts, loadSettings: loadSettings, renderBar: renderBar, rerender: renderBar };
+    return { isOn: isOn, toggle: toggle, ask: ask, say: say, send: send, dispatch: dispatch, autoRoute: autoRoute, autoRouteAvailable: autoRouteAvailable, toggleBoard: toggleBoard, summarizeNow: summarizeNow, newMeeting: newMeeting, openRoster: openRoster, subMode: subMode, setSubMode: setSubMode, openManager: openManager, botsOn: botsOn, botsSyncCollect: botsSyncCollect, botsSyncApply: botsSyncApply, loadExperts: loadExperts, loadSettings: loadSettings, renderBar: renderBar, rerender: renderBar };
 })();
 window.toggleNovaExpertsMode = function () { window.NovaExpertsGlue.toggle(); };
 

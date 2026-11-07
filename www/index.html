@@ -2264,8 +2264,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.119';
+        const NOVA_APP_VERSION = '2.6.120';
         const NOVA_CHANGELOG = [
+            { v: '2.6.120', date: '2026-11-07', notes: [
+                '新增「多 Bot 模式」（移植桌面版 v3.112～3.114；新增 nova-bots.js／nova-bots-ui.js，nova-experts-glue.js v1.2.0；僅 www，不需重新打包原生）：Bot＝專家＋Bot 設定（可用工具、是否有長期記憶、能不能交辦他人）＋長期記憶，可互相交辦、討論、審稿。開啟方式：多專家模式 → 設定 → 「🤖 多 Bot」分頁打開模式開關（預設關閉），模式列就會多一個「🤖 多 Bot」，用「@Bot名 要做的事」交辦。',
+                '專家與 Bot 跨裝置同步（對應桌面版 v3.115）：專家清單、協作／會議／並行作業／多 Bot 設定、每位 Bot 的設定與長期記憶，經 Google Drive 的 NOVA_Bots_Sync.json 與桌面版雙向同步（需已連接 Google 並開啟 Drive 同步；不同步各裝置自己的開關、寫入總開關與金鑰）。刪除一位專家時，它的 Bot 設定與記憶也會在另一台一起移除。「🤖 多 Bot」分頁頂端有「同步專家與 Bot」開關。',
+                '手機版與桌面版的差異（誠實說明）：沒有 sidecar，資料存在 App 內；不支援 Bot 排程；工具只做手機做得到的——知識庫／上網搜尋／讀網頁／記憶／天氣／Gmail 讀取／Drive 與 Google 文件讀取，以及 Drive 寫入（新增免確認，覆蓋、移動、刪除要確認）；Gmail 草稿與寄信、行事曆、Outlook、本機檔案、Insight／Research 查詢在手機版不支援（從桌面同步來的 Bot 設定仍保留這些工具，只是手機上不會執行）。以上尚未在實機驗證。'
+            ] },
             { v: '2.6.119', date: '2026-11-02', notes: [
                 '錄音紀錄重新安裝後仍可播放（新增 nova-recrestore.js v1.0.0；僅 www，不需重新打包原生）：重裝後紀錄清單會從備份／Drive 同步回來，但音檔本體原本只存在 App 內部資料庫、會消失。現在「有紀錄、沒音檔」的卡片會出現「☁️ 取回音檔」按鈕——先找手機 Documents/NOVA_Recordings 的同名檔（30MB 內），找不到再用紀錄裡的 Drive 連結下載（需已連接 Google 並授權雲端硬碟），寫回後即可直接播放。語音筆記的錄音同樣適用。',
                 '補備份：開機後與回到前景時，會把「本機有音檔、但還沒上傳雲端」的舊錄音放進待上傳清單（每次最多 5 筆，傳到雲端硬碟「NOVA 錄音」資料夾），這樣重裝前就有東西可還原；即使「錄音完成後自動上傳」沒開也會補傳。不想補傳可在 localStorage 設 nova_rec_backfill = 0。尚未在實機驗證。'
@@ -3869,7 +3874,7 @@ async function encodeMp3(audioBuffer) {
                     skillsData: (window.NovaSkills && NovaSkills.exportAll ? await NovaSkills.exportAll().catch(() => undefined) : undefined),   // v2.6.86：技能（私有儲存，重裝會消失，所以要進備份）
                     aiThoughts: localStorage.getItem('nova_thoughts_v1') || undefined,   // v2.6.64：AI 思考
                     projectsMeta: localStorage.getItem('nova_projects_v1') || undefined,   // v2.6.64：專案視窗資料
-                    expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', '') },   // v2.6.23
+                    expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', ''), bots: _fcLs('nova_bots_settings_v1', ''), botsMode: _fcLs('nova_bots_mode', ''), botProfiles: _fcLs('nova_bots_profiles_v1', ''), botMem: _fcLs('nova_bots_mem_v1', '') },   // v2.6.23；v2.6.120 加入多 Bot
                     toolConfig: { mcpServers: (window.novaFcCfg ? window.novaFcCfg.servers() : []), disabledTools: (window.novaFcCfg ? window.novaFcCfg.disabled() : []), auto: _fcLs('nova_fc_auto', '0'), cache: _fcLs('nova_fc_cache', '1'), cacheRound: _fcLs('nova_fc_cache_round', '3') },   // v2.6.22
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
                     calSyncTodos: localStorage.getItem('cal_sync_todos') === 'true',
@@ -4033,7 +4038,7 @@ async function encodeMp3(audioBuffer) {
                 if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
                 try { if (typeof data.aiThoughts === 'string') localStorage.setItem('nova_thoughts_v1', data.aiThoughts); if (typeof data.projectsMeta === 'string') localStorage.setItem('nova_projects_v1', data.projectsMeta); if (window.NovaThoughts) NovaThoughts.renderPanel(); } catch (e) {}   // v2.6.64：AI 思考／專案資料還原
                 if (data.expertsConfig && typeof data.expertsConfig === 'object') {   // v2.6.23
-                    try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
+                    try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub], ['nova_bots_settings_v1', ec.bots], ['nova_bots_mode', ec.botsMode], ['nova_bots_profiles_v1', ec.botProfiles], ['nova_bots_mem_v1', ec.botMem]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
                 }
                 if (data.toolConfig && typeof data.toolConfig === 'object') {   // v2.6.22
                     try {
@@ -21815,7 +21820,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-experts-glue.js?v=1.1.1"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
+<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.2.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.0"></script>
