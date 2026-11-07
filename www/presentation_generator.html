@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!--
+  ═══ presentation_generator v41（Android；2026-11-08，App v2.6.123）═══
+  v41：模型清單更新——新增 gemini-4-argon（首選文字／排版／背景生成／審查）、grok-build-0.1（首選文字；grok-4.7 原本就有）；移除 gemini-2.5-pro、gemini-2.5-flash（各下拉選單）。
+       寫死用到這兩個型號的預設值與備援順序（排版／審稿修正／聯網搜尋／配圖提示／自訂配色／內容產生備援）改用 gemini-3.1-pro-preview（Pro 用途）與 gemini-3.6-flash（Flash 用途）；
+       pgMigrateModelId 會把舊流程／舊設定存的 gemini-2.5-pro／gemini-2.5-flash 自動轉過去。首選文字模型預設選 gemini-3.1-pro-preview。保留 gemini-2.5-flash-lite 與 gemini-2.5-flash-image（沒有被要求移除）。
   ═══ presentation_generator v40（Android；2026-10-17，App v2.6.62）═══
   v40：白晝模式不再用整頁 filter:invert（會把深藍變淺藍，跟主畫面不協調），改加 theme-light class 並連結 nova-subpage-light.css（跟主畫面同一組米白暖灰配色）；黑夜模式不動。
   ═══ presentation_generator v39（Android；2026-10-11）═══
@@ -186,14 +190,13 @@
                         <label class="block text-slate-400 mb-1.5 font-semibold">首選文字模型 (LLM)</label>
                         <select id="sel-text-model" onchange="updateHeaderBadge()" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
                             <optgroup label="── Gemini 系列 ──">
+                                <option value="gemini-4-argon">Gemini 4 Argon</option>
                                 <option value="gemini-3.8-flash">Gemini 3.8 Flash (最新旗艦)</option>
                                 <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
                                 <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
                                 <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                                 <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option>
-                                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
-                                <option value="gemini-2.5-pro" selected>Gemini 2.5 Pro (深度邏輯推薦)</option>
-                                <option value="gemini-2.5-flash">Gemini 2.5 Flash (快速均衡)</option>
+                                <option value="gemini-3.1-pro-preview" selected>Gemini 3.1 Pro Preview (深度邏輯推薦)</option>
                                 <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
                             </optgroup>
                             <optgroup label="── Grok 文字模型 ──">
@@ -202,6 +205,7 @@
                                 <option value="grok-4.5">Grok 4.5</option>
                                 <option value="grok-4.3">Grok 4.3</option>
                                 <option value="grok-latest">Grok Latest</option>
+                                <option value="grok-build-0.1">Grok Build 0.1 (程式碼)</option>
                                 <option value="grok-build-latest">Grok Build Latest</option>
                                 <option value="grok-4.20-multi-agent-0309">Grok 4.20 Multi-Agent (0309)</option>
                                 <option value="grok-4.20-0309-reasoning">Grok 4.20 (0309) Reasoning</option>
@@ -246,10 +250,10 @@
                     <div>
                         <label class="block text-slate-400 mb-1.5 font-semibold">排版 LLM</label>
                         <select id="sel-layout-model" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
-                            <option value="gemini-2.5-pro">Gemini 2.5 Pro（最佳排版）</option>
-                            <option value="gemini-2.5-flash">Gemini 2.5 Flash（快速）</option>
+                            <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview（最佳排版）</option>
+                            <option value="gemini-4-argon">Gemini 4 Argon</option>
+                            <option value="gemini-3.8-flash">Gemini 3.8 Flash（快速）</option>
                             <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（極速）</option>
-                            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                             <option value="grok-latest">Grok Latest</option>
                             <option value="grok-4.7">Grok 4.7</option>
                             <option value="gpt-6-luna">GPT-6 Luna</option>
@@ -355,8 +359,9 @@
                             <div class="flex items-center gap-2">
                                 <label class="text-[10px] text-slate-400 shrink-0">生成模型</label>
                                 <select id="sel-bg-model" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 text-[11px] focus:border-amber-500 outline-none">
-                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash（快速）</option>
-                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro（最高品質）</option>
+                                    <option value="gemini-3.6-flash">Gemini 3.6 Flash（快速）</option>
+                                    <option value="gemini-4-argon">Gemini 4 Argon</option>
+                                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview（最高品質）</option>
                                 </select>
                             </div>
                             <textarea id="inp-bg-desc" rows="3" placeholder="例如：深海藍漸層底色，右上角有金色光暈，左下角有幾何線條裝飾，整體氛圍神秘且專業…"
@@ -459,7 +464,7 @@
                                 <select id="sel-review-model" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 text-[11px] focus:border-violet-500 outline-none">
                                     <option value="grok-4.7">Grok 4.7（推薦）</option>
                                     <option value="grok-latest">Grok Latest</option>
-                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                    <option value="gemini-4-argon">Gemini 4 Argon</option>
                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                     <option value="gpt-6-luna">GPT-6 Luna（支援看圖）</option>
                                     <option value="gpt-6.1-sol">GPT-6.1 Sol（支援看圖）</option>
@@ -473,7 +478,7 @@
                                     <option value="3">3 次（高品質）</option>
                                 </select>
                             </div>
-                            <p class="text-slate-600 text-[10px] leading-relaxed">審查後若發現重疊、對比不足等問題，Gemini 2.5 Pro 將自動修正並重新渲染</p>
+                            <p class="text-slate-600 text-[10px] leading-relaxed">審查後若發現重疊、對比不足等問題，Gemini 3.1 Pro 將自動修正並重新渲染</p>
                         </div>
                     </div>
                     <div>
@@ -1261,7 +1266,7 @@ async function startPureImageGeneration() {
     document.getElementById('btn-stop')?.classList.remove('hidden');
 
     const bgGenModel   = pgMigrateModelId(document.getElementById('sel-bg-gen-model')?.value   || 'grok-imagine-image-2.0');   // v38
-    const layoutModel  = document.getElementById('sel-layout-model')?.value   || 'gemini-2.5-pro';
+    const layoutModel  = document.getElementById('sel-layout-model')?.value   || 'gemini-3.1-pro-preview';
     const theme        = resolveActiveTheme();
     const signal       = AppState.abortController.signal;
 
@@ -1479,7 +1484,7 @@ async function previewCustomTheme() {
         if (errEl) { errEl.textContent = '需要 Gemini API Key — 請在右上角 ⚙ 設定填入'; errEl.classList.remove('hidden'); }
         return;
     }
-    const model = document.getElementById('sel-bg-model')?.value || 'gemini-2.5-flash';
+    const model = document.getElementById('sel-bg-model')?.value || 'gemini-3.6-flash';
     const btn = document.querySelector('[onclick="previewCustomTheme()"]');
     if (btn) { btn.innerHTML = '<i class="ph-fill ph-circle-notch" style="animation:spin 1s linear infinite"></i> AI 生成中…'; btn.disabled = true; }
 
@@ -1497,7 +1502,7 @@ async function previewCustomTheme() {
     }
 }
 
-async function generateCustomTheme(description, apiKey, model = 'gemini-2.5-flash') {
+async function generateCustomTheme(description, apiKey, model = 'gemini-3.6-flash') {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const prompt = `你是投影片配色設計師。根據以下描述，生成投影片配色 JSON。
 
@@ -1909,6 +1914,7 @@ async function callOpenAIText(modelId, systemPrompt, userContent, signal) {
 function pgMigrateModelId(m) {
     const MAP = {
         'gemini-3.5-flash': 'gemini-3.6-flash', 'gemini-3.7-flash': 'gemini-3.8-flash', 'gemini-3.1-flash-image': 'gemini-nano-banana-2.1',
+        'gemini-2.5-pro': 'gemini-3.1-pro-preview', 'gemini-2.5-flash': 'gemini-3.6-flash',   // v41：2.5 Pro／Flash 已從列表移除
         'grok-4-1-fast-reasoning': 'grok-4.3', 'grok-4-1-fast-non-reasoning': 'grok-4.3',
         'grok-4-fast-reasoning': 'grok-4.3', 'grok-4-fast-non-reasoning': 'grok-4.3',
         'grok-code-fast-1': 'grok-build-latest', 'grok-imagine-image-pro': 'grok-imagine-image-2.0'
@@ -2048,7 +2054,7 @@ async function researchTopicWithGrounding(topic, signal) {
 
 async function _groundingAuto(topic, signal, apiKey) {
     addLog('🌐 Google 聯網搜尋（AI 自動選取）...', 'ai');
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
     const body = {
         contents: [{ role: 'user', parts: [{ text:
             `請用繁體中文針對以下主題進行深度研究，整理最新數據、趨勢、案例、統計資料、重要觀點。內容要具體、有數字支撐、有來源說明，供後續製作專業簡報使用。\n\n主題：${topic}`
@@ -2077,7 +2083,7 @@ async function _groundingManual(topic, signal, apiKey) {
     addLog('🌐 Google 聯網搜尋（手動勾選模式）— 抓取搜尋結果清單...', 'ai');
 
     // Step 1: fetch search results as structured JSON
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
     const listBody = {
         contents: [{ role:'user', parts:[{ text:
             `請針對主題「${topic}」搜尋最新資訊，整理出 20 條重要的搜尋結果或資料要點。
@@ -2195,10 +2201,10 @@ async function callGeminiForOutline(topic, context) {
             : theme.label || 'Modern Dark';
     const imageMode = document.getElementById('sel-image-mode').value;
 
-    const GEMINI_FALLBACKS = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3-flash-preview'];
+    const GEMINI_FALLBACKS = ['gemini-3.1-pro-preview', 'gemini-3.6-flash', 'gemini-3-flash-preview'];
     const MODEL_QUEUE = (isGrokModel(userModel) || isGptModel(userModel))
         ? [userModel, ...GEMINI_FALLBACKS]
-        : [userModel, 'gemini-2.5-pro', 'gemini-2.5-flash', 'grok-4.3'];   // v38：原 grok-4-1-fast-reasoning 已退役
+        : [userModel, 'gemini-3.1-pro-preview', 'gemini-3.6-flash', 'grok-4.3'];   // v38：原 grok-4-1-fast-reasoning 已退役
     const uniqueModels = [...new Set(MODEL_QUEUE)];
 
     const imageModeHint = {
@@ -2723,8 +2729,8 @@ async function generateSlideHTML(slideData, theme, imageB64) {
 
     const userModel = document.getElementById('sel-text-model').value;
     const FALLBACK_MODELS = isGrokModel(userModel)
-        ? [userModel, 'gemini-2.5-pro', 'gemini-2.5-flash']
-        : [userModel, 'gemini-2.5-pro', 'gemini-2.5-flash'];
+        ? [userModel, 'gemini-3.1-pro-preview', 'gemini-3.6-flash']
+        : [userModel, 'gemini-3.1-pro-preview', 'gemini-3.6-flash'];
     const uniqueModels = [...new Set(FALLBACK_MODELS)];
 
     const hasImage = !!imageB64;
@@ -3288,7 +3294,7 @@ async function buildImagePrompt(contextText) {
     if (!gKey) return `Professional modern presentation illustration about: ${contextText}`;
     try {
         const r = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${gKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${gKey}`,
             {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -5733,7 +5739,7 @@ pass=true 條件：score ≥ 85 且沒有 contrast/overlap/image_error 問題。
             return JSON.parse(m ? m[0] : '{}');
         } else if (geminiKey) {
             // Gemini vision review
-            const model = (reviewModel.startsWith('grok') || isGptModel(reviewModel)) ? 'gemini-2.5-flash' : reviewModel;   // v38
+            const model = (reviewModel.startsWith('grok') || isGptModel(reviewModel)) ? 'gemini-3.6-flash' : reviewModel;   // v38
             const ver   = getGeminiApiVersion(model);
             const resp = await fetch(
                 `https://generativelanguage.googleapis.com/${ver}/models/${model}:generateContent?key=${geminiKey}`,
@@ -5763,7 +5769,7 @@ pass=true 條件：score ≥ 85 且沒有 contrast/overlap/image_error 問題。
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// PHASE 6: AUTO-FIX (Gemini 2.5 Pro corrects based on review)
+// PHASE 6: AUTO-FIX (Gemini 3.1 Pro corrects based on review)
 // ═══════════════════════════════════════════════════════════════════
 async function fixSlideHTML(html, reviewResult, slideData, theme) {
     if (!reviewResult?.issues?.length) return html;
@@ -5803,7 +5809,7 @@ ${minified.slice(0, 55000)}
 只輸出完整修正後的 HTML，不含任何說明文字或 markdown 標記：`;
 
     const apiKey    = AppState.googleApiKey;
-    const fixModels = ['gemini-2.5-pro', 'gemini-2.5-flash'];
+    const fixModels = ['gemini-3.1-pro-preview', 'gemini-3.6-flash'];
 
     for (const model of fixModels) {
         if (!apiKey) break;
@@ -6597,7 +6603,7 @@ function switchEditTab(tab) {
  */
 async function callTextLLM(prompt, maxTokens) {
     maxTokens = maxTokens || 8192;
-    const model  = (document.getElementById('sel-text-model') || {}).value || 'gemini-2.5-flash';
+    const model  = (document.getElementById('sel-text-model') || {}).value || 'gemini-3.6-flash';
     if (isGptModel(model)) return await callOpenAIText(model, '', prompt, undefined);   // v38
     const isGrok = model.startsWith('grok');
     const apiKey = isGrok ? AppState.xaiApiKey : AppState.googleApiKey;
@@ -6652,8 +6658,8 @@ async function runSlideEdit() {
         if (_editTab === 'pureimg') {
             // Pure-image regeneration for this single slide
             statusTxt.textContent = '背景 LLM 生成中...';
-            const bgGenModel  = (document.getElementById('sel-bg-gen-model') || {}).value || 'gemini-2.5-flash';
-            const layoutModel = (document.getElementById('sel-layout-model') || {}).value || 'gemini-2.5-pro';
+            const bgGenModel  = (document.getElementById('sel-bg-gen-model') || {}).value || 'gemini-3.6-flash';
+            const layoutModel = (document.getElementById('sel-layout-model') || {}).value || 'gemini-3.1-pro-preview';
             const apiKey      = AppState.googleApiKey;
             if (!apiKey) throw new Error('純圖模式需要 Gemini API Key');
             const signal      = new AbortController().signal;

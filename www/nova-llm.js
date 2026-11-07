@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-llm.js — NOVA Android 的「模型呼叫輔助層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.0.1
    版本紀錄：
+   v1.0.1 - App v2.6.123。_novaDrResolveGeminiModel：舊設定裡的 gemini-2.5-pro／gemini-2.5-flash（已從模型列表移除）自動轉成 gemini-3.1-pro-preview／gemini-3.6-flash。
    v1.0.0 - 初版（批次 4）。把桌面版 index.html 裡 _novaDr* ／ _novaCallModel 這組「多專家／深度研究引擎共用的小工具」
             獨立成一支檔案，讓手機版的多專家協作（nova-experts-glue.js）、之後的深度研究 Pro 引擎共用：
             ① 模型名稱解析：_novaDrResolveGeminiModel／GptModel／GrokModel（舊模型自動轉新版、不適合的換成預設）。
@@ -46,6 +47,8 @@
         var bad = !n || n.indexOf('gemini-') !== 0 || /multi|image|imagen|nano-banana|tts|live|audio|embedding|veo|robotics|computer/i.test(n);
         if (n === 'gemini-3.5-flash') return 'gemini-3.6-flash';
         if (n === 'gemini-3.7-flash') return 'gemini-3.8-flash';
+        if (n === 'gemini-2.5-pro') return 'gemini-3.1-pro-preview';
+        if (n === 'gemini-2.5-flash') return 'gemini-3.6-flash';
         return bad ? (fallback || W.NOVA_GEMINI_MODEL_DEFAULT || 'gemini-3.6-flash') : n;
     });
     def('_novaDrResolveGptModel', function (name) {
