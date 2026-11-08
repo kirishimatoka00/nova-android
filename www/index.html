@@ -2264,8 +2264,9 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.123';
+        const NOVA_APP_VERSION = '2.6.124';
         const NOVA_CHANGELOG = [
+                '移植桌面版 v3.117～v3.119（新檔 nova-transit.js v1.0.0；nova-bots.js v1.5.0、nova-bots-ui.js v1.4.0、nova-google.js v1.6.0、nova-experts-glue.js v1.5.0、nova-datasync.js v1.3.0；僅 www）：① 大眾運輸：用 TDX 官方 API 查高鐵／台鐵時刻票價座位誤點、捷運（含輕軌）票價首末班即時到站、公車到站與班表（金鑰在 多專家 → 多 Bot → 交通 API 填 Client ID／Secret，按「測試連線」）；多 Bot 管理頁「＋ 建立大眾運輸專家」一鍵建立專家並勾好工具；一般對話（非多 Bot）只要設了金鑰、問到班次／票價等交通問題，就自動帶入交通工具。② Bot 設定可勾的工具變多：python_run／shell_run／mcp_call／skill_run（進階動作，每次確認，總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、核心記憶、行事曆新增修改、Google 文件寫入；缺 Termux／Google 授權／金鑰的工具會暫時不給 Bot，補齊後自動可用。③ 同步：TDX 金鑰、模式選擇、Jev API Key 也會跟著同步（明文存在你自己的 Drive 同步檔；金鑰刪除不會傳播）。限制：Outlook、瀏覽器、桌面操作與 Bot 排程手機仍不支援；行事曆需在 Google Cloud 啟用 Calendar API、加 calendar.events 權限並重新連接；兩台都要更新才會互通；尚未在實機與真實 TDX 驗證。',
             { v: '2.6.123', date: '2026-11-08', notes: [
                 '模型列表更新（主程式、簡報產生器 presentation_generator v41、AI 思考 nova-thoughts v1.0.1、nova-llm v1.0.1；僅 www）：新增 gemini-4-argon（Gemini 子模型選單、設定頁模型清單、簡報的首選文字／排版／背景生成／審查、AI 思考；新增斜線指令 /g4a）、grok-4.7 與 grok-build-0.1（設定頁模型清單原本缺，現在補齊；簡報首選文字補 grok-build-0.1）。移除 gemini-2.5-pro、gemini-2.5-flash（所有下拉選單、斜線指令 /g2.5f、/g2.5p、AI 思考清單）。原本寫死用這兩個型號的預設與備援（翻譯、模型 404 備援、簡報的排版／審稿修正／聯網搜尋／配圖提示／自訂配色／內容備援）改用 gemini-3.1-pro-preview（Pro 用途）或 gemini-3.6-flash／3.8-flash；舊設定、舊備份裡存的 2.5 Pro／Flash 會自動轉成這兩個。保留 gemini-2.5-flash-lite 與 gemini-2.5-flash-image（沒有被要求移除）。gemini-4-argon 的 API 細節（思考參數、是否要 v1alpha、是否不吃 temperature）沒有官方資料可核對，先照一般 Gemini 呼叫；若實機呼叫報錯請回報錯誤訊息。尚未在實機驗證。'
             ] },
@@ -3883,7 +3884,7 @@ async function encodeMp3(audioBuffer) {
                     skillsData: (window.NovaSkills && NovaSkills.exportAll ? await NovaSkills.exportAll().catch(() => undefined) : undefined),   // v2.6.86：技能（私有儲存，重裝會消失，所以要進備份）
                     aiThoughts: localStorage.getItem('nova_thoughts_v1') || undefined,   // v2.6.64：AI 思考
                     projectsMeta: localStorage.getItem('nova_projects_v1') || undefined,   // v2.6.64：專案視窗資料
-                    expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', ''), bots: _fcLs('nova_bots_settings_v1', ''), botsMode: _fcLs('nova_bots_mode', ''), botProfiles: _fcLs('nova_bots_profiles_v1', ''), botMem: _fcLs('nova_bots_mem_v1', '') },   // v2.6.23；v2.6.120 加入多 Bot
+                    expertsConfig: { experts: _fcLs('nova_experts_v1', ''), settings: _fcLs('nova_experts_settings_v1', ''), meeting: _fcLs('nova_meeting_settings_v1', ''), tasks: _fcLs('nova_tasks_settings_v1', ''), mode: _fcLs('nova_experts_mode', ''), sub: _fcLs('nova_experts_submode', ''), bots: _fcLs('nova_bots_settings_v1', ''), botsMode: _fcLs('nova_bots_mode', ''), botProfiles: _fcLs('nova_bots_profiles_v1', ''), botMem: _fcLs('nova_bots_mem_v1', ''), tdx: _fcLs('nova_tdx_keys_v1', '') },   // v2.6.23；v2.6.120 加入多 Bot；v2.6.124 加入 TDX 金鑰
                     toolConfig: { mcpServers: (window.novaFcCfg ? window.novaFcCfg.servers() : []), disabledTools: (window.novaFcCfg ? window.novaFcCfg.disabled() : []), auto: _fcLs('nova_fc_auto', '0'), cache: _fcLs('nova_fc_cache', '1'), cacheRound: _fcLs('nova_fc_cache_round', '3') },   // v2.6.22
                     calReminderEnabled: localStorage.getItem('cal_reminder_enabled') !== 'false',
                     calSyncTodos: localStorage.getItem('cal_sync_todos') === 'true',
@@ -4047,7 +4048,7 @@ async function encodeMp3(audioBuffer) {
                 if (Array.isArray(data.privateSessions) && window.NovaPrivate) { try { NovaPrivate.setList(Array.from(new Set(NovaPrivate.list().concat(data.privateSessions.map(String))))); } catch (e) {} }
                 try { if (typeof data.aiThoughts === 'string') localStorage.setItem('nova_thoughts_v1', data.aiThoughts); if (typeof data.projectsMeta === 'string') localStorage.setItem('nova_projects_v1', data.projectsMeta); if (window.NovaThoughts) NovaThoughts.renderPanel(); } catch (e) {}   // v2.6.64：AI 思考／專案資料還原
                 if (data.expertsConfig && typeof data.expertsConfig === 'object') {   // v2.6.23
-                    try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub], ['nova_bots_settings_v1', ec.bots], ['nova_bots_mode', ec.botsMode], ['nova_bots_profiles_v1', ec.botProfiles], ['nova_bots_mem_v1', ec.botMem]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
+                    try { const ec = data.expertsConfig; [['nova_experts_v1', ec.experts], ['nova_experts_settings_v1', ec.settings], ['nova_meeting_settings_v1', ec.meeting], ['nova_tasks_settings_v1', ec.tasks], ['nova_experts_mode', ec.mode], ['nova_experts_submode', ec.sub], ['nova_bots_settings_v1', ec.bots], ['nova_bots_mode', ec.botsMode], ['nova_bots_profiles_v1', ec.botProfiles], ['nova_bots_mem_v1', ec.botMem], ['nova_tdx_keys_v1', ec.tdx]].forEach(function (p) { if (p[1]) localStorage.setItem(p[0], p[1]); }); if (window.NovaExpertsGlue && NovaExpertsGlue.rerender) NovaExpertsGlue.rerender(); } catch (e) {}
                 }
                 if (data.toolConfig && typeof data.toolConfig === 'object') {   // v2.6.22
                     try {
@@ -10373,6 +10374,16 @@ msg.files : (msg.file ? [msg.file] : []);
                         return t ? { success: true, text: String(t).slice(0, 12000) } : { success: false, text: '讀不到這個網頁（可能需要登入、被擋或內容由 JavaScript 動態產生）。請改用 web_search 或換一個來源。' };
                     } });
             }
+            // v2.6.124：大眾運輸（TDX）——設了金鑰、且這句話看起來在問交通（或工具迴圈被強制啟動）才帶，平常不佔 token
+            try {
+                const NT = window.NovaTransit;
+                if (NT && NT.hasKeys() && (window._novaFcForce || NT.looksLikeTransit(window._novaFcCurText))) {
+                    NT.declarations().forEach(function (d) {
+                        out.push({ name: d.name, label: d.label, description: d.description, parameters: d.parameters, readOnly: true,
+                            run: async function (a) { const r = await NT.run(d.name, a || {}); return { success: !(r && r.ok === false), text: NT.format(r) }; } });
+                    });
+                }
+            } catch (e) { console.warn('[NOVA][交通] 工具載入略過', e); }
             return out.filter(function (t) { return !window.novaFcCfg.isOff('builtin:' + t.name); });
         } });
         // v2.6.70：給自主模式等其他功能直接呼叫的搜尋入口（走上面的 web_search 內建工具）
@@ -10446,6 +10457,7 @@ msg.files : (msg.file ? [msg.file] : []);
         window.novaRunToolChat = async function (text, opts) {
             opts = opts || {};
             const forced = !!opts.force;
+            window._novaFcCurText = String(text || ''); window._novaFcForce = forced;   // v2.6.124：給交通工具的關鍵字閘門用
             const provider = appState.currentModel;
             const say = function (t) { addMessage(t, 'system'); };
             if (provider !== 'gemini' && provider !== 'grok') { if (forced) { addMessage(text, 'user'); say('⚠️ 工具呼叫目前只支援 Gemini／Grok 模型，請先切換模型。'); return true; } return false; }
@@ -10525,6 +10537,17 @@ msg.files : (msg.file ? [msg.file] : []);
             if (/(畫|生成|產生|製作|create|make|draw|generate).{0,200}(圖片|照片|圖像|image|picture|photo)|簡報|投影片|ppt/i.test(text)) return false;
             return true;
         };
+        // v2.6.124：問交通（且設了 TDX 金鑰）時，即使「自動使用工具」沒開也走工具迴圈，讓非多 Bot 模式也能查時刻票價
+        const _fcShouldAutoBase = window.novaFcShouldAuto;
+        window.novaFcShouldAuto = async function (text, hasFile) {
+            if (await _fcShouldAutoBase(text, hasFile)) return true;
+            try {
+                if (hasFile || !window.NovaTransit || !window.NovaTransit.hasKeys() || !window.NovaTransit.looksLikeTransit(text)) return false;
+                if (appState.currentModel !== 'gemini' && appState.currentModel !== 'grok') return false;
+                if (appState.translateMode !== 'off' || appState.isLiveMode) return false;
+                return true;
+            } catch (e) { return false; }
+        };
 
         // ── 設定頁「🔌 工具」 ──
         function _fcEl(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
@@ -10543,7 +10566,7 @@ msg.files : (msg.file ? [msg.file] : []);
             const cr = document.getElementById('fc-cache-round'); if (cr) cr.value = window.novaFcCfg.cacheRound();
             // 內建
             const bl = document.getElementById('fc-builtin-list');
-            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
+            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）'], ['transit_thsr', '高鐵時刻票價（TDX）'], ['transit_tra', '台鐵時刻票價（TDX）'], ['transit_metro', '捷運票價首末班（TDX）'], ['transit_bus', '公車動態班表（TDX）']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
             // 技能
             const sl = document.getElementById('fc-skill-list');
             if (sl) {
@@ -21827,7 +21850,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-bots.js?v=1.0.0"></script><script src="./nova-bots-ui.js?v=1.0.0"></script><script src="./nova-experts-glue.js?v=1.4.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
+<script src="./nova-transit.js?v=1.0.0"></script><script src="./nova-bots.js?v=1.5.0"></script><script src="./nova-bots-ui.js?v=1.4.0"></script><script src="./nova-experts-glue.js?v=1.5.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.1"></script>
@@ -21937,7 +21960,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.5.0"></script><script src="./nova-datasync.js?v=1.2.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.6.0"></script><script src="./nova-datasync.js?v=1.3.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

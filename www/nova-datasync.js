@@ -1,4 +1,4 @@
-/* nova-datasync.js — v1.2.0 (2026-11-01)
+/* nova-datasync.js — v1.3.0 (2026-11-08)
  * 手機版「NovaResearch／Project Insight 資料同步」：把桌面 nova-data-sync.js v1.0.0 的比對／合併核心原樣移植，遠端存取改走 NovaGoogle._drive（Drive REST）。
  * 與桌面互通：同一個 Google 帳號的 Drive 根目錄，檔名 NOVA_Research_Sync.json（研發：專案／材料／實驗／情報／監看定義／報告／筆記）、NOVA_Insight_Sync.json（Insight：預判、個股、虛擬交易、日誌…）。
  *   檔案格式：{v:1, items:{鍵:{h:雜湊,ts:時間,v:內容}}, deleted:{鍵:時間}, at, from}；鍵＝「種類/id」（Research）或 localStorage 項目名（Insight）。
@@ -7,6 +7,7 @@
  * 觸發：Drive 同步（nova-google.js 的 syncNow 在記憶同步後呼叫 NovaDataSync.syncAll）、資料改動後 4 秒（nova-research-changed／nova-insight-changed）、App 回到前景、設定頁手動按鈕。
  * 子開關（預設開）：localStorage nova_dsync_research_on／nova_dsync_insight_on；上次同步狀態 nova_dsync_<id>_state／_info；檔案 id 快取 nova_dsync_<id>_fileid。
  * 版本紀錄
+ *   v1.3.0 2026-11-08  Insight 同步加入 Jev API Key（主設定頁 nova_key_jev，純字串）：收集時放成 {v:key}（有值才送）、套用時只寫入有值的、刪除不傳播（要清除請在設定裡清空）；與桌面 v3.119.0 同格式。
  *   v1.2.0 2026-11-01  研發 API 金鑰同步：provider 多一筆「__keys__/all」（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱，與桌面 desktop-patch v3.104.0 同格式）；套用時只動這幾個欄位、遠端沒有的欄位清除、忽略對它的刪除。Insight 金鑰走 syncKeys（見 nova-insight-core.js v1.3.0）。
  *   v1.1.0 2026-11-01  Insight 同步補「額外鍵」：桌面傳來但手機沒有介面的鍵（研究、劇本、校準…）改記在 nova_insight_extra_keys 一併收集，避免下次同步被誤判成手機刪除而回寫刪掉桌面資料。
  *   v1.0.0 2026-11-01  首版，核心比對與桌面同；以 Node 對 plan／applyRisk／sync 做過情境測試（雙邊修改、刪除傳播、大量刪除安全網、遠端壞檔中止、重複檔案合併）。【Drive 實際連線未在真機驗證】
@@ -256,12 +257,13 @@
       id: 'insight', label: 'Project Insight', file: 'NOVA_Insight_Sync.json',
       collect: async function () {
         var L = {}; insKeys().forEach(function (k) { var raw = root.localStorage.getItem(k); if (raw == null) return; try { L[k] = JSON.parse(raw); } catch (e) { /* 壞掉的不同步 */ } });
+        try { var jk = (root.localStorage.getItem('nova_key_jev') || '').trim(); if (jk) L['nova_key_jev'] = { v: jk }; } catch (e) { /* */ }
         return L;
       },
       apply: async function (a) {
         var ex = insExtra(), known = insKnown();
-        Object.keys(a.put || {}).forEach(function (k) { try { root.localStorage.setItem(k, JSON.stringify(a.put[k])); if (known.indexOf(k) < 0 && ex.indexOf(k) < 0) ex.push(k); } catch (e) { /* */ } });
-        (a.del || []).forEach(function (k) { try { root.localStorage.removeItem(k); } catch (e) { /* */ } });
+        Object.keys(a.put || {}).forEach(function (k) { try { if (k === 'nova_key_jev') { var jv = a.put[k] && typeof a.put[k].v === 'string' ? a.put[k].v.trim() : ''; if (jv) root.localStorage.setItem(k, jv); return; } root.localStorage.setItem(k, JSON.stringify(a.put[k])); if (known.indexOf(k) < 0 && ex.indexOf(k) < 0) ex.push(k); } catch (e) { /* */ } });
+        (a.del || []).forEach(function (k) { if (k === 'nova_key_jev') return; try { root.localStorage.removeItem(k); } catch (e) { /* */ } });
         try { root.localStorage.setItem('nova_insight_extra_keys', JSON.stringify(ex.filter(function (k) { return root.localStorage.getItem(k) != null; }))); } catch (e) { /* */ }
       },
       after: function () { try { root.dispatchEvent(new root.CustomEvent('nova-insight-synced')); } catch (e) { /* */ } }

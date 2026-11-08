@@ -1,7 +1,12 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.4.0
+   版本：v1.5.0
    版本紀錄：
+   v1.5.0 - App v2.6.124。移植桌面版 v3.117～v3.119：① 大眾運輸（TDX）：新工具 transit_thsr／transit_tra／transit_metro／transit_bus（nova-transit.js），管理視窗「＋ 建立大眾運輸專家」一鍵建立專家 x_transit 並勾好工具；
+            ② 開放更多工具進 Bot 設定：進階動作 python_run／shell_run／mcp_list／mcp_call／skill_list／skill_run（每次確認、總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、memory_core_get_all、
+            calendar_list／calendar_create／calendar_update、docs_write（需 Google 對應授權）；botUnsupported() 改成依「Termux／Google 授權／金鑰」動態決定哪些工具暫時不給模型；
+            ③ 同步：加入 mode/<鍵>（專家／Bot 模式選擇）與 tdx/all（TDX Client ID／Secret，只寫入有值欄位、刪除不傳播）；powerEnabled 列為各裝置專屬。
+            仍不支援：Outlook、browser_*、desktop_*、Bot 排程。
    v1.4.0 - App v2.6.122。多 Bot 開放 gmail_draft（存草稿，低風險）／gmail_send（寄信，高風險每次確認，排程不可用）／gmail_trash（移到垃圾桶，高風險）：用 NovaGoogle.gmailDraft／gmailSend／gmailTrash，
             需要 Google 授權「Gmail 寫入」（gmail.modify）；沒有這個授權時三個工具從給模型的工具清單排除（botUnsupported()），呼叫時回傳說明怎麼重新授權。
    v1.3.0 - App v2.6.121。多 Bot 新增 6 個工具：document_read（讀 Termux 裡的檔案；docx／pptx／xlsx／pdf 走橋接的 markitdown）、file_write（寫檔到 Termux 家目錄或
@@ -1274,13 +1279,21 @@ window.NovaExpertsGlue = (function () {
     //      其餘（Gmail 草稿與寄信、Outlook、行事曆、本機檔案、Insight／Research 查詢）手機版不支援，會從給模型的工具清單排除（設定資料不動）。
     // ═══════════════════════════════════════════════════════════
     const BOTS_RT = { store: null, storeP: null };
-    const BOT_UNSUPPORTED = ['calendar_list', 'outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list'];
-    const BOT_NEEDS_GMAILMOD = ['gmail_draft', 'gmail_send', 'gmail_trash'];   // v1.4.0：需要 Google「Gmail 寫入」授權
-    const BOT_NEEDS_TERMUX = ['document_read', 'file_write'];   // v1.3.0：走 Termux 橋接；沒設定橋接時，從給模型的工具清單排除
+    // v1.5.0：依「現在有什麼」動態決定哪些工具不給模型（設定資料不動；補好條件後下次任務開始就自動可用）
+    const BOT_ALWAYS_UNSUPPORTED = ['outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list',   // 手機沒有 Outlook
+        'browser_tabs', 'browser_text', 'browser_dom', 'browser_console', 'browser_read_all', 'browser_goto', 'browser_click', 'browser_fill', 'browser_new_tab',   // 手機沒有 NovaBrowser／外部 Chrome 連線
+        'desktop_read', 'desktop_act'];   // 桌面操作
+    const BOT_NEEDS_TERMUX = ['document_read', 'file_write', 'shell_run'];   // 走 Termux 橋接；沒設定橋接時排除（python_run 另有 Pyodide 備援，不在此列）
+    const BOT_NEEDS_GMAILMOD = ['gmail_draft', 'gmail_send', 'gmail_trash'];   // 需要 Google「Gmail 寫入」授權
+    const BOT_NEEDS_CAL = ['calendar_list', 'calendar_create', 'calendar_update'];   // 需要 Google「行事曆」授權
+    const BOT_NEEDS_FIRECRAWL = ['firecrawl_scrape', 'firecrawl_search', 'firecrawl_map', 'firecrawl_crawl', 'firecrawl_crawl_status'];   // 需要 Firecrawl 金鑰
     function botUnsupported() {
-        let ok = false; try { ok = !!(window.NovaTermux && window.NovaTermux.configured()); } catch (e) { /* ignore */ }
-        let gm = false; try { gm = !!(window.NovaGoogle && window.NovaGoogle._connected() && window.NovaGoogle._has('gmailmod')); } catch (e) { /* ignore */ }
-        return BOT_UNSUPPORTED.concat(ok ? [] : BOT_NEEDS_TERMUX, gm ? [] : BOT_NEEDS_GMAILMOD);
+        const has = function (sc) { try { return !!(window.NovaGoogle && window.NovaGoogle._connected() && window.NovaGoogle._has(sc)); } catch (e) { return false; } };
+        let tm = false; try { tm = !!(window.NovaTermux && window.NovaTermux.configured()); } catch (e) { /* ignore */ }
+        let fc = false; try { fc = !!(localStorage.getItem('nova_key_firecrawl') || '').trim(); } catch (e) { /* ignore */ }
+        return BOT_ALWAYS_UNSUPPORTED.concat(tm ? [] : BOT_NEEDS_TERMUX, has('gmailmod') ? [] : BOT_NEEDS_GMAILMOD, has('calendar') ? [] : BOT_NEEDS_CAL,
+            has('docs') ? [] : ['docs_write'], fc ? [] : BOT_NEEDS_FIRECRAWL, (window.NovaSkills && window.NovaSkills.getManifest) ? [] : ['skill_list', 'skill_run'],
+            window.NovaMemory ? [] : ['memory_core_get_all'], window.NovaTransit ? [] : (window.NovaTransit === undefined ? ['transit_thsr', 'transit_tra', 'transit_metro', 'transit_bus'] : []));
     }
     function BOTS() { return window.NovaBots; }
     try { if (BOTS()) BOTS().UNSUPPORTED = botUnsupported(); } catch (e) { /* ignore */ }
@@ -1290,6 +1303,12 @@ window.NovaExpertsGlue = (function () {
         if (TT) {
             if (TT.document_read) { TT.document_read.desc = '讀手機 Termux 裡的文字檔或 docx／pptx／xlsx／pdf（轉成文字，可用 start 續讀）。路徑限 Termux 家目錄或 ~/storage/shared；相對路徑從 ~/nova_work 算。'; TT.document_read.args = '{"path":"~/storage/shared/Documents/檔案.docx","start":0}'; }
             if (TT.file_write) { TT.file_write.desc = '在手機 Termux 家目錄或 ~/storage/shared 底下寫文字檔（2MB 內）。檔案已存在或 overwrite=true 時需使用者確認才會覆蓋（舊檔留 .bak）；不能寫隱藏檔。相對路徑從 ~/nova_work 算。'; TT.file_write.args = '{"path":"~/storage/shared/Documents/NOVA輸出/報告.md","content":"文字內容"}'; }
+            if (TT.python_run) { TT.python_run.desc = '執行一段 Python 程式碼（優先用 Termux 橋接，沒設定時退回 App 內建 Pyodide：沒有網路與檔案、套件有限）。用 print 輸出結果。每次都需使用者確認。'; }
+            if (TT.shell_run) { TT.shell_run.desc = '在手機的 Termux 執行一段 shell 指令（需要 Termux 橋接）。權限等同 Termux，每次都需使用者確認。'; TT.shell_run.args = '{"command":"ls ~/storage/shared","description":"這個指令要做什麼"}'; }
+            if (TT.memory_core_get_all) { TT.memory_core_get_all.desc = '讀取 NOVA 的長期核心記憶（使用者的偏好與事實；不含私密記憶）。屬於個人資料，只在任務需要時才讀。'; }
+            if (TT.mcp_list) { TT.mcp_list.desc = '列出已連線的遠端 MCP 伺服器與各自的工具（名稱、說明）。要用 mcp_call 之前先看這個。'; }
+            if (TT.skill_list) { TT.skill_list.desc = '列出 NOVA 的本地技能（名稱與說明）。要用 skill_run 之前先看這個。'; }
+            if (TT.skill_run) { TT.skill_run.desc = '執行 NOVA 的本地技能（可能操作手機或呼叫外部服務）。先用 skill_list 看有哪些技能與參數。每次都需使用者確認。'; }
             if (TT.insight_markets) { TT.insight_markets.desc = '查主要股市指數、黃金、原油、比特幣、VIX 的延遲報價與漲跌幅（不含個股）。'; TT.insight_markets.args = '{"query":"黃金"}'; }
         }
     } catch (e) { /* ignore */ }
@@ -1434,6 +1453,125 @@ window.NovaExpertsGlue = (function () {
         return { success: true, j: j };
     }
     function fmtCites(items, f) { return items.map(f).join('\n') || '（沒有結果）'; }
+
+    // ── v1.5.0：交通（TDX）、Firecrawl、核心記憶、行事曆、MCP、技能、Python／Shell ──
+    function okOf(r) { return !(r && r.ok === false); }
+    async function fcPost(path, body, method) {   // Firecrawl：先試 v2，404 再退 v1
+        const key = (localStorage.getItem('nova_key_firecrawl') || '').trim(); if (!key) throw new Error('沒有設定 Firecrawl 金鑰（設定 → 主要）');
+        let last = '';
+        for (const v of ['v2', 'v1']) {
+            const r = await fetch('https://api.firecrawl.dev/' + v + '/' + path, { method: method || 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' }, body: (method === 'GET') ? undefined : JSON.stringify(body || {}) });
+            const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch (e) { j = null; }
+            if (r.ok && j) return j;
+            last = 'Firecrawl HTTP ' + r.status + ((j && (j.error || j.message)) ? '：' + (j.error || j.message) : '');
+            if (r.status !== 404) break;
+        }
+        throw new Error(last);
+    }
+    const FC_CAP = 6000;
+    async function botFirecrawl(name, a) {
+        if (name === 'firecrawl_scrape') {
+            if (!/^https?:\/\//i.test(String(a.url || ''))) return { success: false, text: '需要完整網址（含 https://）' };
+            const j = await fcPost('scrape', { url: String(a.url), formats: Array.isArray(a.formats) && a.formats.length ? a.formats : ['markdown'], onlyMainContent: a.only_main_content !== false });
+            const d = j.data || j; return { success: true, text: String(d.markdown || d.content || JSON.stringify(d)).slice(0, FC_CAP) };
+        }
+        if (name === 'firecrawl_search') {
+            if (!String(a.query || '').trim()) return { success: false, text: '需要 query' };
+            const body = { query: String(a.query), limit: Math.min(10, Math.max(1, parseInt(a.limit, 10) || 5)) };
+            if (a.scrape_results === true || a.scrape_results === 'true') body.scrapeOptions = { formats: ['markdown'], onlyMainContent: true };
+            const j = await fcPost('search', body), d = j.data || {}, list = Array.isArray(d) ? d : (d.web || []);
+            if (!list.length) return { success: true, text: '（Firecrawl 沒有結果）' };
+            return { success: true, text: list.map(function (it, i) { return (i + 1) + '. ' + (it.title || (it.metadata && it.metadata.title) || it.url) + '（' + (it.url || (it.metadata && it.metadata.sourceURL) || '') + '）\n   ' + String(it.description || it.snippet || it.markdown || '').replace(/\s+/g, ' ').slice(0, 400); }).join('\n').slice(0, FC_CAP) };
+        }
+        if (name === 'firecrawl_map') {
+            if (!/^https?:\/\//i.test(String(a.url || ''))) return { success: false, text: '需要完整網址（含 https://）' };
+            const body = { url: String(a.url), limit: Math.min(200, Math.max(1, parseInt(a.limit, 10) || 50)) }; if (a.search) body.search = String(a.search);
+            const j = await fcPost('map', body), links = j.links || (j.data && j.data.links) || [];
+            return { success: true, text: links.map(function (l) { return typeof l === 'string' ? l : (l.url + (l.title ? '｜' + l.title : '')); }).slice(0, 200).join('\n').slice(0, FC_CAP) || '（沒有結果）' };
+        }
+        if (name === 'firecrawl_crawl') {
+            if (!/^https?:\/\//i.test(String(a.url || ''))) return { success: false, text: '需要完整網址（含 https://）' };
+            const j = await fcPost('crawl', { url: String(a.url), limit: Math.min(50, Math.max(1, parseInt(a.limit, 10) || 10)), maxDepth: Math.min(5, Math.max(1, parseInt(a.max_depth, 10) || 2)), scrapeOptions: { formats: ['markdown'], onlyMainContent: true } });
+            return { success: !!(j.id || j.success), text: 'job_id=' + (j.id || '') + '（用 firecrawl_crawl_status 查進度與結果）' };
+        }
+        if (name === 'firecrawl_crawl_status') {
+            const id = String(a.job_id || '').trim(); if (!/^[A-Za-z0-9_-]{6,80}$/.test(id)) return { success: false, text: 'job_id 格式不對' };
+            const j = await fcPost('crawl/' + id, null, 'GET'), pages = (j.data || []).slice(0, 8);
+            return { success: true, text: '狀態：' + (j.status || '?') + '（完成 ' + (j.completed || 0) + '／' + (j.total || 0) + '）\n' + pages.map(function (pg) { return '【' + ((pg.metadata && (pg.metadata.sourceURL || pg.metadata.url)) || '') + '】\n' + String(pg.markdown || '').slice(0, 700); }).join('\n\n') };
+        }
+        return { success: false, text: '未知的 Firecrawl 工具' };
+    }
+    async function botCoreMemory() {
+        const M = window.NovaMemory; if (!M || !M._getAll) return { success: false, text: '記憶模組沒有載入' };
+        const core = await M._getAll('core');
+        if (!core.length) return { success: true, text: '（核心記憶是空的）' };
+        core.sort(function (x, y) { return (y.hitCount || 0) - (x.hitCount || 0); });
+        return { success: true, text: core.slice(0, 120).map(function (c) { return '- ' + (c.entity || '') + '：' + String(c.fact || '').replace(/\s+/g, ' ').slice(0, 240); }).join('\n').slice(0, FC_CAP) };
+    }
+    function mcpServerByName(n) {
+        const F = window.novaFcCfg; if (!F) return null; n = String(n || '').trim().toLowerCase();
+        return F.servers().filter(function (x) { return x.enabled !== false; }).find(function (x) { return String(x.name || '').toLowerCase() === n || String(x.id || '').toLowerCase() === n; }) || null;
+    }
+    async function botMcpInfo(server, tool) {
+        const sv = mcpServerByName(server); if (!sv || !window.novaFcMcpConnect) return { found: false };
+        const rt = await window.novaFcMcpConnect(sv, false), t = (rt.tools || []).find(function (x) { return x.name === tool; });
+        return t ? { found: true, readOnly: !!(t.annotations && t.annotations.readOnlyHint === true) } : { found: false };
+    }
+    function toText(r) { if (r == null) return '（沒有輸出）'; if (typeof r === 'string') return r; if (typeof r === 'object' && r.text != null && Object.keys(r).length <= 3) return String(r.text); try { return JSON.stringify(r); } catch (e) { return String(r); } }
+    async function botCallExt(name) {
+        try {
+            if (name === 'mcp_list') {
+                const F = window.novaFcCfg, sv = F ? F.servers().filter(function (x) { return x.enabled !== false; }) : [];
+                if (!sv.length) return { success: true, text: '（沒有設定遠端 MCP 伺服器；到 設定 → 🔌 工具 新增）' };
+                const out = [];
+                for (const x of sv) {
+                    try { const rt = await window.novaFcMcpConnect(x, false); out.push('■ ' + x.name + '\n' + (rt.tools || []).map(function (t) { return '  - ' + t.name + (t.annotations && t.annotations.readOnlyHint ? '（唯讀）' : '') + '：' + String(t.description || '').replace(/\s+/g, ' ').slice(0, 120) + '｜參數：' + Object.keys((t.inputSchema && t.inputSchema.properties) || {}).join(',');}).join('\n')); }
+                    catch (e) { out.push('■ ' + x.name + '：連線失敗（' + ((e && e.message) || e) + '）'); }
+                }
+                return { success: true, text: out.join('\n') };
+            }
+            if (name === 'skill_list') {
+                const NS = window.NovaSkills; const m = NS && NS.getManifest ? NS.getManifest().filter(function (x) { return !x.partial; }) : [];
+                if (!m.length) return { success: true, text: '（沒有可用的技能）' };
+                return { success: true, text: m.map(function (x) { return '- ' + x.name + '：' + String(x.description || '').replace(/\s+/g, ' ').slice(0, 160) + '｜參數：' + Object.keys((x.parameters && x.parameters.properties) || {}).join(','); }).join('\n') };
+            }
+            return { success: false, text: '手機版沒有「' + name + '」這個工具。' };
+        } catch (e) { return { success: false, text: (e && e.message) || String(e) }; }
+    }
+    async function botCallPower(name, a) {
+        a = a || {};
+        try {
+            if (name === 'python_run') { if (!window.NovaTermux) return { success: false, text: 'Python 模組沒有載入' }; return { success: true, text: await window.NovaTermux.runPython(String(a.code || ''), 90, 'auto') }; }
+            if (name === 'shell_run') { if (!window.NovaTermux || !window.NovaTermux.configured()) return { success: false, text: '需要 Termux 橋接（設定 → 🔌 工具）' }; return { success: true, text: await window.NovaTermux.runShell(String(a.command || ''), 90) }; }
+            if (name === 'mcp_call') {
+                const sv = mcpServerByName(a.server); if (!sv) return { success: false, text: '找不到 MCP 伺服器「' + a.server + '」' };
+                let rt = await window.novaFcMcpConnect(sv, false), r;
+                try { r = await rt.client.callTool(String(a.tool), a.arguments || {}); } catch (e) { rt = await window.novaFcMcpConnect(sv, true); r = await rt.client.callTool(String(a.tool), a.arguments || {}); }
+                if (r && typeof r === 'object' && r.success === false) return { success: false, text: toText(r.text != null ? r.text : r) };
+                return { success: true, text: toText(r && typeof r === 'object' && r.text != null ? r.text : r) };
+            }
+            if (name === 'skill_run') {
+                const NS = window.NovaSkills; if (!NS) return { success: false, text: '技能模組沒有載入' };
+                const r = await NS.run(String(a.name), a.args && typeof a.args === 'object' ? a.args : {});
+                return { success: !(r && r.success === false), text: toText(r) };
+            }
+            return { success: false, text: '手機版不支援進階動作：' + name };
+        } catch (e) { return { success: false, text: (e && e.message) || String(e) }; }
+    }
+    // 「＋ 建立大眾運輸專家」：新增專家 x_transit 並替它勾好交通工具（已存在就只補勾工具）
+    async function createTransitExpert() {
+        const list = loadExperts(); let created = false;
+        if (!list.some(function (e) { return e.id === 'x_transit'; })) {
+            list.push({ id: 'x_transit', name: '大眾運輸專家', icon: '🚆', enabled: true, builtin: false, web: false, model: '', kb: { docTypes: [], folderIds: [], docIds: [] },
+                role: '你是台灣大眾運輸查詢專家，專門回答高鐵、台鐵、捷運（含輕軌）與公車（含公路客運）的時刻、票價、座位、誤點與到站時間。',
+                knowledge: '【鐵則】時刻、票價、座位、到站時間一律先呼叫對應的交通工具（transit_thsr／transit_tra／transit_metro／transit_bus；資料來自交通部 TDX 官方 API）取得再回答，不可憑印象或自己推算。工具回報找不到站名或有多個候選時，列出候選請使用者選，不要亂猜。回答要附日期、出發／抵達時間、票價與資料來源（TDX），公車到站是即時預估只供參考。沒指定日期就用今天；使用者說「明天」「週五」要換算成 YYYY-MM-DD 再查。工具失敗（例如尚未設定金鑰）要如實說明，不可編造。需要規劃轉乘時，把各段分別查詢後整理成清楚的行程。' });
+            saveExperts(list); created = true;
+        }
+        const st = await getBotStore(), cur = (await st.botList()).find(function (x) { return x && x.id === 'x_transit'; }) || BOTS().defaultProfile('x_transit');
+        const tools = (cur.tools || []).slice(); ['transit_thsr', 'transit_tra', 'transit_metro', 'transit_bus', 'web_search', 'web_fetch', 'recall', 'remember'].forEach(function (t) { if (tools.indexOf(t) < 0) tools.push(t); });
+        await st.botPut(Object.assign({}, cur, { id: 'x_transit', tools: tools }));
+        return { created: created };
+    }
     async function botNative(name, a) {
         a = a || {};
         try {
@@ -1468,6 +1606,17 @@ window.NovaExpertsGlue = (function () {
                 if (!isG && !/^text\/|json|xml|csv|markdown/.test(meta.mimeType || '')) return { success: false, text: '這個檔案不是文字類型（' + meta.mimeType + '），手機版無法讀取內容。' };
                 const r = await G._raw(url); if (!r.ok) throw new Error('讀取失敗 HTTP ' + r.status);
                 return { success: true, text: '檔案：' + meta.name + '\n\n' + (await r.text()).slice(0, 12000) };
+            }
+            if (name === 'transit_thsr' || name === 'transit_tra' || name === 'transit_metro' || name === 'transit_bus') {
+                const NT = window.NovaTransit; if (!NT) return { success: false, text: '交通模組沒有載入' };
+                const r = await NT.run(name, a); return { success: okOf(r), text: NT.format(r) };
+            }
+            if (name.indexOf('firecrawl_') === 0) return await botFirecrawl(name, a);
+            if (name === 'memory_core_get_all') return await botCoreMemory();
+            if (name === 'calendar_list') {
+                const G = gNeed('calendar', '行事曆'); const rg = ['day', 'week', 'month'].indexOf(String(a.range)) >= 0 ? String(a.range) : 'week';
+                const ev = await G.calendarList(rg); if (!ev.length) return { success: true, text: '（這段期間沒有事件）' };
+                return { success: true, text: ev.map(function (e) { return e.start + ' → ' + e.end + '｜' + e.summary + (e.location ? '｜' + e.location : '') + '｜id=' + e.id; }).join('\n') };
             }
             if (name === 'document_read') {
                 const r = await termuxFile('read', a); if (!r.success) return r;
@@ -1551,6 +1700,12 @@ window.NovaExpertsGlue = (function () {
                 if (name === 'gmail_send') { const r = await G0.gmailSend(a); return { success: true, data: r, text: '已寄出郵件 id=' + r.id }; }
                 const r = await G0.gmailTrash(a.message_id); return { success: true, data: r, text: '已移到垃圾桶（可還原）id=' + r.id };
             }
+            if (name === 'calendar_create' || name === 'calendar_update' || name === 'docs_write') {
+                const G1 = window.NovaGoogle; if (!G1 || !G1._connected || !G1._connected()) return { success: false, text: '尚未連接 Google（請到「Google 整合」連接並授權）' };
+                if (name === 'docs_write') { const r = await G1.docsWrite(a.doc_id, a.text, String(a.mode || 'append').toLowerCase() === 'replace' ? 'replace' : 'append'); return { success: true, data: r, text: '已' + (r.mode === 'replace' ? '取代全文' : '附加到文件末尾') + '：「' + r.title + '」' }; }
+                if (name === 'calendar_create') { const r = await G1.calendarCreate(a); return { success: true, data: r, text: '已新增行事曆事件「' + r.summary + '」' + r.start + ' → ' + r.end + '｜id=' + r.id }; }
+                const r = await G1.calendarUpdate(a); return { success: true, data: r, text: '已修改行事曆事件「' + r.summary + '」' + r.start + ' → ' + r.end + '｜id=' + r.id };
+            }
             const G = gNeed('drive', '雲端硬碟'); const D = window.NovaGDrive;
             if (name === 'drive_write') {
                 if (!D || !D.uploadBlob) return { success: false, text: 'Drive 上傳模組沒有載入' };
@@ -1589,7 +1744,7 @@ window.NovaExpertsGlue = (function () {
                 overlay.id = 'nova-botconfirm-modal';
                 const card = mk('div', 'width:min(620px,100%);max-height:90vh;display:flex;flex-direction:column;background:' + T.card + ';color:' + T.text + ';border:2px solid #ef4444;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);');
                 const head = mk('div', 'padding:12px 16px;border-bottom:1px solid ' + T.border + ';');
-                head.appendChild(mk('b', 'font-size:15px;color:#ef4444;', '✍️ 確認寫入動作：' + info.label));
+                head.appendChild(mk('b', 'font-size:15px;color:#ef4444;', (info.kind === 'power' ? '⚡ 確認進階動作：' : '✍️ 確認寫入動作：') + info.label));
                 head.appendChild(mk('div', 'font-size:12px;color:' + T.muted + ';margin-top:3px;', (info.botName || 'Bot') + (info.taskTitle ? '（任務：' + info.taskTitle + '）' : '') + ' 想執行這個高風險動作。請看清楚內容再決定；信件或網頁裡的內容可能夾帶惡意指示。'));
                 const body = mk('pre', 'margin:0;padding:12px 16px;overflow:auto;flex:1;white-space:pre-wrap;word-break:break-word;font-size:13px;font-family:inherit;', info.detail || JSON.stringify(info.args || {}, null, 2));
                 const foot = mk('div', 'display:flex;gap:10px;justify-content:flex-end;padding:10px 16px;border-top:1px solid ' + T.border + ';');
@@ -1616,7 +1771,8 @@ window.NovaExpertsGlue = (function () {
         s._syncWrapped = true;
     }
     const SYNC_CFG_KEYS = function () { return [K_SETTINGS, K_MSET, K_TSET, K_BOTS_SET]; };
-    const PER_DEVICE_BOT_FIELDS = ['writeEnabled', 'schedulerOn'];   // 寫入總開關與排程開關是各裝置自己的決定，不同步
+    const PER_DEVICE_BOT_FIELDS = ['writeEnabled', 'powerEnabled', 'schedulerOn'];   // 寫入／進階動作總開關與排程開關是各裝置自己的安全決定，不同步
+    const SYNC_MODE_KEYS = function () { return ['nova_experts_mode', 'nova_experts_submode', 'nova_bots_mode']; };   // 模式選擇（與桌面 v3.119.0 同）
     async function botsSyncCollect() {
         if (!ENG() || !BOTS()) throw new Error('專家／多 Bot 模組沒有載入');
         const L = {};
@@ -1627,6 +1783,11 @@ window.NovaExpertsGlue = (function () {
             const v = localStorage.getItem(k); if (v == null) return;
             try { const o = JSON.parse(v); if (k === K_BOTS_SET && o && typeof o === 'object') PER_DEVICE_BOT_FIELDS.forEach(function (f) { delete o[f]; }); L['cfg/' + k] = o; } catch (e) { /* 壞掉的設定不同步 */ }
         });
+        SYNC_MODE_KEYS().forEach(function (k) { try { const v = localStorage.getItem(k); if (v != null && v !== '') L['mode/' + k] = { v: v }; } catch (e) { /* ignore */ } });
+        try {   // TDX 金鑰（只送有值的欄位）；明文放在你自己的雲端同步檔
+            const d = window.NovaTransit && window.NovaTransit.revealKeys ? window.NovaTransit.revealKeys() : null;
+            if (d && ((d.client_id || '').trim() || (d.client_secret || '').trim())) L['tdx/all'] = { client_id: (d.client_id || '').trim(), client_secret: (d.client_secret || '').trim() };
+        } catch (e) { /* ignore */ }
         const st = await getBotStore();
         const ids = custom ? raw.map(function (e) { return e && e.id; }).filter(Boolean) : ENG().defaultExperts().map(function (e) { return e.id; });
         // Bot 設定與記憶只跟著「還存在的專家」走：刪掉一位專家，它的設定與記憶也會在另一台一起被移除
@@ -1663,6 +1824,11 @@ window.NovaExpertsGlue = (function () {
                 } catch (e) { /* ignore */ }
             });
             delsOf('cfg/').forEach(function (k) { try { const key = k.slice(4); if (SYNC_CFG_KEYS().indexOf(key) >= 0) localStorage.removeItem(key); } catch (e) { /* ignore */ } });
+            keysOf('mode/').forEach(function (k) { try { const key = k.slice(5), v = put[k] && put[k].v; if (SYNC_MODE_KEYS().indexOf(key) >= 0 && typeof v === 'string' && v) localStorage.setItem(key, v); } catch (e) { /* ignore */ } });
+            if (put['tdx/all'] && typeof put['tdx/all'] === 'object' && window.NovaTransit && window.NovaTransit.setKeys) {   // 只寫入有值的欄位；刪除不傳播
+                const body = {}; ['client_id', 'client_secret'].forEach(function (f) { const v = put['tdx/all'][f]; if (typeof v === 'string' && v.trim()) body[f] = v.trim(); });
+                if (Object.keys(body).length) { try { window.NovaTransit.setKeys(body); } catch (e) { /* ignore */ } }
+            }
             const needStore = keysOf('profile/').length || delsOf('profile/').length || keysOf('mem/').length || delsOf('mem/').length;
             if (needStore) {
                 const st = await getBotStore();
@@ -1716,7 +1882,7 @@ window.NovaExpertsGlue = (function () {
             onTaskUpdate: function () { refreshBoard(); },
             onTaskSpawn: function () { persistBatches(); refreshBoard(); },
             onTaskDone: function (t) { onTaskFinished(batch, t); },
-            callWrite: botWrite, confirmAction: botConfirmAction,
+            callWrite: botWrite, confirmAction: botConfirmAction, callExt: botCallExt, callPower: botCallPower, mcpInfo: botMcpInfo,
             onWrite: function (w) { if (w.ok) addMessage('✍️ **' + ((w.bot && w.bot.displayName) || 'Bot') + '** 已執行「' + w.label + '」' + (w.risk === 'high' ? '（已經你確認）' : '') + '：' + String(w.text || '').replace(/\s+/g, ' ').slice(0, 200), 'system', null, [], null, null, sid); }
         };
         try {
@@ -1744,7 +1910,7 @@ window.NovaExpertsGlue = (function () {
             mk: mk, T: T, btnStyle: btnStyle, fieldStyle: fieldStyle, labelEl: labelEl, showToast: showToast, experts: loadExperts,
             isOn: botsOn, setOn: setBotsOn, getSettings: loadBSettings, saveSettings: saveBSettings, getStore: getBotStore,
             runNow: function () { return Promise.resolve({ ok: false, note: '手機版不支援排程' }); }, schedulerStatus: function () { return null; },
-            rerender: rerender, onChanged: renderBar
+            rerender: rerender, onChanged: renderBar, createTransitExpert: createTransitExpert
         });
     }
 

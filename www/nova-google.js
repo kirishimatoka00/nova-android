@@ -1,4 +1,4 @@
-/* nova-google.js — v1.5.0 (2026-11-07)
+/* nova-google.js — v1.6.0 (2026-11-08)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.6.0 2026-11-08  App v2.6.124：新增授權項目「行事曆」（calendar.events：讀、新增、修改事件；不能刪事件、不碰行事曆本身）與 calendarList／calendarCreate／calendarUpdate；新增 docsWrite（Google 文件附加／取代全文，用既有的 Docs 授權）。給多 Bot 的 calendar_list／calendar_create／calendar_update／docs_write 用。Google Cloud 要先「啟用 Google Calendar API」並在「資料存取權」加 calendar.events，之後在『連接』分頁勾選「行事曆」並重新連接。
  *   v1.5.0 2026-11-07  App v2.6.122：新增授權項目「Gmail 寫入」（gmail.modify：建草稿、寄信、移到垃圾桶；不能永久刪除）。選了它就不必再勾「Gmail 唯讀」（has('gmail') 兩者任一都算）；新增 gmailDraft／gmailSend／gmailTrash（RFC822＋UTF-8 base64，標頭擋換行注入、收件者驗證格式）；『連接』分頁新增「目前實際拿到的授權」清單（讀 token 裡的 scope，不用去 Google 後台猜）。舊 token 不會自動升級，要勾選後重新按「連接 Google」。
  *   v1.4.0 2026-11-01  App v2.6.108：Drive 同步在記憶同步後接著呼叫 NovaDataSync.run（NovaResearch 研發資料 NOVA_Research_Sync.json；階段 3 起加 Insight 的 NOVA_Insight_Sync.json）；失敗只顯示提示，不影響筆記／記憶同步
  *   v1.3.0 2026-10-17  App v2.6.63：Gmail 信件改用 HTML 渲染（沙盒 iframe：無腳本、CSP 擋表單與框架；做法同桌面版）：cid 內嵌圖換成 data URI 永遠顯示、遠端圖片預設封鎖並可按「顯示圖片」放行、可切換純文字；連結用系統瀏覽器開。雲端硬碟清單（.ngd-row／對話框）補白晝模式配色。
@@ -24,7 +25,7 @@
   var DEFAULT_REDIR = 'https://kirishimatoka00.github.io/nova-android/oauth.html';
   var SCHEME = 'nova120://oauth';
   var SYNC_NAME = 'NOVA_Sync_Bundle.json';
-  var SCOPES = { drive: 'https://www.googleapis.com/auth/drive', gmail: 'https://www.googleapis.com/auth/gmail.readonly', docs: 'https://www.googleapis.com/auth/documents', gmailmod: 'https://www.googleapis.com/auth/gmail.modify' };
+  var SCOPES = { drive: 'https://www.googleapis.com/auth/drive', gmail: 'https://www.googleapis.com/auth/gmail.readonly', docs: 'https://www.googleapis.com/auth/documents', gmailmod: 'https://www.googleapis.com/auth/gmail.modify', calendar: 'https://www.googleapis.com/auth/calendar.events' };
   function g(k, d) { try { var v = LS.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
   function s(k, v) { try { LS.setItem(k, v); } catch (e) {} }
   function toast(m, d) { try { W.showToast(m, d); } catch (e) {} }
@@ -35,7 +36,7 @@
   function scopesSel() { try { return JSON.parse(g('nova_google_scopes', '["drive","gmail","docs"]')); } catch (e) { return ['drive', 'gmail', 'docs']; } }
   function connected() { var t = tokens(); return !!(t && (t.refresh_token || t.access_token)); }
   function has(sc) { var t = tokens(); if (!t) return false; var sp = (t.scope || '').split(/\s+/); if (sc === 'gmail') return sp.indexOf(SCOPES.gmail) !== -1 || sp.indexOf(SCOPES.gmailmod) !== -1; return sp.indexOf(SCOPES[sc]) !== -1; }
-  var SC_NAMES = { 'https://www.googleapis.com/auth/drive': 'Drive（完整）', 'https://www.googleapis.com/auth/gmail.readonly': 'Gmail 唯讀', 'https://www.googleapis.com/auth/gmail.modify': 'Gmail 寫入（草稿／寄信／垃圾桶）', 'https://www.googleapis.com/auth/documents': 'Docs', openid: '身分（openid）', email: '電子郵件地址' };
+  var SC_NAMES = { 'https://www.googleapis.com/auth/drive': 'Drive（完整）', 'https://www.googleapis.com/auth/gmail.readonly': 'Gmail 唯讀', 'https://www.googleapis.com/auth/gmail.modify': 'Gmail 寫入（草稿／寄信／垃圾桶）', 'https://www.googleapis.com/auth/documents': 'Docs', 'https://www.googleapis.com/auth/calendar.events': '行事曆（讀／新增／修改事件）', openid: '身分（openid）', email: '電子郵件地址' };
   function grantedList() { var t = tokens(); return t ? (t.scope || '').split(/\s+/).filter(Boolean).map(function (x) { return SC_NAMES[x] || x; }) : []; }
 
   /* ───────── OAuth（PKCE） ───────── */
@@ -281,6 +282,63 @@
     needMod(); id = String(id || '').trim(); if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) throw new Error('信件 id 格式不對');
     var j = await apiJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + id + '/trash', { method: 'POST' }); return { id: j.id };
   }
+
+  /* 行事曆（需要「行事曆」授權 calendar.events；預設主行事曆）與 Google 文件寫入 */
+  function needScope(k, label) { if (!has(k)) throw new Error('目前的 Google 授權不含「' + label + '」。請到 Google 整合 → 連接，勾選「' + label + '」後重新按「連接 Google」。'); }
+  function calEvt(e) { return { id: e.id, summary: e.summary || '（無標題）', start: (e.start && (e.start.dateTime || e.start.date)) || '', end: (e.end && (e.end.dateTime || e.end.date)) || '', location: e.location || '', description: e.description ? String(e.description).slice(0, 300) : '', status: e.status || '' }; }
+  async function calendarList(range) {
+    needScope('calendar', '行事曆');
+    var days = range === 'month' ? 30 : range === 'week' ? 7 : 1, now = new Date(), t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()), t1 = new Date(t0.getTime() + days * 86400000);
+    var j = await apiJson('https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=50&timeMin=' + encodeURIComponent(t0.toISOString()) + '&timeMax=' + encodeURIComponent(t1.toISOString()));
+    return (j.items || []).map(calEvt);
+  }
+  function calTime(v, endOf) {
+    v = String(v || '').trim(); if (!v) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return { date: v };
+    if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(v)) return { dateTime: v };
+    return { dateTime: v.length === 16 ? v + ':00' : v, timeZone: 'Asia/Taipei' };   // 沒帶時區 → 當台灣時間
+  }
+  function calBody(a, create) {
+    var b = {};
+    if (a.summary != null) b.summary = String(a.summary);
+    if (a.location != null) b.location = String(a.location);
+    if (a.description != null) b.description = String(a.description);
+    if (a.start) b.start = calTime(a.start);
+    if (a.end) b.end = calTime(a.end);
+    if (create) {
+      if (!b.start) throw new Error('需要 start（ISO 8601，例如 2026-11-20T09:00:00+08:00，或整天 2026-11-20）');
+      if (!b.end) {   // 沒給結束：整天事件＝同一天；有時間＝開始後一小時
+        if (b.start.date) b.end = { date: b.start.date };
+        else {
+          var st = String(b.start.dateTime), hasTz = /([zZ]|[+-]\d\d:?\d\d)$/.test(st), d = new Date(hasTz ? st : st + '+08:00');
+          b.end = isNaN(d.getTime()) ? Object.assign({}, b.start) : { dateTime: new Date(d.getTime() + 3600000).toISOString() };
+        }
+      }
+      if (b.start.date && b.end.date && b.end.date === b.start.date) { var nd = new Date(b.start.date + 'T00:00:00Z'); nd.setUTCDate(nd.getUTCDate() + 1); b.end = { date: nd.toISOString().slice(0, 10) }; }   // 整天事件的結束日是「不含」
+    }
+    return b;
+  }
+  async function calendarCreate(a) {
+    needScope('calendar', '行事曆'); a = a || {};
+    var j = await apiJson('https://www.googleapis.com/calendar/v3/calendars/primary/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(calBody(a, true)) });
+    return calEvt(j);
+  }
+  async function calendarUpdate(a) {
+    needScope('calendar', '行事曆'); a = a || {}; var id = String(a.event_id || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,1024}$/.test(id)) throw new Error('event_id 格式不對');
+    var j = await apiJson('https://www.googleapis.com/calendar/v3/calendars/primary/events/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(calBody(a, false)) });
+    return calEvt(j);
+  }
+  async function docsWrite(docId, text, mode) {
+    needScope('docs', 'Docs'); docId = String(docId || '').trim();
+    if (!/^[A-Za-z0-9_-]{10,200}$/.test(docId)) throw new Error('doc_id 格式不對');
+    var d = await apiJson('https://docs.googleapis.com/v1/documents/' + docId + '?fields=title,body(content(endIndex))');
+    var cs = (d.body && d.body.content) || [], end = cs.length ? (cs[cs.length - 1].endIndex || 2) : 2, reqs = [], t = String(text == null ? '' : text);
+    if (mode === 'replace') { if (end > 2) reqs.push({ deleteContentRange: { range: { startIndex: 1, endIndex: end - 1 } } }); reqs.push({ insertText: { location: { index: 1 }, text: t } }); }
+    else reqs.push({ insertText: { location: { index: end - 1 }, text: (end > 2 ? '\n' : '') + t } });
+    await apiJson('https://docs.googleapis.com/v1/documents/' + docId + ':batchUpdate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: reqs }) });
+    return { title: d.title || '', mode: mode === 'replace' ? 'replace' : 'append' };
+  }
   function b64dec(x) { try { var b = atob(x.replace(/-/g, '+').replace(/_/g, '/')); return decodeURIComponent(escape(b)); } catch (e) { try { return atob(x.replace(/-/g, '+').replace(/_/g, '/')); } catch (e2) { return ''; } } }
   function bodyOf(p) {
     if (!p) return ''; var plain = '', html = '';
@@ -435,7 +493,7 @@
         '<label class="block text-xs text-slate-400">Client ID（Web 應用程式類型）</label><input id="ng-cid" class="' + IN + '" value="' + esc(c.id) + '" placeholder="xxxx.apps.googleusercontent.com">' +
         '<label class="block text-xs text-slate-400">Client Secret</label><input id="ng-sec" type="password" class="' + IN + '" value="' + esc(c.secret) + '">' +
         '<label class="block text-xs text-slate-400">轉址 URI（需先登錄到該用戶端的「已授權的重新導向 URI」）</label><input id="ng-red" class="' + IN + '" value="' + esc(c.redir) + '">' +
-        '<div class="flex flex-wrap gap-3 text-xs">' + ['drive', 'gmail', 'gmailmod', 'docs'].map(function (k) { return '<label class="flex items-center gap-1"><input type="checkbox" class="ng-sc" value="' + k + '"' + (sel.indexOf(k) !== -1 ? ' checked' : '') + '> ' + { drive: 'Drive（完整，才能讀到桌面版建立的同步檔）', gmail: 'Gmail 唯讀', gmailmod: 'Gmail 寫入（草稿／寄信／垃圾桶；含讀取）', docs: 'Docs' }[k] + '</label>'; }).join('') + '</div>' +
+        '<div class="flex flex-wrap gap-3 text-xs">' + ['drive', 'gmail', 'gmailmod', 'calendar', 'docs'].map(function (k) { return '<label class="flex items-center gap-1"><input type="checkbox" class="ng-sc" value="' + k + '"' + (sel.indexOf(k) !== -1 ? ' checked' : '') + '> ' + { drive: 'Drive（完整，才能讀到桌面版建立的同步檔）', gmail: 'Gmail 唯讀', gmailmod: 'Gmail 寫入（草稿／寄信／垃圾桶；含讀取）', calendar: '行事曆（讀／新增／修改事件）', docs: 'Docs' }[k] + '</label>'; }).join('') + '</div>' +
         '<div class="flex gap-2"><button class="' + BTN + 'ng-sky" onclick="NovaGoogle._saveCfg();NovaGoogle.connect()">連接 Google</button>' + (connected() ? '<button class="' + BTN + 'ng-gray" onclick="NovaGoogle.disconnect()">中斷連接</button>' : '') + '</div>' +
         '<details class="text-xs text-slate-400"><summary>授權後沒有自動跳回 App？</summary><p class="my-2">轉址頁會顯示一串網址；複製整串貼到下面按「完成連接」。</p><input id="ng-paste" class="' + IN + '" placeholder="貼上轉址後的完整網址或 code"><button class="' + BTN + 'ng-gray mt-2" onclick="NovaGoogle._paste()">完成連接</button></details>' +
         '<p class="text-[11px] text-slate-500">個人自用提示：OAuth 同意畫面若維持「測試中」，授權每 7 天會過期；切到「正式版」（不必送審）會出現未驗證警告但可繼續，授權不會過期。Gmail／Drive 完整權限屬 Google 的「受限範圍」。</p>';
@@ -507,7 +565,7 @@
   function open(t) { ensureModal(); if (t) tab = t; var m = D.getElementById('nova-google-modal'); m.style.display = 'flex'; render(); }
   function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
   W.NovaGoogle = { _raw: api, _token: accessToken, _has: has, _connected: connected, _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
-    gmailList: gmailList, gmailRead: gmailRead, gmailDraft: gmailDraft, gmailSend: gmailSend, gmailTrash: gmailTrash, grantedList: grantedList, _buildRaw: buildRaw, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
+    gmailList: gmailList, gmailRead: gmailRead, gmailDraft: gmailDraft, gmailSend: gmailSend, gmailTrash: gmailTrash, calendarList: calendarList, calendarCreate: calendarCreate, calendarUpdate: calendarUpdate, docsWrite: docsWrite, grantedList: grantedList, _buildRaw: buildRaw, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
     _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
 
   /* 入口：+選單按鈕、設定頁按鈕、深度連結 */

@@ -1,11 +1,16 @@
-/* [NOVA Android] nova-bots-ui.js — 由 NOVA Desktop 同名檔案（v1.2.0）移植。
-   Android 移植版本紀錄：v1.0.0-android.1 - 只改三處文字／標示：① 儲存狀態列改成手機用語（資料存在 App 內，不再提 sidecar）；② 排程區說明改成「手機版暫不支援排程」；
-     ③ 工具勾選項目對 NB.UNSUPPORTED 內的工具加上「（手機版不支援）」並維持可勾選（設定仍會和桌面版同步，只是手機上不會執行）。 */
+/* [NOVA Android] nova-bots-ui.js — 由 NOVA Desktop 同名檔案（v1.4.0）移植。
+   Android 移植版本紀錄：
+     v1.1.0-android.1 (2026-11-08) - 改移植桌面版 v1.4.0（進階動作總開關／次數上限、transit／ext／power 工具群組）。與桌面版的差異：① 儲存狀態列改成手機用語；② 排程區說明改成「手機版暫不支援排程」；
+       ③ 工具勾選項目對 NB.UNSUPPORTED 內的工具加上「（手機版不支援）」並維持可勾選；④「交通 API」區塊改成直接用 NovaTransit（TDX 金鑰存在手機本機、會隨「同步專家與 Bot」同步，不再走 sidecar），
+       並新增「建立大眾運輸專家」按鈕（呼叫膠水層的 createTransitExpert）；⑤ 進階動作說明文字改成手機版有的項目。
+     v1.0.0-android.1 (2026-11-07) - 移植桌面版 v1.2.0。 */
 /* ═══════════════════════════════════════════════════════════════════
- * nova-bots-ui.js  v1.2.0  —  「多 Bot 模式」設定介面（專家管理視窗裡的「🤖 多 Bot」分頁）
- * 最後更新：2026-11-06
+ * nova-bots-ui.js  v1.4.0  —  「多 Bot 模式」設定介面（專家管理視窗裡的「🤖 多 Bot」分頁）
+ * 最後更新：2026-11-08
  *
  * 版本紀錄（只記這個檔案自己的變更）：
+ *   v1.4.0 (2026-11-08) 配合 nova-bots.js v1.5.0：設定區新增「⚡ 進階動作總開關」（預設關）與「每個任務進階動作次數上限」；每位 Bot 的工具清單多「進階唯讀」「進階動作」兩個群組（進階動作標紅色，並提醒每次都會問、排程不執行）。
+ *   v1.3.0 (2026-11-08) 新增「交通 API（TDX 金鑰）」區塊（搭配 nova-bots.js v1.4.0、nova_transit.py v1.0.0）：填 TDX Client ID／Secret、儲存、測試連線；金鑰只存 sidecar 本機檔，不同步、不顯示。每位 Bot 的工具清單多一個「大眾運輸」群組。
  *   v1.2.0 (2026-11-07) 配合 nova-bots.js v1.2.0 的討論／審稿：設定區新增「討論最多幾人／幾輪」「整批討論與審稿發言總數（0＝關閉）」「每個任務最多送審幾次（0＝關閉）」「發言／審稿的步數上限」；Bot 的「可交辦他人」改名「可交辦／邀請討論／送審」。
  *   v1.1.0 (2026-11-06) 配合 nova-bots.js v1.1.0 的寫入工具：設定區新增「寫入總開關」（預設關）、「每個任務寫入次數上限」、「手動派工前先讓我確認」；工具面板新增紅色「寫入動作」群組；說明文字從「全部唯讀」改成低風險免確認、高風險每次確認、排程不執行高風險。
  *   v1.0.0 (2026-11-06) 初版。內容：① 模式開關（關閉時分頁只剩開關與說明，其餘功能完全不出現）；② 多 Bot 設定（步數／交辦深度／交辦數／總任務數／呼叫上限／記憶／每日排程上限）；
@@ -15,7 +20,7 @@
  * ═══════════════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
-  var API = { VERSION: '1.0.0', _tok: 0 };
+  var API = { VERSION: '1.4.0', _tok: 0 };
 
   function fmtTime(ms) {
     if (!ms) return '—';
@@ -93,8 +98,10 @@
     num('memoryCap', '每位 Bot 最多存幾則記憶', '超過刪最舊的（釘選不刪）', 20, 2000);
     num('dailyCap', '每日排程執行次數上限', '所有排程合計', 1, 500);
     num('maxWrites', '每個任務寫入次數上限', '0＝不能寫；0–30', 0, 30);
+    num('maxPower', '每個任務進階動作次數上限', 'Python／Shell（Termux）／MCP／技能；0–50', 0, 50);
     sel('autoRemember', '任務結束自動寫工作紀錄', '', [['true', '是'], ['false', '否']]);
     sel('schedulerOn', '執行排程', '', [['true', '是'], ['false', '否（暫停所有排程）']]);
+    sel('powerEnabled', '⚡ 進階動作總開關', 'Python／Shell（Termux 橋接）／MCP 呼叫／技能執行；每次都會問你（排程手機版不支援）', [['false', '關閉'], ['true', '開啟（仍需逐 Bot 勾選）']]);
     sel('writeEnabled', '✍️ 寫入總開關', '關閉時所有 Bot 都不能寫入', [['false', '關閉（唯讀）'], ['true', '開啟（仍需逐 Bot 勾選）']]);
     sel('confirmDispatch', '手動派工前先讓我確認', '關閉＝拆好任務直接開工（拆解有問題才跳視窗）', [['true', '是'], ['false', '否（直接開工）']]);
     s2.appendChild(grid);
@@ -104,10 +111,50 @@
     save.onclick = function () {
       c.saveSettings({ maxSteps: f.maxSteps.value, maxDepth: f.maxDepth.value, maxFanout: f.maxFanout.value, maxParticipants: f.maxParticipants.value, maxRounds: f.maxRounds.value, maxDiscussTurns: f.maxDiscussTurns.value, maxReviews: f.maxReviews.value, turnSteps: f.turnSteps.value, maxTasks: f.maxTasks.value, maxCalls: f.maxCalls.value,
         memoryTopN: f.memoryTopN.value, memoryCap: f.memoryCap.value, dailyCap: f.dailyCap.value, autoRemember: f.autoRemember.value === 'true', schedulerOn: f.schedulerOn.value === 'true',
-        maxWrites: f.maxWrites.value, writeEnabled: f.writeEnabled.value === 'true', confirmDispatch: f.confirmDispatch.value === 'true' });
+        maxWrites: f.maxWrites.value, maxPower: f.maxPower.value, powerEnabled: f.powerEnabled.value === 'true', writeEnabled: f.writeEnabled.value === 'true', confirmDispatch: f.confirmDispatch.value === 'true' });
       toast('✅ 多 Bot 設定已儲存'); c.onChanged();
     };
     saveRow.append(reset, save); s2.appendChild(saveRow);
+
+    // ②b 交通 API（TDX 金鑰）——Android：直接用 NovaTransit（金鑰存手機本機，隨「同步專家與 Bot」同步）
+    var s2b = section('交通 API（TDX 金鑰）', '「大眾運輸專家」與一般聊天查高鐵／台鐵／捷運／公車用（交通部 TDX 官方 API）。金鑰存在這支手機，並會隨「同步專家與 Bot」同步到其他裝置（同步檔在你的 Google 雲端硬碟，金鑰是明文，請留意）；不會出現在對話裡。填好後，到下面該專家的「🔧 工具 → 大眾運輸」勾選才會生效。');
+    var NT = window.NovaTransit;
+    if (!NT) {
+      s2b.appendChild(mk('div', 'font-size:12px;color:#f59e0b;', '交通模組（nova-transit.js）沒有載入。'));
+    } else {
+      var tmsg = mk('div', 'font-size:12px;color:' + T.muted + ';margin-top:6px;white-space:pre-wrap;', '');
+      var tg = mk('div', 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:4px 14px;');
+      var tidW = mk('div'); tidW.appendChild(c.labelEl('Client ID', 'TDX 會員中心 → 資料服務 → API 金鑰'));
+      var tid = mk('input', c.fieldStyle()); tid.type = 'text'; tid.autocomplete = 'off'; tidW.appendChild(tid);
+      var tsW = mk('div'); tsW.appendChild(c.labelEl('Client Secret', '留空＝不修改已存的'));
+      var tsec = mk('input', c.fieldStyle()); tsec.type = 'password'; tsec.autocomplete = 'new-password'; tsW.appendChild(tsec);
+      tg.append(tidW, tsW); s2b.appendChild(tg);
+      var trow = mk('div', 'display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;margin-top:8px;');
+      var tmk = mk('button', c.btnStyle(false), '＋ 建立「大眾運輸專家」');
+      var tsave = mk('button', c.btnStyle(true), '儲存金鑰');
+      var ttest = mk('button', c.btnStyle(false), '測試連線');
+      var showKeys = function () {
+        var k = NT.keys();
+        tid.placeholder = k.client_id ? '已設定（留空＝不修改）' : '尚未設定';
+        tsec.placeholder = k.client_secret ? '已設定（留空＝不修改）' : '尚未設定';
+        tmsg.textContent = (k.client_id && k.client_secret) ? '✅ 金鑰已設定。可按「測試連線」確認。' : '尚未設定金鑰。';
+      };
+      tsave.onclick = function () {
+        var body = {}; if (tid.value.trim()) body.client_id = tid.value.trim(); if (tsec.value.trim()) body.client_secret = tsec.value.trim();
+        if (!Object.keys(body).length) { tmsg.textContent = '沒有輸入新值，未修改。'; return; }
+        NT.setKeys(body); tid.value = ''; tsec.value = ''; toast('✅ TDX 金鑰已儲存'); showKeys();
+      };
+      ttest.onclick = function () {
+        tmsg.textContent = '測試中…';
+        NT.test().then(function (d) { tmsg.textContent = (d.ok ? '✅ ' : '❌ ') + d.message; });
+      };
+      tmk.onclick = function () {
+        if (!c.createTransitExpert) { toast('這個版本沒有提供建立功能'); return; }
+        c.createTransitExpert().then(function (r) { toast(r && r.created ? '✅ 已建立「大眾運輸專家」，並勾好交通工具' : '✅ 「大眾運輸專家」已存在，已確認交通工具為勾選狀態'); c.rerender(); }).catch(fail);
+      };
+      trow.append(tmk, ttest, tsave); s2b.appendChild(trow); s2b.appendChild(tmsg);
+      showKeys();
+    }
 
     // ③ 每位 Bot
     var experts = c.experts();
@@ -134,7 +181,7 @@
       var groups = NB.TOOL_GROUPS;
       Object.keys(groups).forEach(function (g) {
         var ks = Object.keys(NB.TOOLS).filter(function (k) { return NB.TOOLS[k].group === g; });
-        var gl = mk('div', 'font-size:11px;font-weight:700;margin:6px 0 2px 0;color:' + (g === 'write' ? '#ef4444' : g === 'personal' ? '#f59e0b' : T.muted) + ';', (g === 'write' ? '✍️ ' : g === 'personal' ? '⚠️ ' : '') + groups[g]);
+        var gl = mk('div', 'font-size:11px;font-weight:700;margin:6px 0 2px 0;color:' + (g === 'write' || g === 'power' ? '#ef4444' : g === 'personal' ? '#f59e0b' : T.muted) + ';', (g === 'write' ? '✍️ ' : g === 'power' ? '⚡ ' : g === 'personal' ? '⚠️ ' : '') + groups[g]);
         panel.appendChild(gl);
         var wrap = mk('div', 'display:flex;flex-wrap:wrap;');
         ks.forEach(function (k) {
