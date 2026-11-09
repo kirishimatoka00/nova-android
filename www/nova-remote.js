@@ -1,7 +1,12 @@
 /* ═════════════════════════════════════════════
    nova-remote.js — NOVA Android「電腦遙控」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.128。手機當「控制台」：對標桌面 v3.122.0 的常駐大腦與 nova-console.html。上方多一個「🧠」按鈕，在「完整網頁殼（/app/）」與
+            「收件匣／待批准控制台（/app/nova-console.html：允許／拒絕 Bot 想做的高風險動作、看收件匣與成品、交辦工作給電腦上的 Bot、看工作狀態、刪除永遠允許規則）」之間切換；
+            設定頁多一個「🧠 收件匣／待批准」按鈕直接開控制台。控制台跟 /app 同一個來源，沿用同一組配對（沒配對時控制台會提示先到完整網頁殼配對）。
+            電腦端需要 desktop-patch v3.122.0 以上，web 資料夾要有 nova-console.html；舊版電腦開控制台會顯示 404，切回完整網頁殼即可。
+            對外新增 NovaRemote.openConsole()、window.openRemoteConsole()。
    v1.0.0 - 批次 8（App v2.6.32）。對標桌面版「手機遠端存取」：桌面版 Python 引擎（sidecar，預設 8000 埠）在 /app/ 提供完整的 NOVA 網頁殼，
             手機用瀏覽器開 http://<電腦位址>:8000/app 就能操作電腦端 nova-desktop（配對碼、任務狀態、遠端指令、金鑰留在電腦）。
             這支把那個頁面「內嵌」進手機版的全螢幕頁面：① 輸入電腦位址（Tailscale／同網段 IP；可存多組、記住上次用的）② 連線測試（GET /app/）
@@ -11,7 +16,7 @@
    ═════════════════════════════════════════════ */
 (function (W) {
     'use strict';
-    var VERSION = '1.0.0', LS_HOSTS = 'nova_remote_hosts', LS_LAST = 'nova_remote_last', LS_AUTO = 'nova_remote_auto';
+    var VERSION = '1.1.0', LS_HOSTS = 'nova_remote_hosts', LS_LAST = 'nova_remote_last', LS_AUTO = 'nova_remote_auto';
     function lsGet(k, d) { try { var v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } }
     function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
     function mk(tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt != null) e.textContent = txt; return e; }
@@ -49,8 +54,9 @@
 
     var ov = null;
     function close() { if (ov) { ov.remove(); ov = null; } }
-    function open(urlArg) {
+    function open(urlArg, opts) {
         close();
+        var page = (opts && opts.console) ? 'console' : 'app';   // v1.1.0：完整網頁殼／收件匣控制台
         ov = mk('div', 'position:fixed;inset:0;z-index:100000;display:flex;flex-direction:column;background:var(--nv-canvas,#020617);color:var(--nv-text,#e2e8f0);'); ov.id = 'nova-remote-overlay';
         var bar = mk('div', 'display:flex;align-items:center;gap:6px;padding:calc(env(safe-area-inset-top,0px) + 8px) 10px 8px;border-bottom:1px solid var(--nv-line,#1e293b);flex:none;');
         var title = mk('div', 'flex:1;min-width:0;font-weight:800;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', '🖥️ 電腦遙控');
@@ -58,7 +64,14 @@
         var bReload = ib('⟳', '重新整理', function () { if (frame && frame.src) frame.src = frame.src; });
         var bSwitch = ib('⇄', '換電腦位址', function () { showConnect(); });
         var bClose = ib('✕', '關閉', close);
-        bar.append(title, bReload, bSwitch, bClose);
+        var bConsole = ib('🧠', '收件匣／待批准', function () {   // v1.1.0
+            page = page === 'console' ? 'app' : 'console';
+            bConsole.style.background = page === 'console' ? 'rgba(147,51,234,.35)' : 'transparent';
+            if (frame && curUrl) showFrame(curUrl);
+        });
+        bConsole.style.background = page === 'console' ? 'rgba(147,51,234,.35)' : 'transparent';
+        bar.append(title, bConsole, bReload, bSwitch, bClose);
+        var curUrl = '';
         var body = mk('div', 'flex:1;min-height:0;position:relative;'); ov.append(bar, body); document.body.appendChild(ov);
         var frame = null;
 
@@ -68,7 +81,8 @@
             frame.setAttribute('allow', 'clipboard-read; clipboard-write; microphone; camera; fullscreen');
             var load = mk('div', 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;opacity:.7;pointer-events:none;', '連線中…'); body.append(frame, load);
             frame.onload = function () { load.remove(); };
-            frame.src = url + '/app/';
+            curUrl = url;
+            frame.src = url + (page === 'console' ? '/app/nova-console.html' : '/app/');   // v1.1.0
         }
         function showConnect(msg) {
             frame = null; title.textContent = '🖥️ 電腦遙控'; body.textContent = '';
@@ -107,9 +121,11 @@
         el.appendChild(mk('div', 'font-size:12px;opacity:.75;line-height:1.5;', '把電腦上的 NOVA Desktop 網頁殼內嵌進來遠端操作（配對碼、任務狀態、遠端指令）。需要電腦端 NOVA 引擎在跑，且手機能連到電腦（Tailscale／同網段）。'));
         var hs = getHosts(); el.appendChild(mk('div', 'font-size:13px;margin-top:10px;', hs.length ? '已存電腦：' + hs.map(function (h) { return h.replace(/^https?:\/\//, ''); }).join('、') : '尚未連過任何電腦'));
         var b = mk('button', BTNP + 'width:100%;margin-top:12px;', '🖥️ 開啟電腦遙控'); b.type = 'button'; b.onclick = function () { open(); }; el.appendChild(b);
+        var b2 = mk('button', BTN + 'width:100%;margin-top:8px;', '🧠 收件匣／待批准（電腦上的 Bot）'); b2.type = 'button'; b2.onclick = function () { open(null, { console: true }); }; el.appendChild(b2);   // v1.1.0
     }
     W.openRemoteDesktop = function () { open(); };
+    W.openRemoteConsole = function () { open(null, { console: true }); };   // v1.1.0
     W.novaRemoteRenderSettings = renderSettings;
-    W.NovaRemote = { open: open, close: close, test: test, getHosts: getHosts, _normalize: normalize, VERSION: VERSION };
+    W.NovaRemote = { open: open, openConsole: function () { open(null, { console: true }); }, close: close, test: test, getHosts: getHosts, _normalize: normalize, VERSION: VERSION };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderSettings); else setTimeout(renderSettings, 800);
 })(window);

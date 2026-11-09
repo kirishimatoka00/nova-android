@@ -1,13 +1,37 @@
-/* [NOVA Android] nova-bots.js — 由 NOVA Desktop 同名檔案（v1.5.0）移植（純邏輯、不碰 DOM／appState）。
+/* [NOVA Android] nova-bots.js — 由 NOVA Desktop 同名檔案（v1.6.0）移植（純邏輯、不碰 DOM／appState）。
    Android 移植版本紀錄：
+     v1.2.0-android.1 (2026-11-09，App v2.6.128) - 改移植桌面版 v1.6.0（原生 function calling、待批准、哨兵、稽核、用量上限、向量記憶、團隊共用記憶、inbox_summary、chat 任務類型）。
+       與桌面版的差異仍只有兩處（皆標有「Android」）：① API.UNSUPPORTED；② 計算可用工具時排除 UNSUPPORTED。
+       ★ 手機版目前沒有共用 agent 核心（NovaAgentCore）與常駐大腦，所以：工具呼叫走原本的 JSON 協定、高風險動作照舊「有人在場確認、沒人在場不執行」、
+         記憶用關鍵字挑選、inbox_summary 由膠水層列為不支援——行為跟 v1.1.0-android.1 相同。這次移植的主要目的是「設定與記憶格式跟桌面一致」：
+         normalizeSettings 現在保留 toolMode／sentinelOn／sentinelModel／vectorMemory／teamMemory，手機存設定或同步時不會再把桌面的這些設定蓋回預設值；
+         團隊共用記憶（Bot id __team__，team_recall／team_remember）手機也能用、也會同步。
      v1.1.0-android.1 (2026-11-08) - 改移植桌面版 v1.5.0（新增大眾運輸 transit 群組、進階唯讀 ext、進階動作 power、calendar／docs 寫入）。與桌面版唯一的差異仍是兩處（皆標有「Android」）：
        ① API.UNSUPPORTED；② 計算可用工具時排除 UNSUPPORTED。工具目錄與設定檔格式完全不動（含 powerEnabled／maxPower），同步到桌面不會被改掉。
      v1.0.0-android.1 (2026-11-07) - 移植桌面版 v1.3.0，加入 API.UNSUPPORTED（手機版沒有的工具由 nova-experts-glue.js 填入）。 */
 /* ═══════════════════════════════════════════════════════════════════
- * nova-bots.js  v1.5.0  —  「多 Bot 模式」引擎（純邏輯，不碰 DOM／appState）
- * 最後更新：2026-11-08
+ * nova-bots.js  v1.6.0  —  「多 Bot 模式」引擎（純邏輯，不碰 DOM／appState）
+ * 最後更新：2026-11-09
  *
  * 版本紀錄（只記這個檔案自己的變更）：
+ *   v1.6.0 (2026-11-09) 接上共用 agent 核心與常駐大腦（搭配 nova-agent-core.js v1.0.0、nova_brain.py v1.0.0、main.py v0.8.66、index.html desktop-patch v3.122.0）：
+ *     ① 原生 function calling＋平行呼叫（settings.toolMode='native'，預設）：Gemini 與 OpenAI 模型改用各家原生的工具呼叫（NovaAgentCore.runToolLoop），
+ *        同一輪模型要多個唯讀工具時平行執行，寫入／進階動作依序；交辦、討論、審稿、交成品（finish）也是函式。第一輪就因格式不支援而失敗時自動退回舊的 JSON 協定；
+ *        Grok 模型與 toolMode='json' 維持舊協定。
+ *     ② 沒人在場（排程／事件／例行工作／批准後接續）遇到高風險動作：不再一律拒絕，改成送進常駐大腦的「待批准佇列」（deps.queueApproval），
+ *        任務先以目前成果收尾，成品註明等待批准；你在桌面、手機或 Telegram 批准後，膠水層會執行該動作並交給同一位 Bot 接續。
+ *     ③ 永遠允許規則（deps.ruleCheck）：符合規則的高風險動作免確認、沒人在場也可執行（仍經過哨兵）。
+ *     ④ 哨兵審查（settings.sentinelOn，預設開）：每個寫入／進階動作執行前，用另一次模型呼叫只看「使用者原始指示＋動作」判斷；block＝不執行、
+ *        warn＝即使低風險或有規則也要人確認（沒人在場就送待批准）。原始指示一路往下傳（task.rootInstruction），被交辦的子任務也用最上游使用者的指示判斷，
+ *        事件任務只用你設定的監看器指示（事件內容是外部資料，不算指示）。
+ *     ⑤ 稽核：每次工具呼叫（含唯讀、被拒絕、送待批准）都送一筆到大腦稽核（deps.audit）。
+ *     ⑥ 用量上限：開工前問大腦這位 Bot 今天還能不能用（deps.usageCheck）；每次模型呼叫回報 tokens（deps.usageAdd）。
+ *     ⑦ 向量記憶（settings.vectorMemory，預設開）：記憶多於要帶入的則數時，改用嵌入向量的語意相似度挑選（＋關鍵字＋近期，釘選優先），
+ *        向量快取在大腦（/brain/vec/*），只有新增或改過的記憶才重算；嵌入失敗自動退回原本的關鍵字挑選。recall 工具同樣適用。
+ *     ⑧ 團隊共用記憶（settings.teamMemory，預設開）：新工具 team_recall／team_remember（存在 Bot id「__team__」），開工時另外帶入最相關的 4 則團隊記憶。
+ *     ⑨ 新工具 inbox_summary：讀收件匣與待批准摘要（晨間簡報用）。新任務類型 chat：群組頻道的對話式回覆（不套報告格式）。
+ *     【誠實限制】原生 function calling、平行、待批准、哨兵、向量記憶都只用假模型／假工具在 node 驗證（tools/tests/bots-v16.test.cjs）；
+ *       沒有用真實 Gemini／OpenAI 測過，也沒有在使用者的 exe 上跑過。
  *   v1.5.0 (2026-11-08) 開放 NOVA 其他已知工具給 Bot 逐項勾選（使用者要求「所有已知可用的工具」放進 Bot 設定；搭配 index.html desktop-patch v3.117.0、nova-bots-ui.js v1.4.0；sidecar 不用改）：
  *     【三級】① 進階唯讀（ext，預設不勾）：firecrawl_scrape／search／map／crawl／crawl_status、browser_tabs／text／dom／console／read_all、memory_core_get_all、mcp_list（列出已連線的 MCP 伺服器與工具）、skill_list（列出技能）、desktop_read（桌面觀察：observe／uia_tree／uia_find／windows／apps）；
  *       ② 低風險寫入（沿用寫入總開關）：calendar_create（新增行事曆事件，低）、calendar_update（修改既有事件，高）、docs_write（Google 文件；附加＝低、取代全文＝高）；
@@ -55,7 +79,7 @@
  * ═══════════════════════════════════════════════════════════════════ */
 (function (global) {
   'use strict';
-  var API = { VERSION: '1.5.0' };
+  var API = { VERSION: '1.6.0' };
 
   // ───────────────────────── 工具目錄（全部唯讀） ─────────────────────────
   // group：base＝預設開啟；data＝公開資料查詢（預設開啟）；personal＝讀你的信件／行事曆／雲端硬碟（預設關閉，逐 Bot 勾選）
@@ -87,6 +111,10 @@
     outlook_email_read:   { group: 'personal', via: 'native', label: 'Outlook 讀信', keys: ['entry_id', 'max_chars'], args: '{"entry_id":"…"}', desc: '讀一封 Outlook 信件內容（唯讀）。' },
     outlook_calendar_list:{ group: 'personal', via: 'native', label: 'Outlook 行事曆', keys: ['range'], args: '{"range":"day"}', desc: '列出 Outlook 行事曆（唯讀）。' }
   };
+  // ★ v1.6.0：團隊共用記憶、收件匣摘要（唯讀，base 群組）
+  TOOLS.team_recall =   { group: 'base', via: 'dep', label: '查團隊記憶', keys: ['query'], args: '{"query":"關鍵字"}', desc: '搜尋所有 Bot 共用的團隊記憶（使用者的偏好、專案事實、共同約定）。' };
+  TOOLS.team_remember = { group: 'base', via: 'dep', label: '記到團隊記憶', keys: ['text'], args: '{"text":"所有同事都該知道的一件事（一句話）"}', desc: '把值得所有 Bot 共用的事實或使用者偏好寫進團隊記憶（每個任務與 remember 合計最多 3 則）。' };
+  TOOLS.inbox_summary = { group: 'base', via: 'dep', label: '收件匣摘要', keys: [], args: '{}', desc: '讀 NOVA 收件匣：未讀成品、事件通知、等待使用者批准的動作（晨間簡報、回報進度時用）。' };
   // ── 寫入工具（v1.1.0）：group:'write'、via:'write'；risk＝low／high／dyn（依參數決定，見 riskOf）──
   TOOLS.gmail_draft =         { group: 'write', via: 'write', risk: 'low',  label: 'Gmail 存草稿', keys: ['to', 'subject', 'body'], args: '{"to":"a@b.com","subject":"主旨","body":"內文"}', desc: '建立 Gmail 草稿（不寄出，使用者自己到 Gmail 決定要不要送）。' };
   TOOLS.gmail_send =          { group: 'write', via: 'write', risk: 'high', label: 'Gmail 寄信', keys: ['to', 'cc', 'bcc', 'subject', 'body'], args: '{"to":"a@b.com","subject":"主旨","body":"內文"}', desc: '直接寄出一封新郵件。每次都會請使用者看過內容並按允許才寄；排程執行時不可用。' };
@@ -157,7 +185,12 @@
     maxPower: 10,       // 每個任務最多執行幾次進階動作
     writeEnabled: false,// 寫入總開關（預設關；關閉時即使 Bot 勾了寫入工具也不能寫）
     maxWrites: 5,       // 每個任務最多寫入幾次（含被拒絕的嘗試以外的實際執行）
-    confirmDispatch: true // 多 Bot 手動派工前是否跳確認視窗
+    confirmDispatch: true, // 多 Bot 手動派工前是否跳確認視窗
+    toolMode: 'native', // ★ v1.6.0 native＝各家原生 function calling（平行）；json＝舊的 JSON 協定
+    sentinelOn: true,   // ★ v1.6.0 寫入／進階動作執行前的哨兵審查
+    sentinelModel: '',  // ★ v1.6.0 哨兵用的模型（空＝跟隨預設模型）
+    vectorMemory: true, // ★ v1.6.0 記憶挑選用嵌入向量
+    teamMemory: true    // ★ v1.6.0 團隊共用記憶
   };
   API.DEFAULT_SETTINGS = DEFAULT_SETTINGS;
   function clampInt(v, lo, hi, d) { v = parseInt(v, 10); if (isNaN(v)) return d; return Math.max(lo, Math.min(hi, v)); }
@@ -184,7 +217,12 @@
       powerEnabled: s.powerEnabled === true,
       maxPower: clampInt(s.maxPower, 0, 50, DEFAULT_SETTINGS.maxPower),
       maxWrites: clampInt(s.maxWrites, 0, 30, DEFAULT_SETTINGS.maxWrites),
-      confirmDispatch: s.confirmDispatch !== false
+      confirmDispatch: s.confirmDispatch !== false,
+      toolMode: s.toolMode === 'json' ? 'json' : 'native',
+      sentinelOn: s.sentinelOn !== false,
+      sentinelModel: String(s.sentinelModel || '').slice(0, 80),
+      vectorMemory: s.vectorMemory !== false,
+      teamMemory: s.teamMemory !== false
     };
   }
   API.normalizeSettings = normalizeSettings;
@@ -300,6 +338,55 @@
   }
   API.buildMemoryBlock = buildMemoryBlock;
 
+  // ── ★ v1.6.0：向量記憶 ──
+  var TEAM_ID = '__team__';
+  API.TEAM_ID = TEAM_ID;
+  function hashText(s) { s = String(s || ''); var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + ':' + s.length; }
+  function cosine(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    var d = 0, na = 0, nb = 0;
+    for (var i = 0; i < a.length; i++) { d += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+    return (na && nb) ? d / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+  }
+  API._cosine = cosine;
+  // deps：embedQuery(text)→向量、embedDocs(texts)→向量陣列、vecGet(ns, model, ids)→{id:{h,v}}、vecPut(ns, model, items, keepIds)、embedModel
+  async function pickMemory(notes, query, topN, deps, settings, ns) {
+    notes = (notes || []).filter(function (n) { return n && n.text; });
+    topN = clampInt(topN, 0, 30, 10);
+    var base = selectMemory(notes, query, topN);
+    if (!settings || !settings.vectorMemory || !deps || !deps.embedQuery || !deps.vecGet || notes.length <= topN || !topN) return base;
+    try {
+      var model = deps.embedModel || 'embed';
+      var qv = await deps.embedQuery(String(query || '').slice(0, 2000));
+      if (!qv || !qv.length) return base;
+      var ids = notes.map(function (n) { return n.id; });
+      var have = (await deps.vecGet(ns, model, ids)) || {};
+      var need = notes.filter(function (n) { return !have[n.id] || have[n.id].h !== hashText(n.text); }).slice(0, 48);
+      if (need.length && deps.embedDocs) {
+        var vs = await deps.embedDocs(need.map(function (n) { return n.text; }));
+        var put = {};
+        need.forEach(function (n, i) { if (vs && vs[i] && vs[i].length) { have[n.id] = { h: hashText(n.text), v: vs[i] }; put[n.id] = have[n.id]; } });
+        if (Object.keys(put).length && deps.vecPut) { try { var pp = deps.vecPut(ns, model, put, ids); if (pp && pp.catch) pp.catch(function () { /* ignore */ }); } catch (e) { /* ignore */ } }
+      }
+      var q = tokenSet(query);
+      var pinned = notes.filter(function (n) { return n.pinned; }).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, Math.max(1, Math.ceil(topN / 2)));
+      var pinnedIds = {}; pinned.forEach(function (n) { pinnedIds[n.id] = 1; });
+      var rest = notes.filter(function (n) { return !pinnedIds[n.id]; });
+      var byTs = rest.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+      var rank = {}; byTs.forEach(function (n, i) { rank[n.id] = byTs.length > 1 ? i / (byTs.length - 1) : 1; });
+      var scored = rest.map(function (n) {
+        var cs = have[n.id] ? cosine(qv, have[n.id].v) : 0;
+        return { n: n, score: cs * 4 + Math.min(3, overlap(q, tokenSet(n.text))) * 0.3 + (rank[n.id] || 0) * 0.5 - (n.kind === 'log' ? 0.6 : 0) };
+      });
+      scored.sort(function (a, b) { return b.score - a.score; });
+      var picked = pinned.slice();
+      for (var i = 0; i < scored.length && picked.length < topN; i++) picked.push(scored[i].n);
+      picked._vector = true;
+      return picked;
+    } catch (e) { return base; }
+  }
+  API.pickMemory = pickMemory;
+
   // ───────────────────────── 提示詞 ─────────────────────────
   function toolsBlock(allowed, canDelegate, delegateTargets) {
     var lines = allowed.map(function (t) { return '- ' + t + (TOOLS[t].group === 'write' ? '（寫入）' : TOOLS[t].group === 'power' ? '（進階動作：每次都需使用者確認，排程時不執行）' : '') + '：' + TOOLS[t].desc + '　參數：' + TOOLS[t].args; });
@@ -328,6 +415,7 @@
       '- 一律使用繁體中文（台灣）。不要寒暄、不要反問使用者；資訊不足時做合理假設並在成品開頭用一行註明。';
   }
   function finalFormat(type) {
+    if (type === 'chat') return '輸出格式：這是群組頻道裡的對話，用自然、口語的繁體中文直接回覆（不要用報告格式、不要標題）；需要時可以交辦或邀請同事討論，最後把要對使用者說的話完整交出。引用查到的資料時簡短標明來源。';
     if (type === 'turn') return '輸出格式：直接給出你的發言內容（不要標題、不要寒暄），300 字內，結論先講；引用到查證的資料要標明來源。若你沒有任何補充或異議，就只輸出「（無補充）」。審稿時第一行只寫 PASS 或 REVISE。';
     return '成品格式：以 `## ` 標題開頭，依序為「摘要（3~5 行）」「正文（分章節；比較類用表格）」「結論與建議」「待確認／缺少的資料」。引用到工具查到的內容時標明來源（網站名稱、文件名稱、信件主旨等）。' +
       (type === 'research' ? '這是研究類任務，結論要附上你實際查到的來源。' : '');
@@ -351,6 +439,83 @@
     return '\n\n【你已經做過的步驟與結果】\n' + out.join('\n\n');
   }
 
+  // ───────────────────────── ★ v1.6.0：原生 function calling 迴圈 ─────────────────────────
+  var CTRL_FNS = {
+    finish: { label: '交出成品', desc: '任務完成時呼叫：text＝完整成品（Markdown，照任務要求的格式）；remember＝（可省略）最多 2 則值得長期記住的事實或使用者偏好，每則一句話。', keys: ['text', 'remember'], args: '{"text":"## 標題…","remember":["一句話"]}', required: ['text'] },
+    delegate: { label: '交辦', desc: '把「別人更擅長的獨立子任務」交給同事。對方看不到你的對話，instruction 要完整具體（含背景與期望的輸出）。wait=true 會等對方交出成果再繼續；false＝不等（成果另外貼給使用者）。', keys: ['to', 'title', 'instruction', 'type', 'wait'], args: '{"to":"同事名稱","title":"6~14 字標題","instruction":"完整要求","type":"report","wait":true}', required: ['to', 'instruction'] },
+    discuss: { label: '邀請討論', desc: '只有需要不同立場互相挑戰的決策、證據互相矛盾、高風險成品時才用：邀請 1–N 位同事就一個題目輪流發言，你會拿到完整討論紀錄。', keys: ['with', 'topic', 'context', 'rounds'], args: '{"with":["同事A"],"topic":"具體問題","context":"背景與你的看法","rounds":2}', required: ['with', 'topic'] },
+    review: { label: '送審', desc: '把草稿送給另一位同事審查，對方回 PASS 或 REVISE＋修改意見，修改由你自己做。', keys: ['reviewer', 'draft', 'criteria'], args: '{"reviewer":"同事名稱","draft":"完整草稿","criteria":"審查重點"}', required: ['reviewer', 'draft'] }
+  };
+  API.CTRL_FNS = CTRL_FNS;
+  function nativeGuide(allowed, canDelegate, targets) {
+    var hasWrite = allowed.some(function (t) { return TOOLS[t].group === 'write' || TOOLS[t].group === 'power'; });
+    var s = '\n\n【工具使用方式】直接呼叫提供給你的函式。可以一次呼叫多個互不相依的查詢類工具（系統會同時執行）；需要前一步結果的再分開呼叫。' +
+      (hasWrite ? '會改變外部資料的寫入／進階動作只在使用者的任務明確要求時才用，會先經過安全檢查；被拒絕或送去等待批准時如實寫進成品，不要重試。' : '') +
+      '資訊夠了就呼叫 finish 交出成品。';
+    if (canDelegate && targets.length) {
+      s += '\n【可交辦的同事】' + targets.map(function (b) { return b.displayName + '（' + clip(String(b.role || '').replace(/\s+/g, ' '), 40) + '）'; }).join('、') +
+        '\n只有在任務明顯包含別人更擅長的獨立子任務時才交辦；能自己做就自己做。討論與送審只用在需要不同立場挑戰、證據矛盾或高風險成品時。';
+    }
+    return s;
+  }
+  function isParallelSafe(name) {
+    var d = TOOLS[name];
+    if (!d) return false;
+    if (d.group === 'write' || d.group === 'power') return false;
+    if (name === 'remember' || name === 'team_remember' || name === 'desktop_read') return false;
+    return true;
+  }
+  // o：{ ctx, Core, prov, model, persona, header, allowed, canDelegate, targets, sources, kbNames, rememberBox, usedTools, steps }
+  async function runNativeLoop(o) {
+    var ctx = o.ctx, task = ctx.task, settings = ctx.settings, deps = ctx.deps, Core = o.Core;
+    var decls = [];
+    o.allowed.forEach(function (t) { var d = Core.schemaFor(t, o.prov, TOOLS[t]); if (d) decls.push(d); });
+    var ctrl = ['finish'].concat(o.canDelegate ? ['delegate'].concat(settings.maxDiscussTurns > 0 ? ['discuss'] : []).concat(settings.maxReviews > 0 && settings.maxDiscussTurns > 0 ? ['review'] : []) : []);
+    ctrl.forEach(function (k) { decls.push(Core.schemaFor(k, o.prov, CTRL_FNS[k])); });
+    var sys = o.persona + nativeGuide(o.allowed, o.canDelegate, o.targets) + rulesBlock().replace('- 不要重複用相同參數呼叫同一個工具；資訊夠了就收尾。', '- 不要重複用相同參數呼叫同一個工具；資訊夠了就呼叫 finish。');
+    var sig = {}, first = true;
+    var cctx = { allowed: o.allowed, bot: ctx.bot, profile: ctx.profile, deps: deps, task: task, rememberBox: o.rememberBox, settings: settings, sources: o.sources, kbNames: o.kbNames, taskId: task.id, source: ctx.source || '' };
+    var res = await Core.runToolLoop({
+      provider: o.prov, model: o.model, system: sys,
+      userText: o.header + '\n\n（完成時呼叫 finish；最多 ' + settings.maxSteps + ' 輪工具呼叫）',
+      decls: decls, maxSteps: settings.maxSteps, maxOutputTokens: 8000,
+      thinkingConfig: deps.thinkingConfig ? deps.thinkingConfig(o.model, 'low') : null,
+      isCancelled: ctx.isCancelled,
+      parallelSafe: isParallelSafe,
+      callRaw: async function (prov, payload, meta) {
+        try { var r = await ctx.callRaw(prov, payload, { model: o.model, tag: 'Bot：' + task.title, taskId: task.id, round: meta && meta.round }); first = false; return r; }
+        catch (e) {
+          // 第一輪就 400（不支援 tools／schema 被拒）：讓上層退回 JSON 協定
+          if (first && e && (e.status === 400 || /function|tool|schema|declaration|INVALID_ARGUMENT/i.test(String(e.message || ''))) && !e.budget && !e.cancelled) { e.nativeUnsupported = true; }
+          throw e;
+        }
+      },
+      execOne: async function (name, args) {
+        var key = name + '|' + JSON.stringify(args || {});
+        if (sig[key]) return { ok: false, text: '你已經用相同參數呼叫過這個工具，結果在前面。請改用不同的方式，或呼叫 finish。' };
+        sig[key] = 1;
+        if (name === 'delegate' || name === 'discuss' || name === 'review') {
+          if (!o.canDelegate) return { ok: false, text: '你現在不能交辦／邀請討論／送審。請自己完成。' };
+          var payload = Object.assign({}, args);
+          if (name === 'discuss' && typeof payload.with === 'string') payload.with = payload.with.split(/[、,，]/);
+          var txt = await ctx.batch[name](task, payload, ctx);
+          o.steps.push({ label: (name === 'delegate' ? '交辦' : name === 'discuss' ? '討論' : '送審') + '：' + clip(String(args.title || args.topic || args.reviewer || args.to || ''), 30), resultText: txt });
+          return { ok: true, text: txt };
+        }
+        task.note = '使用工具：' + (TOOLS[name] ? TOOLS[name].label : name); if (deps.onTaskUpdate) { try { deps.onTaskUpdate(task); } catch (e1) { /* ignore */ } }
+        var a = Core.coerceArgs(name, args, TOOLS[name]);
+        var t0 = (deps.now || Date.now)();
+        var tr = await execTool(name, a, cctx);
+        o.usedTools.push({ tool: name, ok: tr.ok, ms: (deps.now || Date.now)() - t0, chars: tr.text.length });
+        o.steps.push({ label: (TOOLS[name] ? TOOLS[name].label : name) + ' ' + clip(JSON.stringify(a), 120) + (tr.ok ? '' : '（失敗）'), resultText: tr.text });
+        return { ok: tr.ok, text: tr.text };
+      }
+    });
+    if (res.final) return { final: { text: res.final.text, remember: res.final.remember || [] } };
+    return { final: null };
+  }
+  API._runNativeLoop = runNativeLoop;
+
   // ───────────────────────── 單一任務：工具迴圈 ─────────────────────────
   function BudgetError(msg) { var e = new Error(msg); e.budget = true; return e; }
   function CancelError() { var e = new Error('cancelled'); e.cancelled = true; return e; }
@@ -360,93 +525,124 @@
     var task = ctx.task, bot = ctx.bot, profile = ctx.profile, settings = ctx.settings, deps = ctx.deps, batch = ctx.batch;
     var store = deps.store;
     var now = (deps.now || Date.now)();
+    if (!task.rootInstruction) task.rootInstruction = task.instruction;   // ★ v1.6.0：哨兵判斷用的「使用者原始指示」
 
-    // 1) 記憶
+    // 0) ★ v1.6.0 用量上限（大腦沒開或查不到就不擋）
+    if (deps.usageCheck) {
+      var uc = null; try { uc = await deps.usageCheck(bot.id); } catch (e0) { uc = null; }
+      if (uc && uc.ok === false) throw new Error('已達用量上限：' + (uc.reason || '今天不能再用') + '（可在多 Bot 設定 → 用量上限調整）');
+    }
+
+    // 1) 記憶（★ v1.6.0：向量＋關鍵字＋近期；另帶團隊記憶）
     var notes = [];
     if (profile.memory && store && settings.memoryTopN > 0) {
       try { var m = await store.memGet(bot.id); notes = (m && m.notes) || []; } catch (e) { notes = []; task.note = '讀取記憶失敗：' + ((e && e.message) || e); }
     }
-    var picked = selectMemory(notes, task.title + ' ' + task.instruction, settings.memoryTopN);
+    var q0 = task.title + ' ' + task.instruction;
+    var picked = await pickMemory(notes, q0, settings.memoryTopN, deps, settings, 'mem_' + bot.id);
     var memBlock = buildMemoryBlock(picked, now);
-    task.memoryUsed = picked.length;
+    var teamPicked = [];
+    if (profile.memory && store && settings.teamMemory && settings.memoryTopN > 0) {
+      try { var tm = await store.memGet(TEAM_ID); teamPicked = await pickMemory((tm && tm.notes) || [], q0, Math.min(4, settings.memoryTopN), deps, settings, 'mem_' + TEAM_ID); } catch (e) { teamPicked = []; }
+      if (teamPicked.length) memBlock += '\n\n【團隊共用記憶（所有同事共享，可能已過時；與這次的指示衝突時以指示為準）】\n' + teamPicked.map(function (n) { return '- ' + clip(n.text, 300); }).join('\n');
+    }
+    task.memoryUsed = picked.length + teamPicked.length;
 
     // 2) 可用工具
-    var allowed = profile.tools.filter(function (t) { return TOOLS[t] && API.UNSUPPORTED.indexOf(t) < 0 && (profile.memory || (t !== 'recall' && t !== 'remember')) && (TOOLS[t].group !== 'write' || settings.writeEnabled) && (TOOLS[t].group !== 'power' || settings.powerEnabled); });
+    var allowed = profile.tools.filter(function (t) { return TOOLS[t] && API.UNSUPPORTED.indexOf(t) < 0 && (profile.memory || (t !== 'recall' && t !== 'remember' && t !== 'team_recall' && t !== 'team_remember')) && (settings.teamMemory || (t !== 'team_recall' && t !== 'team_remember')) && (TOOLS[t].group !== 'write' || settings.writeEnabled) && (TOOLS[t].group !== 'power' || settings.powerEnabled); });
     var canDelegate = !!(profile.canDelegate && !task.noDelegate && settings.maxDepth > 0 && (task.depth || 0) < settings.maxDepth && batch);
     var targets = canDelegate ? batch.delegateTargets(task) : [];
     if (!targets.length) canDelegate = false;
 
-    var sys = '你是「' + bot.displayName + '」。' + (bot.role ? '\n【你的角色】\n' + bot.role : '') + (bot.knowledge ? '\n【你的專業知識與立場】\n' + bot.knowledge : '') +
-      memBlock + '\n\n' + toolsBlock(allowed, canDelegate, targets) + protocolBlock(canDelegate) + rulesBlock();
+    var persona = '你是「' + bot.displayName + '」。' + (bot.role ? '\n【你的角色】\n' + bot.role : '') + (bot.knowledge ? '\n【你的專業知識與立場】\n' + bot.knowledge : '') + memBlock;
+    var sys = persona + '\n\n' + toolsBlock(allowed, canDelegate, targets) + protocolBlock(canDelegate) + rulesBlock();
 
     var steps = [], sig = {}, dupHits = 0, rememberLeft = 3, sources = [], kbNames = {}, usedTools = [], badJson = 0;
     var header = '【任務】' + task.title + '\n【詳細要求】\n' + task.instruction + upstreamBlock(ctx.upstream) + '\n\n' + finalFormat(task.type);
     var model = deps.resolveModel ? deps.resolveModel(bot.model || ctx.workerModel || '') : (bot.model || ctx.workerModel || deps.defaultModel);
     var finalObj = null, forced = false;
+    var rememberBox = { left: rememberLeft };
 
-    for (var step = 1; step <= settings.maxSteps + 2 && !finalObj; step++) {   // 超過 maxSteps 的 2 步是「強制收尾」，給模型兩次機會
-      if (ctx.isCancelled()) throw CancelError();
-      forced = (step > settings.maxSteps) || dupHits >= 3;
-      var tail = forced ? '\n\n【現在必須收尾】請立刻輸出 {"action":"final",…}，用你目前已有的資訊完成成品；缺的資訊寫進「待確認」。'
-        : '\n\n請輸出下一步的 JSON。（目前第 ' + step + ' 步，最多 ' + settings.maxSteps + ' 步）';
-      var res;
+    // 2b) ★ v1.6.0：原生 function calling（Gemini／OpenAI）；第一輪就因格式不支援失敗時退回 JSON 協定
+    var Core = global.NovaAgentCore, prov = Core ? Core.providerOf(model) : '';
+    if (settings.toolMode === 'native' && Core && ctx.callRaw && (prov === 'gemini' || prov === 'openai')) {
       try {
-        res = await ctx.callModel({ model: model, system: sys, text: header + historyBlock(steps) + tail, json: true, thinking: 'low', maxOutputTokens: 8000, tag: 'Bot：' + task.title, taskId: task.id });
-      } catch (e) {
-        if (e && e.budget) { finalObj = { text: partialReport(task, steps, '已達本批次模型呼叫上限'), partial: true }; break; }
-        throw e;
+        var nat = await runNativeLoop({ ctx: ctx, Core: Core, prov: prov, model: model, persona: persona, header: header, allowed: allowed, canDelegate: canDelegate, targets: targets,
+          sources: sources, kbNames: kbNames, rememberBox: rememberBox, usedTools: usedTools, steps: steps });
+        if (nat.final) finalObj = nat.final;
+        task.toolMode = 'native';
+      } catch (en) {
+        if (en && (en.cancelled || en.budget)) { if (en.budget) finalObj = { text: partialReport(task, steps, '已達本批次模型呼叫上限'), partial: true }; else throw en; }
+        else if (en && en.nativeUnsupported) { task.note = '原生工具呼叫不可用，改用 JSON 協定：' + clip(en.message, 80); task.toolMode = 'json'; steps.length = 0; usedTools.length = 0; }
+        else throw en;
       }
-      var raw = String((res && res.text) || '').trim();
-      if (res && Array.isArray(res.sources)) res.sources.forEach(function (s) { if (s && s.uri) sources.push({ title: s.title || s.uri, uri: s.uri }); });
-      var obj = safeJsonParse(raw);
-      if (!obj || typeof obj !== 'object' || !obj.action) {
-        badJson++;
-        if (badJson >= 2 || forced) {
-          // 模型不遵守 JSON 協定：把原文當成品，避免白做
-          if (raw.length >= 80) { finalObj = { text: raw.replace(/^```(?:json|markdown)?\s*/i, '').replace(/```\s*$/i, ''), lax: true }; break; }
-          throw new Error('Bot 沒有輸出有效的 JSON 步驟，也沒有可用的文字成品');
+      rememberLeft = rememberBox.left;
+    }
+    if (!finalObj && task.toolMode !== 'native') {
+      for (var step = 1; step <= settings.maxSteps + 2 && !finalObj; step++) {   // 超過 maxSteps 的 2 步是「強制收尾」，給模型兩次機會
+        if (ctx.isCancelled()) throw CancelError();
+        forced = (step > settings.maxSteps) || dupHits >= 3;
+        var tail = forced ? '\n\n【現在必須收尾】請立刻輸出 {"action":"final",…}，用你目前已有的資訊完成成品；缺的資訊寫進「待確認」。'
+          : '\n\n請輸出下一步的 JSON。（目前第 ' + step + ' 步，最多 ' + settings.maxSteps + ' 步）';
+        var res;
+        try {
+          res = await ctx.callModel({ model: model, system: sys, text: header + historyBlock(steps) + tail, json: true, thinking: 'low', maxOutputTokens: 8000, tag: 'Bot：' + task.title, taskId: task.id });
+        } catch (e) {
+          if (e && e.budget) { finalObj = { text: partialReport(task, steps, '已達本批次模型呼叫上限'), partial: true }; break; }
+          throw e;
         }
-        steps.push({ label: '（格式錯誤）', resultText: '你上一次的輸出不是有效的 JSON 步驟。請只輸出一個 JSON 物件。' });
-        continue;
-      }
-      var act = String(obj.action);
-      if (act === 'final') {
-        var ftxt = String(obj.text == null ? '' : obj.text).trim();
-        if (!ftxt) { steps.push({ label: '（final 沒有內容）', resultText: 'final 的 text 不可為空。請輸出完整成品。' }); continue; }
-        finalObj = { text: ftxt, remember: Array.isArray(obj.remember) ? obj.remember : [] };
-        break;
-      }
-      if (forced) { steps.push({ label: '（忽略）', resultText: '已達上限，這一步不再執行任何動作，請直接輸出 final。' }); continue; }
-      if (act === 'tool') {
-        var tn = String(obj.tool || ''), targs = (obj.args && typeof obj.args === 'object') ? obj.args : {};
-        var key = tn + '|' + JSON.stringify(targs);
-        if (sig[key]) {
-          dupHits++;
-          steps.push({ label: tn + '（重複）', resultText: '你已經用相同參數呼叫過這個工具，結果在前面的步驟裡。請改用不同的方式，或直接輸出 final。' });
+        var raw = String((res && res.text) || '').trim();
+        if (res && Array.isArray(res.sources)) res.sources.forEach(function (s) { if (s && s.uri) sources.push({ title: s.title || s.uri, uri: s.uri }); });
+        var obj = safeJsonParse(raw);
+        if (!obj || typeof obj !== 'object' || !obj.action) {
+          badJson++;
+          if (badJson >= 2 || forced) {
+            // 模型不遵守 JSON 協定：把原文當成品，避免白做
+            if (raw.length >= 80) { finalObj = { text: raw.replace(/^```(?:json|markdown)?\s*/i, '').replace(/```\s*$/i, ''), lax: true }; break; }
+            throw new Error('Bot 沒有輸出有效的 JSON 步驟，也沒有可用的文字成品');
+          }
+          steps.push({ label: '（格式錯誤）', resultText: '你上一次的輸出不是有效的 JSON 步驟。請只輸出一個 JSON 物件。' });
           continue;
         }
-        sig[key] = 1;
-        task.note = '使用工具：' + (TOOLS[tn] ? TOOLS[tn].label : tn); if (deps.onTaskUpdate) { try { deps.onTaskUpdate(task); } catch (e1) { /* ignore */ } }
-        var t0 = (deps.now || Date.now)();
-        var tr = await execTool(tn, targs, { allowed: allowed, bot: bot, profile: profile, deps: deps, task: task, rememberBox: { left: rememberLeft }, settings: settings, sources: sources, kbNames: kbNames, taskId: task.id, source: ctx.source || '' });
-        rememberLeft = tr.rememberLeft;
-        usedTools.push({ tool: tn, ok: tr.ok, ms: (deps.now || Date.now)() - t0, chars: tr.text.length });
-        steps.push({ label: (TOOLS[tn] ? TOOLS[tn].label : tn) + ' ' + clip(JSON.stringify(targs), 120) + (tr.ok ? '' : '（失敗）'), resultText: tr.text });
-        continue;
+        var act = String(obj.action);
+        if (act === 'final') {
+          var ftxt = String(obj.text == null ? '' : obj.text).trim();
+          if (!ftxt) { steps.push({ label: '（final 沒有內容）', resultText: 'final 的 text 不可為空。請輸出完整成品。' }); continue; }
+          finalObj = { text: ftxt, remember: Array.isArray(obj.remember) ? obj.remember : [] };
+          break;
+        }
+        if (forced) { steps.push({ label: '（忽略）', resultText: '已達上限，這一步不再執行任何動作，請直接輸出 final。' }); continue; }
+        if (act === 'tool') {
+          var tn = String(obj.tool || ''), targs = (obj.args && typeof obj.args === 'object') ? obj.args : {};
+          var key = tn + '|' + JSON.stringify(targs);
+          if (sig[key]) {
+            dupHits++;
+            steps.push({ label: tn + '（重複）', resultText: '你已經用相同參數呼叫過這個工具，結果在前面的步驟裡。請改用不同的方式，或直接輸出 final。' });
+            continue;
+          }
+          sig[key] = 1;
+          task.note = '使用工具：' + (TOOLS[tn] ? TOOLS[tn].label : tn); if (deps.onTaskUpdate) { try { deps.onTaskUpdate(task); } catch (e1) { /* ignore */ } }
+          var t0 = (deps.now || Date.now)();
+          var tr = await execTool(tn, targs, { allowed: allowed, bot: bot, profile: profile, deps: deps, task: task, rememberBox: rememberBox, settings: settings, sources: sources, kbNames: kbNames, taskId: task.id, source: ctx.source || '' });
+          rememberLeft = tr.rememberLeft;
+          usedTools.push({ tool: tn, ok: tr.ok, ms: (deps.now || Date.now)() - t0, chars: tr.text.length });
+          steps.push({ label: (TOOLS[tn] ? TOOLS[tn].label : tn) + ' ' + clip(JSON.stringify(targs), 120) + (tr.ok ? '' : '（失敗）'), resultText: tr.text });
+          continue;
+        }
+        if (act === 'delegate') {
+          if (!canDelegate) { steps.push({ label: '交辦（不可用）', resultText: '你現在不能交辦（沒有權限、已達深度上限，或沒有可交辦的同事）。請自己完成。' }); continue; }
+          var dr = await batch.delegate(task, obj, ctx);
+          steps.push({ label: '交辦給 ' + clip(String(obj.to || ''), 20) + '：' + clip(String(obj.title || ''), 30), resultText: dr });
+          continue;
+        }
+        if (act === 'discuss' || act === 'review') {
+          if (!canDelegate) { steps.push({ label: (act === 'discuss' ? '討論' : '審稿') + '（不可用）', resultText: '你現在不能邀請同事討論或送審（沒有權限、已達深度上限，或沒有同事可邀請）。請自己完成。' }); continue; }
+          var xr = await batch[act](task, obj, ctx);
+          steps.push({ label: act === 'discuss' ? '討論：' + clip(String(obj.topic || ''), 30) : '送審給 ' + clip(String(obj.reviewer || obj.to || ''), 20), resultText: xr });
+          continue;
+        }
+        steps.push({ label: '（未知動作）', resultText: '未知的 action「' + clip(act, 20) + '」。只能是 tool／' + (canDelegate ? 'delegate／discuss／review／' : '') + 'final。' });
       }
-      if (act === 'delegate') {
-        if (!canDelegate) { steps.push({ label: '交辦（不可用）', resultText: '你現在不能交辦（沒有權限、已達深度上限，或沒有可交辦的同事）。請自己完成。' }); continue; }
-        var dr = await batch.delegate(task, obj, ctx);
-        steps.push({ label: '交辦給 ' + clip(String(obj.to || ''), 20) + '：' + clip(String(obj.title || ''), 30), resultText: dr });
-        continue;
-      }
-      if (act === 'discuss' || act === 'review') {
-        if (!canDelegate) { steps.push({ label: (act === 'discuss' ? '討論' : '審稿') + '（不可用）', resultText: '你現在不能邀請同事討論或送審（沒有權限、已達深度上限，或沒有同事可邀請）。請自己完成。' }); continue; }
-        var xr = await batch[act](task, obj, ctx);
-        steps.push({ label: act === 'discuss' ? '討論：' + clip(String(obj.topic || ''), 30) : '送審給 ' + clip(String(obj.reviewer || obj.to || ''), 20), resultText: xr });
-        continue;
-      }
-      steps.push({ label: '（未知動作）', resultText: '未知的 action「' + clip(act, 20) + '」。只能是 tool／' + (canDelegate ? 'delegate／discuss／review／' : '') + 'final。' });
     }
     if (!finalObj) finalObj = { text: partialReport(task, steps, '步驟用完仍沒有收尾'), partial: true };
 
@@ -467,7 +663,8 @@
     sources.forEach(function (s) { if (!seen[s.uri]) { seen[s.uri] = 1; srcs.push(s); } });
     return {
       kind: 'agent', text: d.text, defanged: d.changed, sources: srcs.slice(0, 12), kbNames: Object.keys(kbNames).slice(0, 6),
-      steps: usedTools, stepCount: steps.length, memoryUsed: picked.length, memoryAdded: added, partial: !!finalObj.partial, lax: !!finalObj.lax
+      steps: usedTools, stepCount: steps.length, memoryUsed: task.memoryUsed || picked.length, memoryAdded: added, partial: !!finalObj.partial, lax: !!finalObj.lax,
+      toolMode: task.toolMode || 'json', awaitingApproval: (task.awaitingApproval || []).slice(), vectorMemory: !!picked._vector
     };
   }
   API.runAgentTask = runAgentTask;
@@ -529,6 +726,52 @@
     else if (name === 'file_write') { add('路徑', a.path); add('覆蓋', (a.overwrite === true || a.overwrite === 'true') ? '是' : ''); add('內容', clip(a.content, 1500)); }
     return lines.join('\n');
   }
+  // ★ v1.6.0：沒有人在場的來源
+  function isUnattended(c) { var s0 = c && c.source; return s0 === 'schedule' || s0 === 'event' || s0 === 'routine' || s0 === 'approval' || s0 === 'remote'; }
+  API._isUnattended = isUnattended;
+  // ★ v1.6.0：寫入／進階動作的統一把關（規則 → 哨兵 → 政策 → 確認／待批准）。回傳 { go:true, risk, how } 或 { go:false, text }
+  async function gate(name, def, a, c, risk, kind, detail) {
+    var deps = c.deps, settings = c.settings || {}, t = c.task || {};
+    var attended = !isUnattended(c);
+    var ruleAllowed = false, rule = null;
+    if (deps.ruleCheck && risk === 'high') {
+      try { var rc = await deps.ruleCheck(c.bot && c.bot.id, name, a); ruleAllowed = !!(rc && rc.allowed); rule = rc && rc.rule; } catch (e) { ruleAllowed = false; }
+    }
+    var sv = null;
+    if (settings.sentinelOn && deps.sentinel) {
+      try { sv = await deps.sentinel({ instruction: t.rootInstruction || t.instruction, taskTitle: t.title, botName: c.bot && c.bot.displayName, tool: name, label: def.label, detail: detail, args: a, model: settings.sentinelModel }); }
+      catch (e) { if (e && e.cancelled) throw e; sv = { verdict: 'warn', reason: '哨兵失敗：' + ((e && e.message) || e) }; }
+    }
+    var Core = global.NovaAgentCore;
+    var ev = Core ? Core.evaluate({ risk: risk, attended: attended, ruleAllowed: ruleAllowed, sentinel: sv })
+      : (risk !== 'high' ? { action: 'run' } : attended ? { action: 'confirm' } : { action: 'deny', reason: '沒有人在場' });
+    c._gate = { decision: ev.action, sentinel: sv ? sv.verdict : '', rule: rule ? rule.id : '' };
+    if (ev.action === 'deny') return { go: false, text: '這個動作被安全檢查擋下，沒有執行：' + (ev.reason || '') + '。不要重試；請在成品「待確認」如實說明。' };
+    if (ev.action === 'run') return { go: true, how: ruleAllowed && risk === 'high' ? 'rule' : 'auto', sentinel: sv };
+    if (ev.action === 'confirm') {
+      if (!deps.confirmAction) return { go: false, text: '沒有確認介面，「' + def.label + '」不執行。' };
+      var okc = false;
+      try {
+        okc = await deps.confirmAction({ tool: name, label: def.label, risk: risk, kind: kind, botName: c.bot && c.bot.displayName, botId: c.bot && c.bot.id, taskTitle: t.title, taskId: t.id,
+          detail: detail, args: a, sentinel: sv, instruction: t.rootInstruction || t.instruction });
+      } catch (e) { if (e && e.cancelled) throw e; okc = false; }
+      if (okc && typeof okc === 'object') okc = okc.ok;
+      if (!okc) return { go: false, text: '使用者拒絕（或沒有回應）「' + def.label + '」。不要重試同一個動作；請在成品「待確認」如實註明沒有執行。' };
+      return { go: true, how: 'confirmed', sentinel: sv };
+    }
+    // queue：沒人在場 → 待批准
+    if (!deps.queueApproval) return { go: false, text: '這是沒有人在場時執行的任務，高風險動作「' + def.label + '」不執行。請把要做的事寫進成品「待確認」，等使用者手動處理。' };
+    var q = null;
+    try {
+      q = await deps.queueApproval({ tool: name, label: def.label, kind: kind, risk: risk, args: a, detail: detail, bot_id: c.bot && c.bot.id, bot_name: c.bot && c.bot.displayName,
+        task_title: t.title, task_id: t.id, source: c.source || '', instruction: t.rootInstruction || t.instruction, sentinel: sv, session_id: t.sessionId || '' });
+    } catch (e) { q = null; }
+    if (!q || !q.id) return { go: false, text: '沒有人在場，且無法送出待批准（常駐大腦沒有回應），「' + def.label + '」不執行。請寫進成品「待確認」。' };
+    t.awaitingApproval = (t.awaitingApproval || []).concat([q.id]);
+    return { go: false, queued: true, text: '已送出「待批准」（編號 ' + q.id + '）：使用者批准後系統會自動執行這個動作，並把結果交給你接續。現在不要重試，也不要用其他工具繞過；請先完成其餘部分，並在成品開頭註明「等待批准：' + def.label + '」。' };
+  }
+  API._gate = gate;
+
   async function execWrite(name, def, a, c, out) {
     var deps = c.deps, settings = c.settings || {};
     if (!settings.writeEnabled) return out(false, '寫入功能的總開關是關閉的（多 Bot 設定 → 寫入總開關）。請在成品的「待確認」註明沒有執行，並把要寫入的內容放在成品裡讓使用者自己處理。');
@@ -543,15 +786,9 @@
       probe = pr && pr.data ? pr.data : (pr || {});
     }
     var risk = riskOf(name, a, probe);
-    if (risk === 'high') {
-      if (c.source === 'schedule') return out(false, '這是排程（沒有人在場）執行的任務，高風險動作「' + def.label + '」一律不執行。請把要做的事寫進成品「待確認」，等使用者手動處理。');
-      if (!deps.confirmAction) return out(false, '沒有確認介面，高風險動作「' + def.label + '」不執行。');
-      var okc = false;
-      try {
-        okc = await deps.confirmAction({ tool: name, label: def.label, risk: 'high', botName: c.bot && c.bot.displayName, taskTitle: t.title, detail: describeWrite(name, a), args: a });
-      } catch (e) { if (e && e.cancelled) throw e; okc = false; }
-      if (!okc) return out(false, '使用者拒絕（或沒有回應）「' + def.label + '」。不要重試同一個動作；請在成品「待確認」如實註明沒有執行。');
-    }
+    c._risk = risk;
+    var g = await gate(name, def, a, c, risk, 'write', describeWrite(name, a));   // ★ v1.6.0：規則／哨兵／確認／待批准
+    if (!g.go) return out(false, g.text);
     var wr = await deps.callWrite(name, a);
     var ok = !(wr && wr.success === false);
     if (ok) t.writes++;
@@ -600,15 +837,9 @@
       if (!probe || !probe.found) return out(false, '找不到 MCP 伺服器「' + clip(a.server, 40) + '」的工具「' + clip(a.tool, 40) + '」（伺服器沒連線，或名稱不對）。請先用 mcp_list 查。');
     }
     var risk = name === 'mcp_call' ? riskOf(name, a, probe) : 'high';
-    if (risk === 'high') {
-      if (c.source === 'schedule') return out(false, '這是排程（沒有人在場）執行的任務，高風險動作「' + def.label + '」一律不執行。請把要做的事寫進成品「待確認」，等使用者手動處理。');
-      if (!deps.confirmAction) return out(false, '沒有確認介面，高風險動作「' + def.label + '」不執行。');
-      var okc = false;
-      try {
-        okc = await deps.confirmAction({ tool: name, label: def.label, risk: 'high', kind: 'power', botName: c.bot && c.bot.displayName, taskTitle: t.title, detail: describePower(name, a), args: a });
-      } catch (e) { if (e && e.cancelled) throw e; okc = false; }
-      if (!okc) return out(false, '使用者拒絕（或沒有回應）「' + def.label + '」。不要重試同一個動作；請在成品「待確認」如實註明沒有執行。');
-    }
+    c._risk = risk;
+    var g = await gate(name, def, a, c, risk, 'power', describePower(name, a));   // ★ v1.6.0
+    if (!g.go) return out(false, g.text);
     var pr = await deps.callPower(name, a);
     var ok = !(pr && pr.success === false);
     if (ok) t.powers++;
@@ -616,7 +847,26 @@
     if (deps.onWrite) { try { deps.onWrite({ tool: name, label: def.label, risk: risk, ok: ok, task: t, bot: c.bot, args: a, text: clip(txt, 300) }); } catch (e2) { /* ignore */ } }
     return out(ok, (ok ? '已執行「' + def.label + '」：' : '失敗：') + txt);
   }
+  // ★ v1.6.0：每次工具呼叫都寫稽核（含被拒絕、送待批准）
   async function execTool(name, args, c) {
+    var t0 = Date.now(), r = null, err = null;
+    c._gate = null; c._risk = '';
+    try { r = await execToolInner(name, args, c); return r; }
+    catch (e) { err = e; throw e; }
+    finally {
+      if (c.deps && c.deps.audit) {
+        try {
+          var a0 = args || {}, slim = {};
+          Object.keys(a0).slice(0, 12).forEach(function (k) { var v = a0[k]; slim[k] = typeof v === 'string' ? clip(v, 300) : (v && typeof v === 'object') ? clip(JSON.stringify(v), 300) : v; });
+          c.deps.audit({ bot_id: c.bot && c.bot.id, bot_name: c.bot && c.bot.displayName, task_id: c.task && c.task.id, task_title: c.task && clip(c.task.title, 60), source: c.source || 'manual',
+            tool: name, group: TOOLS[name] ? TOOLS[name].group : '', risk: c._risk || '', ok: !!(r && r.ok), ms: Date.now() - t0, args: slim,
+            decision: c._gate ? c._gate.decision : '', sentinel: c._gate ? c._gate.sentinel : '', rule: c._gate ? c._gate.rule : '',
+            error: err ? clip((err && err.message) || err, 200) : '', result: r ? clip(String(r.text || '').replace(UNTRUSTED, ''), 200) : '' });
+        } catch (e2) { /* ignore */ }
+      }
+    }
+  }
+  async function execToolInner(name, args, c) {
     var out = function (ok, text) {
       var full = UNTRUSTED + String(text == null ? '' : text);
       if (full.length > 7000) full = full.slice(0, 7000) + '\n〔⚠️ 以上內容因過長被截斷，實際資料比這裡看到的多；不可以用「看到幾筆」當作總數，需要完整資料請縮小範圍（日期／關鍵字）或分段再查〕';
@@ -631,10 +881,24 @@
       if (mm) a[kid] = mm;
     }
     try {
-      if (name === 'recall') {
-        var m = store ? await store.memGet(c.bot.id) : { notes: [] };
-        var hits = selectMemory((m && m.notes) || [], a.query || '', 8);
+      if (name === 'recall' || name === 'team_recall') {
+        var mid = name === 'team_recall' ? TEAM_ID : c.bot.id;
+        var m = store ? await store.memGet(mid) : { notes: [] };
+        var hits = await pickMemory((m && m.notes) || [], a.query || '', 8, deps, c.settings, 'mem_' + mid);   // ★ v1.6.0 向量
         return out(true, hits.length ? hits.map(function (n) { return '- ' + n.text; }).join('\n') : '（沒有相關記憶）');
+      }
+      if (name === 'team_remember') {
+        var tx2 = clip(String(a.text || '').trim(), 200);
+        if (!tx2) return out(false, 'text 不可為空。');
+        if (c.rememberBox.left <= 0) return out(false, '這個任務已經記了 3 則，不能再記。');
+        if (!store) return out(false, '沒有可用的記憶儲存。');
+        await store.memAdd(TEAM_ID, [{ text: tx2 + '（' + ((c.bot && c.bot.displayName) || 'Bot') + ' 記）', kind: 'fact', src: c.task.id }], c.settings.memoryCap);
+        c.rememberBox.left--;
+        return out(true, '已記到團隊記憶。');
+      }
+      if (name === 'inbox_summary') {
+        if (!deps.inboxSummary) return out(false, '收件匣不可用（常駐大腦沒有載入）。');
+        return out(true, await deps.inboxSummary());
       }
       if (name === 'remember') {
         var tx = clip(String(a.text || '').trim(), 200);
@@ -672,7 +936,7 @@
       if (def.via === 'ext') {
         if (!deps.callExt) return out(false, '這個工具不可用。');
         if (name === 'desktop_read') {
-          if (c.source === 'schedule') return out(false, '桌面觀察需要使用者在場授權，排程（沒有人在場）執行的任務不能使用。');
+          if (isUnattended(c)) return out(false, '桌面觀察需要使用者在場授權，沒有人在場（排程／事件）執行的任務不能使用。');
           if (!EXT_READ_OPS[String(a.op)]) return out(false, 'op 只能是 windows、observe、uia_tree、uia_find、apps。要操作請改用 desktop_act。');
         }
         var er = await deps.callExt(name, a);
@@ -738,8 +1002,40 @@
         if (cancelledId(task.id)) throw CancelError();
         if (stats.calls >= settings.maxCalls) throw BudgetError('已達本批次模型呼叫上限（' + settings.maxCalls + '）');
         stats.calls++; task.calls = (task.calls || 0) + 1;
-        try { return await deps.callModel(opts); }
+        try {
+          var res0 = await deps.callModel(opts);
+          if (deps.usageAdd) { try { var u0 = (res0 && res0.usage) || {}; deps.usageAdd(task.assigneeId, { calls: 1, in: u0.in || 0, out: u0.out || 0, model: opts && opts.model }); } catch (eu) { /* ignore */ } }   // ★ v1.6.0
+          return res0;
+        }
         catch (e) {
+          if (cancelledId(task.id)) throw CancelError();
+          if (attempt < 2 && isTransient(e) && !/使用者已手動停止/.test(String((e && e.message) || ''))) {
+            attempt++; task.note = '遇到暫時性錯誤，第 ' + attempt + ' 次重試…'; upd(task);
+            await sleep(attempt === 1 ? 3000 : 8000); continue;
+          }
+          throw e;
+        }
+      }
+    };
+
+    // ★ v1.6.0：原生 function calling 的原始呼叫（同樣計數、上限、暫時性錯誤重試、tokens 回報）
+    var rawCounted = async function (task, prov, payload, meta) {
+      var attempt = 0;
+      for (;;) {
+        if (cancelledId(task.id)) throw CancelError();
+        if (stats.calls >= settings.maxCalls) throw BudgetError('已達本批次模型呼叫上限（' + settings.maxCalls + '）');
+        stats.calls++; task.calls = (task.calls || 0) + 1;
+        try {
+          var raw = await deps.callRaw(prov, payload, meta || {});
+          if (deps.usageAdd) {
+            try {
+              var um = raw && raw.usageMetadata, uo = raw && raw.usage;
+              deps.usageAdd(task.assigneeId, { calls: 1, in: um ? (um.promptTokenCount || 0) : uo ? (uo.prompt_tokens || 0) : 0,
+                out: um ? (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0) : uo ? (uo.completion_tokens || 0) : 0, model: meta && meta.model });
+            } catch (eu) { /* ignore */ }
+          }
+          return raw;
+        } catch (e) {
           if (cancelledId(task.id)) throw CancelError();
           if (attempt < 2 && isTransient(e) && !/使用者已手動停止/.test(String((e && e.message) || ''))) {
             attempt++; task.note = '遇到暫時性錯誤，第 ' + attempt + ' 次重試…'; upd(task);
@@ -784,7 +1080,8 @@
           id: prefix + 'd' + (++stats.seq), title: title, assigneeId: to.id, assigneeName: to.displayName, type: type,
           instruction: instr + '\n\n（這項任務由「' + parent.assigneeName + '」交辦，原任務：' + parent.title + '。請完整交出成果，對方只看得到你的成品。）',
           dependsOn: [], status: 'pending', parentId: parent.id, delegatedBy: parent.assigneeName,
-          depth: (parent.depth || 0) + 1, ancestors: (parent.ancestors || []).concat([parent.assigneeId])
+          depth: (parent.depth || 0) + 1, ancestors: (parent.ancestors || []).concat([parent.assigneeId]),
+          rootInstruction: parent.rootInstruction || parent.instruction, sessionId: parent.sessionId || ''   // ★ v1.6.0 哨兵用最上游的使用者指示
         };
         parent.spawned = (parent.spawned || 0) + 1;
         var p = spawn(child);
@@ -801,7 +1098,8 @@
       var child = {
         id: prefix + 'd' + (++stats.seq), kind: 'turn', turnLabel: o.label, title: o.title, assigneeId: bot.id, assigneeName: bot.displayName, type: 'turn',
         instruction: o.instruction, dependsOn: [], status: 'pending', parentId: parent.id, delegatedBy: parent.assigneeName, noDelegate: true, noLog: true,
-        depth: (parent.depth || 0) + 1, ancestors: (parent.ancestors || []).concat([parent.assigneeId])
+        depth: (parent.depth || 0) + 1, ancestors: (parent.ancestors || []).concat([parent.assigneeId]),
+        rootInstruction: parent.rootInstruction || parent.instruction, sessionId: parent.sessionId || ''
       };
       stats.turns++;
       var p = spawn(child);
@@ -910,7 +1208,8 @@
             var upData = ups.map(function (u) { return { title: u.title, assigneeName: u.assigneeName, text: (u.result && u.result.text) || '' }; });
             var prof = profileOf(ex.id);
             var cx = { task: t, bot: ex, profile: prof, settings: t.kind === 'turn' ? turnSettings : settings, deps: xdeps, upstream: upData, batch: batchApi, slot: slot, workerModel: args.workerModel || '',
-              isCancelled: function () { return cancelledId(t.id); }, callModel: function (o) { return callCounted(t, o); }, source: args.source || '' };
+              isCancelled: function () { return cancelledId(t.id); }, callModel: function (o) { return callCounted(t, o); }, source: args.source || '',
+              callRaw: deps.callRaw ? function (prov, payload, meta) { return rawCounted(t, prov, payload, meta); } : null };
             if ((t.type === 'slides' || t.type === 'code') && deps.legacyExecute) {
               // 簡報／網頁：沿用原本的單次執行器，只多帶記憶
               var notes = [];

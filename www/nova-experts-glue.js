@@ -1,7 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.6.0
+   版本：v1.7.0
    版本紀錄：
+   v1.7.0 - App v2.6.128。對標桌面 v3.122.0～v3.123.0（nova-bots.js 改移植桌面 v1.6.0）：
+            ① 專家與 Bot 的 Drive 同步多帶「團隊共用記憶」（Bot id __team__）——桌面 v3.122.0 起會同步這份記憶，手機若不一起收集，
+               同步框架會把「手機這邊沒有」誤當成「手機刪掉了」而刪掉桌面的團隊記憶；現在兩邊一致。
+            ② inbox_summary（讀桌面常駐大腦的收件匣）列為手機不支援的工具（手機沒有常駐大腦；要看收件匣請用「電腦遙控 → 🧠 收件匣／待批准」）。
+            ③ 多 Bot 設定裡桌面新增的 toolMode／sentinelOn／sentinelModel／vectorMemory／teamMemory 會原樣保留並同步：nova-bots.js v1.2.0-android.1 的 normalizeSettings 保留這些欄位，
+               saveBSettings 改成跟目前設定合併後再存（手機的設定畫面沒有這些欄位，原本按「儲存」會把它們存成預設值）。
    v1.6.0 - App v2.6.125。對標桌面 v3.121.0：設了同步密語（nova-datasync.js v1.4.0）時 TDX 金鑰不再放進 NOVA_Bots_Sync.json，改走加密的 NOVA_Secrets_Sync.json；
             沒設密語時照舊明文，但「清空 TDX 金鑰」改成會傳播到另一台（原本不傳播）；NovaTransit 沒載入時標 __skip__，不會被當成刪除。
    v1.5.0 - App v2.6.124。移植桌面版 v3.117～v3.119：① 大眾運輸（TDX）：新工具 transit_thsr／transit_tra／transit_metro／transit_bus（nova-transit.js），管理視窗「＋ 建立大眾運輸專家」一鍵建立專家 x_transit 並勾好工具；
@@ -1284,7 +1290,8 @@ window.NovaExpertsGlue = (function () {
     // v1.5.0：依「現在有什麼」動態決定哪些工具不給模型（設定資料不動；補好條件後下次任務開始就自動可用）
     const BOT_ALWAYS_UNSUPPORTED = ['outlook_emails_list', 'outlook_email_read', 'outlook_calendar_list',   // 手機沒有 Outlook
         'browser_tabs', 'browser_text', 'browser_dom', 'browser_console', 'browser_read_all', 'browser_goto', 'browser_click', 'browser_fill', 'browser_new_tab',   // 手機沒有 NovaBrowser／外部 Chrome 連線
-        'desktop_read', 'desktop_act'];   // 桌面操作
+        'desktop_read', 'desktop_act',   // 桌面操作
+        'inbox_summary'];   // v1.7.0：手機沒有常駐大腦（收件匣在電腦上）
     const BOT_NEEDS_TERMUX = ['document_read', 'file_write', 'shell_run'];   // 走 Termux 橋接；沒設定橋接時排除（python_run 另有 Pyodide 備援，不在此列）
     const BOT_NEEDS_GMAILMOD = ['gmail_draft', 'gmail_send', 'gmail_trash'];   // 需要 Google「Gmail 寫入」授權
     const BOT_NEEDS_CAL = ['calendar_list', 'calendar_create', 'calendar_update'];   // 需要 Google「行事曆」授權
@@ -1321,7 +1328,7 @@ window.NovaExpertsGlue = (function () {
         renderBar();
     }
     function loadBSettings() { let s = null; try { s = JSON.parse(localStorage.getItem(K_BOTS_SET) || 'null'); } catch (e) { s = null; } return BOTS().normalizeSettings(s || {}); }
-    function saveBSettings(s) { try { localStorage.setItem(K_BOTS_SET, JSON.stringify(BOTS().normalizeSettings(s))); } catch (e) { /* ignore */ } botsChanged(); }
+    function saveBSettings(s) { try { localStorage.setItem(K_BOTS_SET, JSON.stringify(BOTS().normalizeSettings(Object.assign({}, loadBSettings(), s || {})))); } catch (e) { /* ignore */ } botsChanged(); }   // v1.7.0：跟目前設定合併——手機設定畫面沒有的欄位（桌面新增的哨兵、工具呼叫方式…）不會被存成預設值
     function getBotStore() {
         if (!BOTS_RT.storeP) BOTS_RT.storeP = Promise.resolve().then(function () { const s = BOTS().createLocalStore(localStorage); wrapBotStore(s); BOTS_RT.store = s; return s; });
         return BOTS_RT.storeP;
@@ -1798,6 +1805,7 @@ window.NovaExpertsGlue = (function () {
         const ids = custom ? raw.map(function (e) { return e && e.id; }).filter(Boolean) : ENG().defaultExperts().map(function (e) { return e.id; });
         // Bot 設定與記憶只跟著「還存在的專家」走：刪掉一位專家，它的設定與記憶也會在另一台一起被移除
         (await st.botList()).forEach(function (p) { if (!p || !p.id || ids.indexOf(p.id) < 0) return; const c = Object.assign({}, p); delete c.updated; L['profile/' + p.id] = c; });
+        if (BOTS().TEAM_ID) ids.push(BOTS().TEAM_ID);   // v1.7.0：團隊共用記憶也同步（桌面 v3.122.0 起）
         for (let i = 0; i < ids.length; i++) {
             const m = await st.memGet(ids[i]);
             ((m && m.notes) || []).forEach(function (n) { if (n && n.id) L['mem/' + ids[i] + '/' + n.id] = { id: n.id, ts: n.ts || 0, text: n.text || '', kind: n.kind || 'fact', pinned: !!n.pinned, src: n.src || '' }; });

@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.0.0
+   目前版本：v1.1.0
    最後更新：2026-11-09
 
    版本紀錄：
+   v1.1.0 - App v2.6.128：NOVA_APP_VERSION 改成 2.6.128、NOVA_CHANGELOG 加一筆（對標桌面 desktop-patch v3.122.0～v3.123.0：nova-bots.js 改移植桌面 v1.6.0、
+            nova-experts-glue.js v1.7.0 同步團隊共用記憶、nova-remote.js v1.1.0 手機控制台）。本檔其他程式沒有改動。
    v1.0.0 - App v2.6.127。從 index.html 抽出成獨立檔案（對標桌面 desktop-patch v3.121.0 ⑨ 的 nova-app-main.js）：原本是 index.html 第 2314 行起最大的一段內嵌 <script>（約 1.30MB），
             內容是「主程式（全域狀態 appState、聊天與模型路由、自主任務、技能、MCP／Function Calling、記憶、筆記、同步、設定頁邏輯、更新紀錄 NOVA_CHANGELOG 與 NOVA_APP_VERSION、各模組膠水層…）」。
             程式內容逐字搬移（只把 NOVA_APP_VERSION 改成 2.6.127、在 NOVA_CHANGELOG 加一筆），原位置改成同步載入的 <script src>（沒有 defer／async），
@@ -26,8 +28,9 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.127';
+        const NOVA_APP_VERSION = '2.6.128';
         const NOVA_CHANGELOG = [
+                '手機當控制台＋多 Bot 格式對齊桌面（對標桌面 v3.122.0～v3.123.0；nova-remote.js v1.1.0、nova-bots.js v1.2.0-android.1〔移植桌面 v1.6.0〕、nova-experts-glue.js v1.7.0；僅 www）：① 電腦遙控上方多一個「🧠」按鈕、設定頁多「🧠 收件匣／待批准」：直接打開電腦上的收件匣控制台（nova-console.html），可以允許／拒絕 Bot 想做的高風險動作（寄信、刪檔、執行指令…）、看收件匣與成品、交辦工作給電腦上的 Bot、看工作狀態、收回「永遠允許」規則；電腦需要 desktop-patch v3.122.0 以上。② 多 Bot 引擎改移植桌面 v1.6.0：桌面新增的設定（工具呼叫方式、哨兵審查、向量記憶、團隊共用記憶）手機存設定或同步時會原樣保留，不再被蓋回預設值；手機也能用團隊共用記憶（team_recall／team_remember），並跟電腦同步。手機沒有常駐大腦，所以工具呼叫、高風險確認、記憶挑選的行為跟以前一樣。',
                 'index.html 瘦身（對標桌面 v3.121.0 ⑨；僅 www）：原本 index.html 約 1.76MB，其中約 1.30MB 的主程式內嵌腳本逐字搬到新檔 nova-app-main.js，原位置改成同一位置、同一順序的 <script src>，執行順序與全域變數行為不變；之後主程式、版本號與這份更新紀錄都改在 nova-app-main.js。index.html 與主程式檔版本不一致時（WebView 用到舊快取）主控台會警告；主程式檔載入失敗時畫面上會直接顯示原因，不會只剩空白畫面。',
                 '資安補強（對標桌面 v3.121.0 ①；新增 vendor/purify.min.js〔DOMPurify 3.4.17〕；僅 www）：① escapeHtml 多跳脫引號；② AI 回覆裡的連結只放行 http(s)／mailto／tel／sms 等安全協定，網址跳脫後才放進 href（擋 javascript: 與屬性跳脫）；③ AI 產生的「在 Canvas 執行」按鈕只接受單一字串，串了程式碼的一律停用（原本按下去會執行 AI 寫的任意 JS）；④ HTML 筆記（含同步、匯入來的）顯示與編輯前先用 DOMPurify 消毒，搜尋來源、雲端備份連結、App 跳轉連結也一併檢查；⑤ 加基本 CSP（object-src none、base-uri self）。副作用：舊的「收藏對話」筆記裡若有可點的按鈕（例如 Canvas 執行），在筆記裡會變成不能按；真的有問題可在主控台設 localStorage nova_sanitize=0 暫時關閉消毒。',
                 '同步密語＝金鑰加密同步（對標桌面 v3.121.0；nova-datasync.js v1.4.0、nova-google.js v1.7.0、nova-experts-glue.js v1.6.0；僅 www）：Google 整合 →「Drive 同步」分頁新增「🔐 同步密語」。手機與電腦設定同一組密語（至少 8 個字，只存在本機、不上傳、不進備份）後，研發 API 金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定改用加密檔 NOVA_Secrets_Sync.json 同步（PBKDF2＋AES-GCM），原本的同步檔不再帶明文，雲端舊明文會在下次同步移除；密語不同會中止、不覆蓋。另外與桌面一致：清空研發金鑰／Jev／TDX 金鑰現在會傳到另一台。注意：只在一台設密語時，另一台會收到「刪除明文金鑰」——兩台請都設定。尚未在實機驗證（加密格式已用桌面版程式交叉測試互通）。',
