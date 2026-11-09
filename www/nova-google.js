@@ -1,4 +1,4 @@
-/* nova-google.js — v1.6.0 (2026-11-08)
+/* nova-google.js — v1.7.0 (2026-11-09)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,7 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.7.0 2026-11-09  App v2.6.125：「Drive 同步」分頁新增「🔐 同步密語」（設定／更換／移除，顯示金鑰加密同步的最後結果）；搭配 nova-datasync.js v1.4.0，與桌面 v3.121.0 同一把密語即可互通。
  *   v1.6.0 2026-11-08  App v2.6.124：新增授權項目「行事曆」（calendar.events：讀、新增、修改事件；不能刪事件、不碰行事曆本身）與 calendarList／calendarCreate／calendarUpdate；新增 docsWrite（Google 文件附加／取代全文，用既有的 Docs 授權）。給多 Bot 的 calendar_list／calendar_create／calendar_update／docs_write 用。Google Cloud 要先「啟用 Google Calendar API」並在「資料存取權」加 calendar.events，之後在『連接』分頁勾選「行事曆」並重新連接。
  *   v1.5.0 2026-11-07  App v2.6.122：新增授權項目「Gmail 寫入」（gmail.modify：建草稿、寄信、移到垃圾桶；不能永久刪除）。選了它就不必再勾「Gmail 唯讀」（has('gmail') 兩者任一都算）；新增 gmailDraft／gmailSend／gmailTrash（RFC822＋UTF-8 base64，標頭擋換行注入、收件者驗證格式）；『連接』分頁新增「目前實際拿到的授權」清單（讀 token 裡的 scope，不用去 Google 後台猜）。舊 token 不會自動升級，要勾選後重新按「連接 Google」。
  *   v1.4.0 2026-11-01  App v2.6.108：Drive 同步在記憶同步後接著呼叫 NovaDataSync.run（NovaResearch 研發資料 NOVA_Research_Sync.json；階段 3 起加 Insight 的 NOVA_Insight_Sync.json）；失敗只顯示提示，不影響筆記／記憶同步
@@ -482,6 +483,33 @@
     '#ng-settings-btn button{padding:10px 14px;border:0;border-radius:10px;font-size:13px;font-weight:700;background:#0369a1;color:#fff;display:inline-flex;align-items:center;gap:6px}';
   var IN = 'ng-in';
   var BTN = 'ng-btn ';
+  // v1.7.0：同步密語（對標桌面 v3.121.0「系統健康 → 同步密語」）。只存在這台（localStorage nova_sync_passphrase），不上傳、不進備份
+  function passBlock() {
+    var on = !!g('nova_sync_passphrase', ''), li = null;
+    try { li = W.NovaDataSync && W.NovaDataSync.lastInfo ? W.NovaDataSync.lastInfo('secrets') : null; } catch (e) { li = null; }
+    return '<div class="p-2 rounded-lg border ' + (on ? 'border-emerald-700/50' : 'border-amber-700/50') + ' text-xs space-y-1">' +
+      '<div><b>🔐 同步密語</b>：' + (on ? '✅ 已設定（研發／TDX／Jev／Insight 金鑰以加密檔 NOVA_Secrets_Sync.json 同步）' : '未設定：研發／Insight／TDX／Jev 等金鑰仍以明文寫在 Drive 同步檔裡') + '</div>' +
+      (on && li ? '<div class="text-slate-400">金鑰同步：' + esc(new Date(li.at).toLocaleString('zh-TW')) + '　' + esc(li.text || '') + '</div>' : '') +
+      '<div class="text-slate-500">兩台（手機與電腦）要設定一模一樣的密語；密語只存在這台，不會上傳。</div>' +
+      '<div class="flex gap-2"><button class="' + BTN + 'ng-sky" onclick="NovaGoogle._passSet()">' + (on ? '更換同步密語' : '設定同步密語') + '</button>' +
+      (on ? '<button class="' + BTN + 'ng-gray" onclick="NovaGoogle._passClear()">移除同步密語</button>' : '') + '</div></div>';
+  }
+  async function _passSet() {
+    var ask = W.novaPrompt || function (t) { return Promise.resolve(W.prompt(t)); };
+    var v = await ask('輸入同步密語（手機與電腦要設定一模一樣的密語；至少 8 個字。密語只存在這台，不會上傳。忘記的話兩台重新設定同一組新密語即可）', '');
+    v = String(v || '').trim(); if (!v) return;
+    if (v.length < 8) { toast('同步密語至少要 8 個字'); return; }
+    if (!(W.crypto && W.crypto.subtle)) { toast('這個環境沒有 WebCrypto，無法加密同步', 5000); return; }
+    s('nova_sync_passphrase', v);
+    toast('🔐 已設定同步密語；下次同步時金鑰會改用加密檔，雲端的明文金鑰會一併移除', 6000);
+    render(); schedule();
+  }
+  async function _passClear() {
+    var ok = await (W.showConfirm ? W.showConfirm('移除後，金鑰會改回以明文同步（舊方式）。確定要移除嗎？') : Promise.resolve(W.confirm('移除同步密語？')));
+    if (!ok) return;
+    try { localStorage.removeItem('nova_sync_passphrase'); } catch (e) { /* */ }
+    render();
+  }
   function render() {
     var m = D.getElementById('nova-google-modal'); if (!m || m.style.display === 'none') return;
     var tabs = [['main', '連接'], ['drive', '☁️ Drive 同步'], ['gmail', '✉️ Gmail'], ['docs', '📁 雲端硬碟']];
@@ -504,6 +532,7 @@
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" id="ng-auto" ' + (syncOn() ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_enabled\',this.checked?\'1\':\'0\')"> 變更後自動同步（約 4 秒後）</label>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_gsync_kb', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_kb\',this.checked?\'1\':\'0\')"> 同步知識庫（向量資料庫：文件／資料夾／片段；向量由收到端重算）</label>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_mem_sync_enabled', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_mem_sync_enabled\',this.checked?\'1\':\'0\')"> 同步 AI 記憶（長期事實／對話摘要，檔案 NOVA_Memory_Sync.json，與桌面版共用）</label>' +
+        passBlock() +
         '<button class="' + BTN + 'ng-green" onclick="NovaGoogle.sync(true)">立即同步</button>' +
         '<div id="ng-mem-status" class="text-xs text-slate-400">' + esc(g('nova_gmem_status', '')) + '</div>' +
         '<div id="ng-sync-status" class="text-xs text-slate-400">' + esc(g('nova_gsync_status', g('nova_gsync_last', '尚未同步'))) + '</div>';
@@ -566,7 +595,7 @@
   function close() { var m = D.getElementById('nova-google-modal'); if (m) m.style.display = 'none'; }
   W.NovaGoogle = { _raw: api, _token: accessToken, _has: has, _connected: connected, _drive: { find: async function (n) { return await findByName(n); }, read: readJsonFile, write: writeNamed, trash: trashFile }, schedule: schedule, open: open, close: close, tab: function (t) { tab = t; render(); }, connect: connect, disconnect: disconnect, sync: syncNow, isConnected: connected, api: apiJson,
     gmailList: gmailList, gmailRead: gmailRead, gmailDraft: gmailDraft, gmailSend: gmailSend, gmailTrash: gmailTrash, calendarList: calendarList, calendarCreate: calendarCreate, calendarUpdate: calendarUpdate, docsWrite: docsWrite, grantedList: grantedList, _buildRaw: buildRaw, noteToDoc: noteToDoc, docToNote: docToNote, handleRedirect: handleRedirect,
-    _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, VERSION: '1.0.0' };
+    _saveCfg: _saveCfg, _paste: _paste, _gmailLoad: _gmailLoad, _gmailOpen: _gmailOpen, _gmailBack: _gmailBack, _gmailAI: _gmailAI, _gmailNote: _gmailNote, _n2d: _n2d, _d2n: _d2n, _passSet: _passSet, _passClear: _passClear, VERSION: '1.0.0' };
 
   /* 入口：+選單按鈕、設定頁按鈕、深度連結 */
   function addEntries() {

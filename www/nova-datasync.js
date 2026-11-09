@@ -1,4 +1,4 @@
-/* nova-datasync.js — v1.3.0 (2026-11-08)
+/* nova-datasync.js — v1.4.0 (2026-11-09)
  * 手機版「NovaResearch／Project Insight 資料同步」：把桌面 nova-data-sync.js v1.0.0 的比對／合併核心原樣移植，遠端存取改走 NovaGoogle._drive（Drive REST）。
  * 與桌面互通：同一個 Google 帳號的 Drive 根目錄，檔名 NOVA_Research_Sync.json（研發：專案／材料／實驗／情報／監看定義／報告／筆記）、NOVA_Insight_Sync.json（Insight：預判、個股、虛擬交易、日誌…）。
  *   檔案格式：{v:1, items:{鍵:{h:雜湊,ts:時間,v:內容}}, deleted:{鍵:時間}, at, from}；鍵＝「種類/id」（Research）或 localStorage 項目名（Insight）。
@@ -7,6 +7,12 @@
  * 觸發：Drive 同步（nova-google.js 的 syncNow 在記憶同步後呼叫 NovaDataSync.syncAll）、資料改動後 4 秒（nova-research-changed／nova-insight-changed）、App 回到前景、設定頁手動按鈕。
  * 子開關（預設開）：localStorage nova_dsync_research_on／nova_dsync_insight_on；上次同步狀態 nova_dsync_<id>_state／_info；檔案 id 快取 nova_dsync_<id>_fileid。
  * 版本紀錄
+ *   v1.4.0 2026-11-09  App v2.6.125。同步密語＝金鑰加密同步（對標桌面 nova-data-sync.js v1.1.0／desktop-patch v3.121.0，核心比對與加密原樣移植）：
+ *                      ① 設定「同步密語」（localStorage nova_sync_passphrase，只存在這台、不上傳、不進備份）後，研發金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定
+ *                         改走加密檔 NOVA_Secrets_Sync.json（PBKDF2-SHA256 20 萬次 → AES-GCM，每項各自 IV；比對雜湊加 salt），原本的研發／Insight／Bot 同步檔不再帶這些明文（雲端舊明文會被移除）；
+ *                         密語和另一台不同 → 中止不覆蓋；沒設定密語的裝置遇到加密檔會略過。
+ *                      ② collect() 可回傳 __skip__（讀不到的項目／前綴）：維持遠端原狀、不當成刪除。
+ *                      ③ 金鑰刪除改成會傳播（與桌面 v3.121.0 同）：研發金鑰全部清空、Jev 金鑰清除會傳到另一台；研發金鑰只在有值時才送。
  *   v1.3.0 2026-11-08  Insight 同步加入 Jev API Key（主設定頁 nova_key_jev，純字串）：收集時放成 {v:key}（有值才送）、套用時只寫入有值的、刪除不傳播（要清除請在設定裡清空）；與桌面 v3.119.0 同格式。
  *   v1.2.0 2026-11-01  研發 API 金鑰同步：provider 多一筆「__keys__/all」（Lens／EPO／PatentsView／S2／NCBI／聯絡信箱，與桌面 desktop-patch v3.104.0 同格式）；套用時只動這幾個欄位、遠端沒有的欄位清除、忽略對它的刪除。Insight 金鑰走 syncKeys（見 nova-insight-core.js v1.3.0）。
  *   v1.1.0 2026-11-01  Insight 同步補「額外鍵」：桌面傳來但手機沒有介面的鍵（研究、劇本、校準…）改記在 nova_insight_extra_keys 一併收集，避免下次同步被誤判成手機刪除而回寫刪掉桌面資料。
@@ -14,7 +20,7 @@
  */
 (function (root) {
   'use strict';
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';   // 核心對應桌面 nova-data-sync.js v1.1.0
   var TOMB_KEEP_MS = 90 * 24 * 3600 * 1000;
 
   /* ── 純函式：正規化、雜湊、合併（可單獨測試）── */
@@ -23,6 +29,7 @@
     if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
     return '{' + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; }).map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
   }
+  function hash0(v) { return hash(v); }
   function hash(v) {   // cyrb53
     var s = canon(v), h1 = 0xdeadbeef, h2 = 0x41c6ce57;
     for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
@@ -83,18 +90,28 @@
   }
   function bundleMerge(x, y) {   // 重複檔案合併：每項取 ts 較大者；墓碑取較大 ts；墓碑 ≥ 項目 ts 就丟掉項目
     var items = {}, del = {};
+    // v1.1.0：加密檔的 salt 不同時，後一份的項目用不同金鑰加密、無法混在一起 → 只保留較舊（x）那份的項目
+    if (x.enc && y.enc && x.enc.salt !== y.enc.salt) y = { items: {}, deleted: y.deleted || {} };
+    var enc = x.enc || y.enc || null;
     [x, y].forEach(function (b) {
       Object.keys(b.items || {}).forEach(function (k) { var e = b.items[k]; if (!items[k] || (e.ts || 0) > (items[k].ts || 0)) items[k] = e; });
       Object.keys(b.deleted || {}).forEach(function (k) { del[k] = Math.max(del[k] || 0, b.deleted[k] || 0); });
     });
     Object.keys(del).forEach(function (k) { if (items[k] && del[k] >= (items[k].ts || 0)) delete items[k]; });
-    return { v: 1, items: items, deleted: del, at: Date.now() };
+    var out = { v: 1, items: items, deleted: del, at: Date.now() };
+    if (enc) out.enc = enc;
+    return out;
   }
 
   /* ── 三方比對（純函式，傳入本機快照 L、遠端 bundle R、上次同步清單 base）── */
+  function isSkipped(k, skip) {
+    if (!skip || !skip.length) return false;
+    for (var i = 0; i < skip.length; i++) { var s0 = skip[i]; if (k === s0 || (s0.charAt(s0.length - 1) === '/' && k.indexOf(s0) === 0)) return true; }
+    return false;
+  }
   function plan(L, R, base, o) {
     o = o || {};
-    var now = o.now || Date.now(), mergeFn = o.merge || smerge;
+    var now = o.now || Date.now(), mergeFn = o.merge || smerge, hash = o.hash || hash0, skip = o.skip || [];
     var items = R.items || {}, del = R.deleted || {};
     var keys = {}; Object.keys(L).concat(Object.keys(items), Object.keys(base)).forEach(function (k) { keys[k] = 1; });
     var hL = {}; Object.keys(L).forEach(function (k) { hL[k] = hash(L[k]); });
@@ -102,6 +119,7 @@
     Object.keys(items).forEach(function (k) { res.newItems[k] = items[k]; });
     Object.keys(del).forEach(function (k) { if (now - del[k] < TOMB_KEEP_MS) res.newDel[k] = del[k]; });
     Object.keys(keys).forEach(function (k) {
+      if (isSkipped(k, skip)) { if (base[k] !== undefined) res.newBase[k] = base[k]; return; }   // v1.1.0 ②：讀不到 ≠ 刪除
       var inL = k in L, inR = k in items, b = base[k], l = hL[k], r = inR ? items[k].h : null;
       function push(v) { res.newItems[k] = { h: hash(v), ts: now, v: v }; delete res.newDel[k]; res.newBase[k] = hash(v); res.stat.pushed++; }
       function pull() { res.applyPut[k] = items[k].v; res.newBase[k] = items[k].h; res.stat.pulled++; }
@@ -136,9 +154,37 @@
     return res;
   }
 
+  /* ── v1.1.0：加密（WebCrypto；只在桌面版的安全環境可用） ── */
+  var ENC_ITER = 200000, ENC_CHECK = 'nova-secrets-v1';
+  function b64e(u8) { var s = ''; for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); }
+  function b64d(s) { var b = atob(String(s || '')), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  function subtle() { var c = root.crypto; return c && c.subtle ? c : null; }
+  var keyCache = {};
+  async function deriveKey(pass, saltB64, iter) {
+    var c = subtle(); if (!c) throw new Error('這個環境沒有 WebCrypto，無法加密同步');
+    var ck = saltB64 + '|' + (iter || ENC_ITER) + '|' + hash(pass);
+    if (keyCache[ck]) return keyCache[ck];
+    var base = await c.subtle.importKey('raw', new TextEncoder().encode(String(pass)), 'PBKDF2', false, ['deriveKey', 'deriveBits']);
+    var key = await c.subtle.deriveKey({ name: 'PBKDF2', salt: b64d(saltB64), iterations: iter || ENC_ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    var bits = await c.subtle.deriveBits({ name: 'PBKDF2', salt: b64d(saltB64), iterations: 1000, hash: 'SHA-256' }, base, 128);
+    keyCache[ck] = { key: key, hsalt: b64e(new Uint8Array(bits)) };
+    return keyCache[ck];
+  }
+  async function encryptValue(k, v) {
+    var c = subtle(); var iv = c.getRandomValues(new Uint8Array(12));
+    var ct = await c.subtle.encrypt({ name: 'AES-GCM', iv: iv }, k.key, new TextEncoder().encode(JSON.stringify(v === undefined ? null : v)));
+    return { iv: b64e(iv), ct: b64e(new Uint8Array(ct)) };
+  }
+  async function decryptValue(k, e) {
+    var c = subtle();
+    var pt = await c.subtle.decrypt({ name: 'AES-GCM', iv: b64d(e.iv) }, k.key, b64d(e.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
   /* ── 執行環境（手機版）── */
   function create(deps0) {
-    var D = Object.assign({ drive: function () { return root.NovaGoogle && root.NovaGoogle._drive; }, storage: null, schedule: null, now: function () { return Date.now(); } }, deps0 || {});
+    var D = Object.assign({ drive: function () { return root.NovaGoogle && root.NovaGoogle._drive; }, storage: null, schedule: null, now: function () { return Date.now(); },
+      passphrase: function () { try { return (D.storage || root.localStorage).getItem('nova_sync_passphrase') || ''; } catch (e) { return ''; } } }, deps0 || {});
     var providers = {}, inFlight = {}, deb = null;
     function st() { return D.storage || root.localStorage; }
     function lsGet(k, d) { try { var v = JSON.parse(st().getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
@@ -178,20 +224,72 @@
       var id = await ensureFileId(p), fid = await drv().write(id, p.file, bundle);
       if (fid) st().setItem(K(p.id).fid, fid);
     }
+    function secretsReady() { try { return !!String(D.passphrase() || '') && !!subtle(); } catch (e) { return false; } }
+    // v1.1.0 ①：加密檔 → 解密成邏輯項目；回傳 { R, phys, enc, key }
+    async function decodeRemote(p, remote) {
+      if (!remote) return { R: null, phys: {}, enc: null, key: null };
+      if (!p.encrypted) return { R: remote, phys: {}, enc: null, key: null };
+      var pass = String(D.passphrase() || '');
+      if (!remote.enc) {   // 遠端是舊的未加密檔（或空）：當成全部要重新加密上傳
+        return { R: remote, phys: {}, enc: null, key: null };
+      }
+      if (!pass) { var e0 = new Error('需要同步密語'); e0._novaSkip = true; throw e0; }
+      var k = await deriveKey(pass, remote.enc.salt, remote.enc.iter);
+      try { if ((await decryptValue(k, remote.enc.check)) !== ENC_CHECK) throw new Error('x'); }
+      catch (e) { throw new Error('同步密語和另一台不一樣（' + p.file + ' 無法解密），這次不同步金鑰；請在兩台設定相同的同步密語'); }
+      var items = {}, phys = {};
+      var ks = Object.keys(remote.items || {});
+      for (var i = 0; i < ks.length; i++) {
+        var it = remote.items[ks[i]];
+        try { items[ks[i]] = { h: it.h, ts: it.ts, v: await decryptValue(k, it.v) }; phys[ks[i]] = it; }
+        catch (e) { throw new Error(p.file + ' 有項目解不開（' + ks[i] + '），為避免覆蓋，這次中止'); }
+      }
+      return { R: { items: items, deleted: remote.deleted || {} }, phys: phys, enc: remote.enc, key: k };
+    }
+    async function makeEnc() {
+      var c = subtle(); var salt = b64e(c.getRandomValues(new Uint8Array(16)));
+      var k = await deriveKey(String(D.passphrase() || ''), salt, ENC_ITER);
+      return { enc: { alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', iter: ENC_ITER, salt: salt, check: await encryptValue(k, ENC_CHECK) }, key: k };
+    }
+    async function encodeBundle(p, bundle, dec) {
+      if (!p.encrypted) return bundle;
+      var enc = dec.enc || (dec.fresh && dec.fresh.enc), k = dec.key || (dec.fresh && dec.fresh.key);
+      var out = {}, ks = Object.keys(bundle.items || {});
+      for (var i = 0; i < ks.length; i++) {
+        var it = bundle.items[ks[i]], old = dec.phys[ks[i]];
+        out[ks[i]] = (old && old.h === it.h && dec.enc) ? old : { h: it.h, ts: it.ts, v: await encryptValue(k, it.v) };
+      }
+      return Object.assign({}, bundle, { enc: enc, items: out });
+    }
+
     async function sync(id, opts) {
       opts = opts || {}; var p = providers[id];
       if (!p) return { skipped: 'unknown' };
       if (!isEnabled(id)) return { skipped: 'disabled' };
+      if (p.encrypted && !secretsReady()) return { skipped: 'no-passphrase', text: '尚未設定同步密語，未同步' };
       if (inFlight[id]) return { skipped: 'busy' };
       inFlight[id] = true;
       try {
-        var L = await p.collect();
-        var remote = await readRemote(p), R = remote || { items: {}, deleted: {} };
+        var L = await p.collect();                       // 失敗就丟例外 → 整個中止（不會當成「全部刪除」）
+        var skip = [];
+        if (L && Array.isArray(L.__skip__)) { skip = L.__skip__.map(String); delete L.__skip__; }
+        var remote = await readRemote(p);
+        var dec;
+        try { dec = await decodeRemote(p, remote); }
+        catch (e) { if (e && e._novaSkip) return { skipped: 'no-passphrase', text: '雲端是加密檔，這台還沒設定同步密語' }; throw e; }
+        var R = dec.R || { items: {}, deleted: {} };
         var state = lsGet(K(id).state, { base: {} });
-        var res = plan(L, R, state.base || {}, { now: D.now(), merge: p.merge });
+        var hfn = null;
+        if (p.encrypted) {
+          if (!dec.enc) dec.fresh = await makeEnc();   // 第一次建立加密檔：先決定 salt，雜湊與加密用同一把
+          var hk = dec.key || dec.fresh.key;
+          var hs = hk.hsalt; hfn = function (v) { return hash([hs, v]); };
+          if (!dec.enc && remote) { R = { items: {}, deleted: remote.deleted || {} }; }   // 舊的未加密內容不採用（避免把明文帶回來），以本機重新上傳
+        }
+        var res = plan(L, R, state.base || {}, { now: D.now(), merge: p.merge, skip: skip, hash: hfn || undefined });
         applyRisk(res, Object.keys(L).length, Object.keys(R.items || {}).length, { now: D.now() });
-        var changedRemote = !remote || canon(res.newItems) !== canon(R.items || {}) || canon(res.newDel) !== canon(R.deleted || {});
-        if (changedRemote) await writeRemote(p, { v: 1, items: res.newItems, deleted: res.newDel, at: D.now(), from: opts.device || 'android' });
+        var changedRemote = !remote || (p.encrypted && !dec.enc) || canon(res.newItems) !== canon(R.items || {}) || canon(res.newDel) !== canon(R.deleted || {});
+        if (changedRemote) await writeRemote(p, await encodeBundle(p, { v: 1, items: res.newItems, deleted: res.newDel, at: D.now(), from: opts.device || 'android' }, dec));
         var nPut = Object.keys(res.applyPut).length;
         if (nPut || res.applyDel.length) await p.apply({ put: res.applyPut, del: res.applyDel });
         var nb = res.newBase;
@@ -221,14 +319,18 @@
       return out;
     }
     function touch() { try { if (D.schedule) D.schedule(); } catch (e) { /* */ } }
-    return { version: VERSION, init: init, register: register, isEnabled: isEnabled, setEnabled: setEnabled, touch: touch, sync: sync, syncAll: syncAll, lastInfo: lastInfo, describe: describe,
+    return { version: VERSION, secretsReady: secretsReady, init: init, register: register, isEnabled: isEnabled, setEnabled: setEnabled, touch: touch, sync: sync, syncAll: syncAll, lastInfo: lastInfo, describe: describe,
       providers: function () { return Object.keys(providers).map(function (k) { return { id: k, label: providers[k].label }; }); },
-      _t: { canon: canon, hash: hash, smerge: smerge, plan: plan, applyRisk: applyRisk, pickRicher: pickRicher, bundleMerge: bundleMerge } };
+      _t: { canon: canon, hash: hash, smerge: smerge, plan: plan, applyRisk: applyRisk, pickRicher: pickRicher, bundleMerge: bundleMerge, deriveKey: deriveKey, encryptValue: encryptValue, decryptValue: decryptValue, isSkipped: isSkipped } };
   }
   var inst = create();
   inst.create = create;
   /* ── 手機版接線：provider（研發／Insight）與觸發時機。僅瀏覽器環境執行 ── */
   if (typeof root.addEventListener === 'function' && root.document) {
+    /* v1.4.0：同步密語模式。設了密語 → 下面這些金鑰只走加密的 NOVA_Secrets_Sync.json，其他同步檔不收也不套用（鍵名與桌面 v3.121.0 相同） */
+    var SECRET_LS = ['nova_key_jev', 'nova_insight_windy_v1', 'nova_insight_ais_v1', 'nova_insight_govcam_v1', 'nova_insight_fincfg_v1'];
+    function secOn() { return !!(inst.secretsReady && inst.secretsReady()); }
+    root._novaSecretsSyncOn = secOn;
     inst.register({
       id: 'research', label: 'NovaResearch', file: 'NOVA_Research_Sync.json',
       merge: function (k, a, b) { return inst._t.pickRicher(a, b); },
@@ -236,7 +338,10 @@
         var C = root.NovaResearchCore; if (!C) throw new Error('NovaResearch 引擎沒有載入');
         var d = await C.store.dump(), L = {};
         Object.keys(d).forEach(function (kind) { (d[kind] || []).forEach(function (it) { if (it && it.id) L[kind + '/' + it.id] = it; }); });
-        var kv = C.keys.load(), ko = {}; C.KEY_FIELDS.forEach(function (f) { if (typeof kv[f] === 'string' && kv[f].trim()) ko[f] = kv[f].trim(); }); L['__keys__/all'] = ko;   // API 金鑰（與桌面 v3.104.0 同格式）
+        if (!secOn()) {   // API 金鑰（與桌面 v3.104.0 同格式）；v1.4.0：只在有值時才送（全部清空＝刪除，會傳到另一台）；設了同步密語就改走加密同步
+          var kv = C.keys.load(), ko = {}; C.KEY_FIELDS.forEach(function (f) { if (typeof kv[f] === 'string' && kv[f].trim()) ko[f] = kv[f].trim(); });
+          if (Object.keys(ko).length) L['__keys__/all'] = ko;
+        }
         return L;
       },
       apply: async function (a) {
@@ -244,7 +349,8 @@
         Object.keys(a.put || {}).forEach(function (k) { var i = k.indexOf('/'); if (k.slice(0, i) === '__keys__') return; puts.push({ kind: k.slice(0, i), data: a.put[k] }); });
         (a.del || []).forEach(function (k) { var i = k.indexOf('/'); if (k.slice(0, i) === '__keys__') return; dels.push({ kind: k.slice(0, i), id: k.slice(i + 1) }); });   // 金鑰不會因對方沒有這筆而被刪
         var RC = root.NovaResearchCore, src = a.put && a.put['__keys__/all'];
-        if (src && typeof src === 'object') { var body = {}; RC.KEY_FIELDS.forEach(function (f) { body[f] = typeof src[f] === 'string' ? src[f] : ''; }); RC.keys.save(body, true); }   // 遠端沒有的欄位清除
+        if (!secOn() && src && typeof src === 'object') { var body = {}; RC.KEY_FIELDS.forEach(function (f) { body[f] = typeof src[f] === 'string' ? src[f] : ''; }); RC.keys.save(body, true); }   // 遠端沒有的欄位清除
+        if (!secOn() && (a.del || []).indexOf('__keys__/all') >= 0) { var b0 = {}; RC.KEY_FIELDS.forEach(function (f) { b0[f] = ''; }); RC.keys.save(b0, true); }   // v1.4.0：另一台把金鑰全部清空 → 這台也清空
         if (puts.length || dels.length) await RC.store.apply(puts, dels);
       },
       after: function () { try { root.dispatchEvent(new root.CustomEvent('nova-research-synced')); } catch (e) { /* */ } }
@@ -256,17 +362,47 @@
     inst.register({
       id: 'insight', label: 'Project Insight', file: 'NOVA_Insight_Sync.json',
       collect: async function () {
-        var L = {}; insKeys().forEach(function (k) { var raw = root.localStorage.getItem(k); if (raw == null) return; try { L[k] = JSON.parse(raw); } catch (e) { /* 壞掉的不同步 */ } });
-        try { var jk = (root.localStorage.getItem('nova_key_jev') || '').trim(); if (jk) L['nova_key_jev'] = { v: jk }; } catch (e) { /* */ }
+        var L = {}, sec = secOn(); insKeys().forEach(function (k) { if (sec && SECRET_LS.indexOf(k) >= 0) return; var raw = root.localStorage.getItem(k); if (raw == null) return; try { L[k] = JSON.parse(raw); } catch (e) { /* 壞掉的不同步 */ } });
+        if (!sec) { try { var jk = (root.localStorage.getItem('nova_key_jev') || '').trim(); if (jk) L['nova_key_jev'] = { v: jk }; } catch (e) { /* */ } }
         return L;
       },
       apply: async function (a) {
-        var ex = insExtra(), known = insKnown();
-        Object.keys(a.put || {}).forEach(function (k) { try { if (k === 'nova_key_jev') { var jv = a.put[k] && typeof a.put[k].v === 'string' ? a.put[k].v.trim() : ''; if (jv) root.localStorage.setItem(k, jv); return; } root.localStorage.setItem(k, JSON.stringify(a.put[k])); if (known.indexOf(k) < 0 && ex.indexOf(k) < 0) ex.push(k); } catch (e) { /* */ } });
-        (a.del || []).forEach(function (k) { if (k === 'nova_key_jev') return; try { root.localStorage.removeItem(k); } catch (e) { /* */ } });
+        var ex = insExtra(), known = insKnown(), sec = secOn();
+        Object.keys(a.put || {}).forEach(function (k) { try { if (sec && SECRET_LS.indexOf(k) >= 0) return; if (k === 'nova_key_jev') { var jv = a.put[k] && typeof a.put[k].v === 'string' ? a.put[k].v.trim() : ''; if (jv) root.localStorage.setItem(k, jv); return; } root.localStorage.setItem(k, JSON.stringify(a.put[k])); if (known.indexOf(k) < 0 && ex.indexOf(k) < 0) ex.push(k); } catch (e) { /* */ } });
+        (a.del || []).forEach(function (k) { if (sec && SECRET_LS.indexOf(k) >= 0) return; try { root.localStorage.removeItem(k); } catch (e) { /* */ } });   // v1.4.0：Jev 金鑰清除也會傳播（與桌面 v3.121.0 同）
         try { root.localStorage.setItem('nova_insight_extra_keys', JSON.stringify(ex.filter(function (k) { return root.localStorage.getItem(k) != null; }))); } catch (e) { /* */ }
       },
       after: function () { try { root.dispatchEvent(new root.CustomEvent('nova-insight-synced')); } catch (e) { /* */ } }
+    });
+    /* v1.4.0：金鑰加密同步（只有設定了同步密語才會跑）。每個金鑰欄位一項：research/<欄位>、tdx/<client_id|client_secret>、ls/<localStorage 鍵>（原字串） */
+    inst.register({
+      id: 'secrets', label: '金鑰（加密）', file: 'NOVA_Secrets_Sync.json', encrypted: true,
+      collect: async function () {
+        var L = {}, skip = [], RC = root.NovaResearchCore, NT = root.NovaTransit;
+        if (RC && RC.keys && RC.KEY_FIELDS) { var kv = RC.keys.load(); RC.KEY_FIELDS.forEach(function (f) { if (typeof kv[f] === 'string' && kv[f].trim()) L['research/' + f] = kv[f].trim(); }); } else skip.push('research/');
+        if (NT && NT.revealKeys) { var td = NT.revealKeys(); ['client_id', 'client_secret'].forEach(function (f) { var v = String(td[f] || '').trim(); if (v) L['tdx/' + f] = v; }); } else skip.push('tdx/');
+        SECRET_LS.forEach(function (k) { var raw = root.localStorage.getItem(k); if (raw != null && String(raw).trim() !== '') L['ls/' + k] = String(raw); });
+        L.__skip__ = skip;
+        return L;
+      },
+      apply: async function (a) {
+        var RC = root.NovaResearchCore, NT = root.NovaTransit, rb = {}, tb = {}, ins = false;
+        var RK = (RC && RC.KEY_FIELDS) || [];
+        Object.keys(a.put || {}).forEach(function (k) {
+          var v = a.put[k];
+          if (k.indexOf('research/') === 0 && RK.indexOf(k.slice(9)) >= 0) rb[k.slice(9)] = String(v || '');
+          else if (k.indexOf('tdx/') === 0) tb[k.slice(4)] = String(v || '');
+          else if (k.indexOf('ls/') === 0 && SECRET_LS.indexOf(k.slice(3)) >= 0) { try { root.localStorage.setItem(k.slice(3), String(v)); ins = true; } catch (e) { /* */ } }
+        });
+        (a.del || []).forEach(function (k) {
+          if (k.indexOf('research/') === 0 && RK.indexOf(k.slice(9)) >= 0) rb[k.slice(9)] = '';
+          else if (k.indexOf('tdx/') === 0) tb[k.slice(4)] = '';
+          else if (k.indexOf('ls/') === 0 && SECRET_LS.indexOf(k.slice(3)) >= 0) { try { root.localStorage.removeItem(k.slice(3)); ins = true; } catch (e) { /* */ } }
+        });
+        if (Object.keys(rb).length && RC) RC.keys.save(rb, true);
+        if (Object.keys(tb).length && NT && NT.setKeys) NT.setKeys(tb);
+        if (ins) { try { root.dispatchEvent(new root.CustomEvent('nova-insight-synced')); } catch (e) { /* */ } }
+      }
     });
     var timer = null, running = false;
     function connected() { return !!(root.NovaGoogle && root.NovaGoogle.isConnected && root.NovaGoogle.isConnected() && root.NovaGoogle._drive); }

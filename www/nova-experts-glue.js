@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.5.0
+   版本：v1.6.0
    版本紀錄：
+   v1.6.0 - App v2.6.125。對標桌面 v3.121.0：設了同步密語（nova-datasync.js v1.4.0）時 TDX 金鑰不再放進 NOVA_Bots_Sync.json，改走加密的 NOVA_Secrets_Sync.json；
+            沒設密語時照舊明文，但「清空 TDX 金鑰」改成會傳播到另一台（原本不傳播）；NovaTransit 沒載入時標 __skip__，不會被當成刪除。
    v1.5.0 - App v2.6.124。移植桌面版 v3.117～v3.119：① 大眾運輸（TDX）：新工具 transit_thsr／transit_tra／transit_metro／transit_bus（nova-transit.js），管理視窗「＋ 建立大眾運輸專家」一鍵建立專家 x_transit 並勾好工具；
             ② 開放更多工具進 Bot 設定：進階動作 python_run／shell_run／mcp_list／mcp_call／skill_list／skill_run（每次確認、總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、memory_core_get_all、
             calendar_list／calendar_create／calendar_update、docs_write（需 Google 對應授權）；botUnsupported() 改成依「Termux／Google 授權／金鑰」動態決定哪些工具暫時不給模型；
@@ -1784,10 +1786,14 @@ window.NovaExpertsGlue = (function () {
             try { const o = JSON.parse(v); if (k === K_BOTS_SET && o && typeof o === 'object') PER_DEVICE_BOT_FIELDS.forEach(function (f) { delete o[f]; }); L['cfg/' + k] = o; } catch (e) { /* 壞掉的設定不同步 */ }
         });
         SYNC_MODE_KEYS().forEach(function (k) { try { const v = localStorage.getItem(k); if (v != null && v !== '') L['mode/' + k] = { v: v }; } catch (e) { /* ignore */ } });
-        try {   // TDX 金鑰（只送有值的欄位）；明文放在你自己的雲端同步檔
-            const d = window.NovaTransit && window.NovaTransit.revealKeys ? window.NovaTransit.revealKeys() : null;
-            if (d && ((d.client_id || '').trim() || (d.client_secret || '').trim())) L['tdx/all'] = { client_id: (d.client_id || '').trim(), client_secret: (d.client_secret || '').trim() };
-        } catch (e) { /* ignore */ }
+        // TDX 金鑰：v1.6.0 起設了同步密語就改走加密的金鑰同步（這裡不帶，雲端舊明文會被移除）；沒設密語時照舊明文、清空＝刪除會傳播；讀不到標 __skip__（不當成刪除）
+        if (!(window._novaSecretsSyncOn && window._novaSecretsSyncOn())) {
+            const NT = window.NovaTransit;
+            if (NT && NT.revealKeys) {
+                const d = NT.revealKeys(), id = String(d.client_id || '').trim(), sec = String(d.client_secret || '').trim();
+                if (id || sec) L['tdx/all'] = { client_id: id, client_secret: sec };
+            } else L.__skip__ = ['tdx/all'];
+        }
         const st = await getBotStore();
         const ids = custom ? raw.map(function (e) { return e && e.id; }).filter(Boolean) : ENG().defaultExperts().map(function (e) { return e.id; });
         // Bot 設定與記憶只跟著「還存在的專家」走：刪掉一位專家，它的設定與記憶也會在另一台一起被移除
@@ -1825,9 +1831,13 @@ window.NovaExpertsGlue = (function () {
             });
             delsOf('cfg/').forEach(function (k) { try { const key = k.slice(4); if (SYNC_CFG_KEYS().indexOf(key) >= 0) localStorage.removeItem(key); } catch (e) { /* ignore */ } });
             keysOf('mode/').forEach(function (k) { try { const key = k.slice(5), v = put[k] && put[k].v; if (SYNC_MODE_KEYS().indexOf(key) >= 0 && typeof v === 'string' && v) localStorage.setItem(key, v); } catch (e) { /* ignore */ } });
-            if (put['tdx/all'] && typeof put['tdx/all'] === 'object' && window.NovaTransit && window.NovaTransit.setKeys) {   // 只寫入有值的欄位；刪除不傳播
-                const body = {}; ['client_id', 'client_secret'].forEach(function (f) { const v = put['tdx/all'][f]; if (typeof v === 'string' && v.trim()) body[f] = v.trim(); });
-                if (Object.keys(body).length) { try { window.NovaTransit.setKeys(body); } catch (e) { /* ignore */ } }
+            const _secOn = !!(window._novaSecretsSyncOn && window._novaSecretsSyncOn()), NT = window.NovaTransit;
+            if (!_secOn && NT && NT.setKeys) {   // v1.6.0：與桌面 v3.121.0 同——欄位清空與整筆刪除都會傳播；設了同步密語時只認加密的金鑰同步
+                if (del.indexOf('tdx/all') >= 0) { try { NT.setKeys({ client_id: '', client_secret: '' }); } catch (e) { /* ignore */ } }
+                if (put['tdx/all'] && typeof put['tdx/all'] === 'object') {
+                    const body = {}; ['client_id', 'client_secret'].forEach(function (f) { const v = put['tdx/all'][f]; if (typeof v === 'string') body[f] = v.trim(); });
+                    if (Object.keys(body).length) { try { NT.setKeys(body); } catch (e) { /* ignore */ } }
+                }
             }
             const needStore = keysOf('profile/').length || delsOf('profile/').length || keysOf('mem/').length || delsOf('mem/').length;
             if (needStore) {
