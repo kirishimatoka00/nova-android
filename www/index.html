@@ -3,6 +3,68 @@
 <head>
     <!-- 網頁基本設定：編碼、響應式視口 (防止手機端縮放) -->
     <meta charset="UTF-8">
+    <!-- v2.6.126：基本 CSP（對標桌面 v3.121.0）。script-src 因為大量行內 onclick 與 Canvas（srcdoc 繼承母頁 CSP、要載 CDN）無法收緊，只擋 <object>／<embed> 與 <base> 改寫網址 -->
+    <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'">
+    <script charset="utf-8" src="./vendor/purify.min.js?v=3.4.17"></script>
+    <script>
+    // v2.6.126：HTML／網址消毒工具（XSS 防護；自桌面 desktop-patch v3.121.0 原樣移植）。
+    //   novaSafeUrl(u)：只放行 http(s)／mailto／tel／sms／#／相對路徑／blob:／data:image，其餘（javascript:、vbscript:…）回傳空字串。
+    //   novaAttr(s)：放進 HTML 屬性值用的跳脫（含引號）。novaJsStr(s)：放進行內事件 JS 字串用的跳脫（再包一層 novaAttr）。
+    //   novaSanitizeHtml(html)：外部或同步來的 HTML 進畫面前清掉 <script>、on* 事件、javascript: 網址；iframe 只留 YouTube／Vimeo 內嵌。
+    //   優先用 vendor/purify.min.js（DOMPurify 3.4.17），沒載入時退回內建的簡易清理。緊急關閉：localStorage nova_sanitize = '0'。
+    (function () {
+        var SAFE = /^(https?:|mailto:|tel:|sms:|blob:|data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml);)/i;
+        window.novaSafeUrl = function (u) {
+            u = String(u == null ? '' : u).trim();
+            var probe = u.replace(/[\u0000-\u0020\u007f-\u009f]+/g, '').replace(/&(#0*58|colon);?/gi, ':');
+            if (!probe) return '';
+            if (/^[a-z][a-z0-9+.\-]*:/i.test(probe) && !SAFE.test(probe)) return '';
+            if (/^data:image\/svg/i.test(probe)) return '';   // SVG data URL 可夾帶腳本
+            return u;
+        };
+        window.novaAttr = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+        window.novaJsStr = function (s) {
+            return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\x22').replace(/</g, '\\x3c').replace(/>/g, '\\x3e')
+                .replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+        };
+        var IFRAME_OK = /^https:\/\/(www\.youtube(-nocookie)?\.com\/embed\/|player\.vimeo\.com\/video\/)/i;
+        var hooked = false;
+        function hook(P) {
+            if (hooked) return; hooked = true;
+            P.addHook('uponSanitizeElement', function (node, data) {
+                if (data.tagName === 'iframe' && !IFRAME_OK.test(node.getAttribute('src') || '')) { if (node.parentNode) node.parentNode.removeChild(node); }
+            });
+            P.addHook('afterSanitizeAttributes', function (node) {
+                if (node.tagName === 'A' && node.getAttribute('target') === '_blank') node.setAttribute('rel', 'noopener noreferrer');
+            });
+        }
+        function fallback(html) {
+            var doc = new DOMParser().parseFromString('<body>' + String(html || '') + '</body>', 'text/html');
+            Array.prototype.forEach.call(doc.querySelectorAll('script,object,embed,base,meta,link,frame,frameset,form'), function (n) { n.remove(); });
+            Array.prototype.forEach.call(doc.querySelectorAll('iframe'), function (n) { if (!IFRAME_OK.test(n.getAttribute('src') || '')) n.remove(); });
+            Array.prototype.forEach.call(doc.querySelectorAll('*'), function (el) {
+                Array.prototype.slice.call(el.attributes).forEach(function (a) {
+                    var n = a.name.toLowerCase();
+                    if (n.indexOf('on') === 0 || n === 'srcdoc' || n === 'formaction') el.removeAttribute(a.name);
+                    else if ((n === 'href' || n === 'src' || n === 'xlink:href' || n === 'action' || n === 'poster') && !window.novaSafeUrl(a.value)) el.removeAttribute(a.name);
+                });
+            });
+            return doc.body.innerHTML;
+        }
+        window.novaSanitizeHtml = function (html) {
+            if (html == null || html === '') return '';
+            try { if (localStorage.getItem('nova_sanitize') === '0') return String(html); } catch (e) { /* */ }
+            var P = window.DOMPurify;
+            try {
+                if (P && typeof P.sanitize === 'function') {
+                    hook(P);
+                    return P.sanitize(String(html), { ADD_TAGS: ['iframe'], ADD_ATTR: ['target', 'allow', 'allowfullscreen', 'frameborder'], FORBID_TAGS: ['form', 'style'], ALLOW_UNKNOWN_PROTOCOLS: false });
+                }
+            } catch (e) { console.warn('[NOVA][sanitize] DOMPurify 失敗，改用內建清理', e); }
+            try { return fallback(html); } catch (e2) { return String(html).replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+        };
+    })();
+    </script>
     <script>
     // ✅ Telegram fetch dedup：Capacitor 把所有 fetch 路由到 _capacitor_http_interceptor_
     //    必須在 window.fetch 層攔截 getUpdates，XHR patch 對 Capacitor 無效
@@ -2264,8 +2326,9 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.125';
+        const NOVA_APP_VERSION = '2.6.126';
         const NOVA_CHANGELOG = [
+                '資安補強（對標桌面 v3.121.0 ①；新增 vendor/purify.min.js〔DOMPurify 3.4.17〕；僅 www）：① escapeHtml 多跳脫引號；② AI 回覆裡的連結只放行 http(s)／mailto／tel／sms 等安全協定，網址跳脫後才放進 href（擋 javascript: 與屬性跳脫）；③ AI 產生的「在 Canvas 執行」按鈕只接受單一字串，串了程式碼的一律停用（原本按下去會執行 AI 寫的任意 JS）；④ HTML 筆記（含同步、匯入來的）顯示與編輯前先用 DOMPurify 消毒，搜尋來源、雲端備份連結、App 跳轉連結也一併檢查；⑤ 加基本 CSP（object-src none、base-uri self）。副作用：舊的「收藏對話」筆記裡若有可點的按鈕（例如 Canvas 執行），在筆記裡會變成不能按；真的有問題可在主控台設 localStorage nova_sanitize=0 暫時關閉消毒。',
                 '同步密語＝金鑰加密同步（對標桌面 v3.121.0；nova-datasync.js v1.4.0、nova-google.js v1.7.0、nova-experts-glue.js v1.6.0；僅 www）：Google 整合 →「Drive 同步」分頁新增「🔐 同步密語」。手機與電腦設定同一組密語（至少 8 個字，只存在本機、不上傳、不進備份）後，研發 API 金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定改用加密檔 NOVA_Secrets_Sync.json 同步（PBKDF2＋AES-GCM），原本的同步檔不再帶明文，雲端舊明文會在下次同步移除；密語不同會中止、不覆蓋。另外與桌面一致：清空研發金鑰／Jev／TDX 金鑰現在會傳到另一台。注意：只在一台設密語時，另一台會收到「刪除明文金鑰」——兩台請都設定。尚未在實機驗證（加密格式已用桌面版程式交叉測試互通）。',
                 '移植桌面版 v3.117～v3.119（新檔 nova-transit.js v1.0.0；nova-bots.js v1.5.0、nova-bots-ui.js v1.4.0、nova-google.js v1.6.0、nova-experts-glue.js v1.5.0、nova-datasync.js v1.3.0；僅 www）：① 大眾運輸：用 TDX 官方 API 查高鐵／台鐵時刻票價座位誤點、捷運（含輕軌）票價首末班即時到站、公車到站與班表（金鑰在 多專家 → 多 Bot → 交通 API 填 Client ID／Secret，按「測試連線」）；多 Bot 管理頁「＋ 建立大眾運輸專家」一鍵建立專家並勾好工具；一般對話（非多 Bot）只要設了金鑰、問到班次／票價等交通問題，就自動帶入交通工具。② Bot 設定可勾的工具變多：python_run／shell_run／mcp_call／skill_run（進階動作，每次確認，總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、核心記憶、行事曆新增修改、Google 文件寫入；缺 Termux／Google 授權／金鑰的工具會暫時不給 Bot，補齊後自動可用。③ 同步：TDX 金鑰、模式選擇、Jev API Key 也會跟著同步（明文存在你自己的 Drive 同步檔；金鑰刪除不會傳播）。限制：Outlook、瀏覽器、桌面操作與 Bot 排程手機仍不支援；行事曆需在 Google Cloud 啟用 Calendar API、加 calendar.events 權限並重新連接；兩台都要更新才會互通；尚未在實機與真實 TDX 驗證。',
             { v: '2.6.123', date: '2026-11-08', notes: [
@@ -4336,19 +4399,23 @@ const _tempText2fix = tempText;
             safe = safe.replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>'); 
            // 放寬解析條件：支援 http, https, sms, tel, mailto 等各種連結協定
             safe = safe.replace(/\[([^\]]+)\]\(([^)\s<]+)\)|(https?:\/\/[^\s<)\]]+)/g, function(match, mdTitle, mdUrl, rawUrl) {
-                let url = mdUrl || rawUrl; url = url.replace(/&/g, "&"); let title = mdTitle || url;
-                return `<a href="${url}" class="text-blue-400 underline break-all">${title}</a>`;
+                // v2.6.126：AI 輸出（可能被網頁內容的提示詞注入操控）裡的連結只放行安全協定（擋 javascript: 等），網址跳脫引號後才放進 href
+                let url = mdUrl || rawUrl; let title = mdTitle || url;
+                const href = window.novaSafeUrl(url.replace(/&amp;/g, "&"));
+                if (!href) return match;
+                return `<a href="${window.novaAttr(href)}" class="text-blue-400 underline break-all">${title}</a>`;
             });
             safe = safe.replace(/___IMG_(\d+)___/g, function(match, id) {
-                const img = images[id]; const realUrl = img.url.replace(/&amp;/g, "&");
-                const escapedUrl = realUrl.replace(/'/g,"\\'");
+                const img = images[id]; if (!img || !img.url) return match;   // v2.6.126：沒有對應項目時不要丟例外
+                const realUrl = window.novaSafeUrl(String(img.url).replace(/&amp;/g, "&")); if (!realUrl) return escapeHtml(img.alt || '');
+                const escapedUrl = window.novaAttr(window.novaJsStr(realUrl));   // v2.6.126：放進行內事件的 JS 字串要兩層跳脫
                 const escapedAlt = escapeHtml(img.alt);
                 const dlFn = `(async function(){try{const r=await fetch('${escapedUrl}');const b=await r.blob();const fr=new FileReader();fr.onload=function(){downloadDataUriFile(fr.result,'image.png');};fr.readAsDataURL(b);}catch(e){window.open('${escapedUrl}','_blank');}})()`;
                 return `<div class="mt-3 relative group max-w-sm w-full"
                     ontouchstart="window._lpTimer=setTimeout(()=>{${dlFn};window._lpFired=true;},600);window._lpFired=false;"
                     ontouchend="clearTimeout(window._lpTimer);"
                     ontouchmove="clearTimeout(window._lpTimer);">
-                    <img src="${realUrl}" alt="${escapedAlt}" class="rounded-lg border border-slate-700/50 shadow-sm w-full object-contain bg-slate-900" onclick="openImgPreview('${escapedUrl}','image.png')">
+                    <img src="${window.novaAttr(realUrl)}" alt="${escapedAlt}" class="rounded-lg border border-slate-700/50 shadow-sm w-full object-contain bg-slate-900" onclick="openImgPreview('${escapedUrl}','image.png')">
                     <button onclick="event.stopPropagation();${dlFn}" class="absolute top-2 right-2 bg-blue-600/90 hover:bg-blue-500 text-white p-2 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md" title="下載原圖"><i class="ph-bold ph-download-simple"></i> 下載</button>
                 </div>`;
             });
@@ -4428,10 +4495,12 @@ return html;
             finalHtml = finalHtml.replace(/___SENDPROMPT_BTN_(\d+)___/g, function(match, idx) {
                 const btn = _sendPromptBtns[parseInt(idx)];
                 if (!btn) return match;
-                // 將 fnArg 安全地傳入 onclick（fnArg 本身已是完整 JS 表達式，如 `...` 或 '...'）
-                let safeArg = btn.fnArg || "''";
-                // 把 fnArg 裡的雙引號換成單引號以避免 HTML attribute 衝突
-                let onclickVal = 'sendPrompt(' + safeArg.replace(/"/g, "\'") + ')';
+                // v2.6.126：原本把 AI 輸出的 fnArg（任意 JS 運算式）原封不動塞進 onclick——AI 只要輸出 sendPrompt(1);fetch(...) 這種內容，
+                //   使用者一按就會執行任意程式碼（XSS）。現在只接受「單一字串常值」，解析成純文字後重新跳脫組回；不是字串常值就停用按鈕。
+                const _rawArg = String(btn.fnArg == null ? "''" : btn.fnArg).replace(/&quot;/g, '"').replace(/&#0*39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+                const _argVal = _novaParseJsStringLiteral(_rawArg);
+                if (_argVal === null) return '<div style="margin:12px 0;opacity:.7;">▶ 在 Canvas 執行（按鈕內容格式不正確，已停用）</div>';
+                let onclickVal = "sendPrompt('" + window.novaAttr(window.novaJsStr(_argVal)) + "')";
                 return '<div style="margin:12px 0;">'
                     + '<button onclick="' + onclickVal + '" '
                     + 'style="background:#f3f4f6;color:#111827;padding:10px 20px;'
@@ -4447,7 +4516,29 @@ return html;
         return finalHtml;
 }
 
-        function escapeHtml(t){return t?t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"):""}
+        // v2.6.126：多跳脫雙引號與單引號（這個函式常被拿來組 HTML 屬性，含 " 就能跳出屬性注入事件）；放在文字內容裡結果一樣
+        function escapeHtml(t){return t?String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"):""}
+        // v2.6.126：把「單一 JS 字串常值」（'…'、"…"、不含 ${} 的 `…`）解析成字串；不是單一常值（例如串了運算式）回傳 null（自桌面 v3.121.0）
+        function _novaParseJsStringLiteral(src) {
+            src = String(src == null ? '' : src).trim();
+            if (src.length < 2) return null;
+            const q = src[0];
+            if ((q !== "'" && q !== '"' && q !== '`') || src[src.length - 1] !== q) return null;
+            let out = '';
+            for (let i = 1; i < src.length - 1; i++) {
+                const ch = src[i];
+                if (ch === '\\') {
+                    const n = src[++i];
+                    if (n === undefined) return null;
+                    out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'r' ? '\r' : n;
+                    continue;
+                }
+                if (ch === q) return null;
+                if (q === '`' && ch === '$' && src[i + 1] === '{') return null;
+                out += ch;
+            }
+            return out;
+        }
 
         // ══════════════════════════════════════════════════════════════
         // 自訂確認對話框（替代 window.confirm，解決 Android WebView 空白問題）
@@ -11192,7 +11283,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 
                 const contentEl = document.getElementById('edit-note-content');
                 if (contentEl) {
-                    if (n.isHtml) contentEl.innerHTML = n.content || '';
+                    if (n.isHtml) contentEl.innerHTML = window.novaSanitizeHtml(n.content || '');   // v2.6.126：筆記可能來自同步／匯入，顯示前消毒
                     else contentEl.innerText = n.content || '';
                 }
                 
@@ -11496,7 +11587,7 @@ msg.files : (msg.file ? [msg.file] : []);
             let html;
             if (n.isHtml) html = (typeof _novaStripNoteEditorHelpers === 'function') ? _novaStripNoteEditorHelpers(n.content || '') : (n.content || '');
             else html = escapeHtml(String(n.content || '')).replace(/\n/g, '<br>');
-            root.innerHTML = html;
+            root.innerHTML = window.novaSanitizeHtml(html);   // v2.6.126
             root.querySelectorAll('script,style,iframe,object,embed').forEach(function (x) { x.remove(); });
             return root;
         }
@@ -13343,7 +13434,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                 }
 
                 const isUser = msg.sender === 'user'; const modelInfo = isUser ? null : MODEL_CONFIG[msg.model]; 
-                let sourcesHTML = msg.sources?.length ? `<div class="mt-3 pt-3 border-t border-slate-700/50"><p class="text-[10px] text-slate-400 mb-1 font-bold">來源：</p><div class="flex flex-wrap gap-2">${msg.sources.map((s,i)=>`<a href="${s.uri}" target="_blank" class="text-[10px] bg-slate-950/50 text-blue-400 px-2 py-1 rounded border border-slate-700/50 block truncate max-w-[150px]">${i+1}. ${s.title}</a>`).join('')}</div></div>` : '';
+                let sourcesHTML = msg.sources?.length ? `<div class="mt-3 pt-3 border-t border-slate-700/50"><p class="text-[10px] text-slate-400 mb-1 font-bold">來源：</p><div class="flex flex-wrap gap-2">${msg.sources.map((s,i)=>`<a href="${window.novaAttr(window.novaSafeUrl(s.uri))}" target="_blank" rel="noopener noreferrer" class="text-[10px] bg-slate-950/50 text-blue-400 px-2 py-1 rounded border border-slate-700/50 block truncate max-w-[150px]">${i+1}. ${escapeHtml(s.title || s.uri || '')}</a>`).join('')}</div></div>` : '';
                 let mediaHTML = '';
                 let filesToRender = msg.files && msg.files.length > 0 ? msg.files : (msg.file ? [msg.file] : []);
                 if (filesToRender.length > 0 && displayMediaHTML) {
@@ -13413,10 +13504,10 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                             </div>
                         </div>
                         <div class="flex gap-2 w-full">
-                            <button onclick="copyDeepLink('${ad.deepLinkUrl}')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1">
+                            <button onclick="copyDeepLink('${window.novaAttr(window.novaJsStr(ad.deepLinkUrl || ''))}')" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1">
                                 <i class="ph-bold ph-copy"></i> 複製連結
                             </button>
-                            <a href="${ad.deepLinkUrl}" target="_blank" rel="noopener noreferrer" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 text-center">
+                            <a href="${window.novaAttr(/^[\s\u0000-\u001f]*(javascript|vbscript|data):/i.test(String(ad.deepLinkUrl || '')) ? '' : (ad.deepLinkUrl || ''))}" target="_blank" rel="noopener noreferrer" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1 text-center">
                                 <i class="ph-bold ph-arrow-square-out"></i> 開啟 App
                             </a>
                         </div>
@@ -14125,9 +14216,9 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                         audioPlayerHtml = `<div class="mt-3 mb-2" data-audio-wrapper><audio controls class="w-full h-10 rounded-lg bg-slate-800 shadow-inner" data-audio-id="${n.id}"></audio></div>`;
                     }
                 }
-                let linkHtml = (n.driveUrl && !n.driveUrl.startsWith('blob:')) ? `<div class="mt-2"><a href="${n.driveUrl}" target="_blank" class="text-xs text-blue-400 underline flex items-center gap-1"><i class="ph-bold ph-cloud"></i> 在雲端查看已備份筆記</a></div>` : '';
+                let linkHtml = (n.driveUrl && !n.driveUrl.startsWith('blob:')) ? `<div class="mt-2"><a href="${window.novaAttr(window.novaSafeUrl(n.driveUrl))}" target="_blank" class="text-xs text-blue-400 underline flex items-center gap-1"><i class="ph-bold ph-cloud"></i> 在雲端查看已備份筆記</a></div>` : '';
                 
-                let renderedContent = n.isHtml ? n.content : formatMessage(n.content);
+                let renderedContent = n.isHtml ? window.novaSanitizeHtml(n.content) : formatMessage(n.content);   // v2.6.126：HTML 筆記顯示前消毒（同步／匯入來的內容不可信）
                 
                 const tagsBadgeHtml = (n.tags && n.tags.length)
                     ? `<div class="flex flex-wrap gap-1 mb-2">` + n.tags.map(function (t) { return `<span class="text-[9px] bg-emerald-900/30 text-emerald-300 border border-emerald-600/30 px-1.5 py-0.5 rounded-full">${escapeHtml(t)}</span>`; }).join('') + `</div>`
@@ -14192,7 +14283,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
 
                 const cloudBtn = novaHasDrive()
                     ? (anyDriveUrl
-                        ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
+                        ? `<a href="${window.novaAttr(window.novaSafeUrl(anyDriveUrl))}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
                         : `<button onclick="manualUploadToDrive('${primary.id}')" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive</button>`)
                     : '';
 
@@ -14234,7 +14325,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     ${summaryHtml}
                     <div class="flex flex-wrap items-center gap-2 mt-3">
                         ${novaHasDrive() ? (anyDriveUrl
-                            ? `<a href="${anyDriveUrl}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
+                            ? `<a href="${window.novaAttr(window.novaSafeUrl(anyDriveUrl))}" target="_blank" class="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-check"></i> 已備份雲端</a>`
                             : `<button onclick="batchUploadToDrive([${segs.map(s=>`'${s.id}'`).join(',')}])" class="flex items-center gap-1 text-sm bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-cloud-arrow-up"></i> 上傳 Drive${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>`)
                             : ''}
                         <button onclick="batchDownloadWeba([${segs.map(s=>`'${s.id}'`).join(',')}], 'record')" class="flex items-center gap-1 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg transition-colors nv-act-btn"><i class="ph-bold ph-download-simple"></i> weba${totalSegs > 1 ? ` (${totalSegs}段)` : ''}</button>
