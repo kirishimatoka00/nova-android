@@ -1,9 +1,12 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.1.0
-   最後更新：2026-11-09
+   目前版本：v1.2.0
+   最後更新：2026-11-11
 
    版本紀錄：
+   v1.2.0 - App v2.6.129（AI 記憶架構升級，對標桌面 desktop-patch v3.124.0）：NOVA_APP_VERSION 改成 2.6.129、NOVA_CHANGELOG 加一筆；
+            兩處帶入記憶的地方（工具呼叫路徑、一般對話路徑）在使用者明講「記住，…」時呼叫 window._novaMemExplicitHook（nova-memory.js v1.6.0）直接寫入長期記憶；
+            新增指令 /nomem（這段對話不要寫進記憶，/nomem off 恢復）。記憶本身的邏輯在 nova-memory-core.js／nova-memory.js，本檔其他程式沒有改動。
    v1.1.0 - App v2.6.128：NOVA_APP_VERSION 改成 2.6.128、NOVA_CHANGELOG 加一筆（對標桌面 desktop-patch v3.122.0～v3.123.0：nova-bots.js 改移植桌面 v1.6.0、
             nova-experts-glue.js v1.7.0 同步團隊共用記憶、nova-remote.js v1.1.0 手機控制台）。本檔其他程式沒有改動。
    v1.0.0 - App v2.6.127。從 index.html 抽出成獨立檔案（對標桌面 desktop-patch v3.121.0 ⑨ 的 nova-app-main.js）：原本是 index.html 第 2314 行起最大的一段內嵌 <script>（約 1.30MB），
@@ -28,8 +31,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.128';
+        const NOVA_APP_VERSION = '2.6.129';
         const NOVA_CHANGELOG = [
+            { v: '2.6.129', date: '2026-11-11', notes: [
+                'AI 記憶架構升級（對標桌面 desktop-patch v3.124.0；新檔 nova-memory-core.js v1.0.0〔與桌面共用同一份〕、nova-memory.js v1.6.0、nova-memsync.js v1.2.0、nova-bots.js v1.2.1-android.1、nova-experts-glue.js v1.7.1；僅 www，不需重新打包原生）：① 摘要時直接抽「原子事實」，偏好／身分／做法一次就進長期記憶；說「記住，…」直接寫入並釘選；摘要失敗排進重試佇列不再遺失。② 檢索改成向量＋關鍵字混合、長期事實有相關度門檻（不相關的不再每次都帶）、被用到的延後衰減、承接上文的問句帶上前兩句、附「多久以前」。③ 不同寫法併成同一個實體（別名）、釘選、健檢、記憶整理（重試／補向量／合併重複／檢查矛盾／濃縮舊摘要，每 20 小時背景做一次）、/nomem 這段對話不要記、寫入前機密偵測、Bot 的記憶提案。④ 沒有 Gemini 金鑰時改用 OpenAI 或 Grok 摘要、只用關鍵字檢索。',
+                '記憶跨裝置同步相容：同步檔格式不變，只多了選用欄位；另一台還沒更新的裝置（桌面 v3.123 以前、手機 v2.6.128 以前）照常同步、不會出錯，新資料也不會因為經過舊版裝置而遺失。私密記憶沒有變動。',
+                '手機版與桌面版的差異（誠實說明）：手機沒有常駐大腦，記憶整理是 App 開著時在背景做；AI 的 memory_remember／memory_forget 工具只在桌面有，手機用「記住，…」這句話與設定頁管理。本次只在沙盒用假的模型回應驗證，沒有在實機與真實雲端同步檔上測過。',
+            ] },
                 '手機當控制台＋多 Bot 格式對齊桌面（對標桌面 v3.122.0～v3.123.0；nova-remote.js v1.1.0、nova-bots.js v1.2.0-android.1〔移植桌面 v1.6.0〕、nova-experts-glue.js v1.7.0；僅 www）：① 電腦遙控上方多一個「🧠」按鈕、設定頁多「🧠 收件匣／待批准」：直接打開電腦上的收件匣控制台（nova-console.html），可以允許／拒絕 Bot 想做的高風險動作（寄信、刪檔、執行指令…）、看收件匣與成品、交辦工作給電腦上的 Bot、看工作狀態、收回「永遠允許」規則；電腦需要 desktop-patch v3.122.0 以上。② 多 Bot 引擎改移植桌面 v1.6.0：桌面新增的設定（工具呼叫方式、哨兵審查、向量記憶、團隊共用記憶）手機存設定或同步時會原樣保留，不再被蓋回預設值；手機也能用團隊共用記憶（team_recall／team_remember），並跟電腦同步。手機沒有常駐大腦，所以工具呼叫、高風險確認、記憶挑選的行為跟以前一樣。',
                 'index.html 瘦身（對標桌面 v3.121.0 ⑨；僅 www）：原本 index.html 約 1.76MB，其中約 1.30MB 的主程式內嵌腳本逐字搬到新檔 nova-app-main.js，原位置改成同一位置、同一順序的 <script src>，執行順序與全域變數行為不變；之後主程式、版本號與這份更新紀錄都改在 nova-app-main.js。index.html 與主程式檔版本不一致時（WebView 用到舊快取）主控台會警告；主程式檔載入失敗時畫面上會直接顯示原因，不會只剩空白畫面。',
                 '資安補強（對標桌面 v3.121.0 ①；新增 vendor/purify.min.js〔DOMPurify 3.4.17〕；僅 www）：① escapeHtml 多跳脫引號；② AI 回覆裡的連結只放行 http(s)／mailto／tel／sms 等安全協定，網址跳脫後才放進 href（擋 javascript: 與屬性跳脫）；③ AI 產生的「在 Canvas 執行」按鈕只接受單一字串，串了程式碼的一律停用（原本按下去會執行 AI 寫的任意 JS）；④ HTML 筆記（含同步、匯入來的）顯示與編輯前先用 DOMPurify 消毒，搜尋來源、雲端備份連結、App 跳轉連結也一併檢查；⑤ 加基本 CSP（object-src none、base-uri self）。副作用：舊的「收藏對話」筆記裡若有可點的按鈕（例如 Canvas 執行），在筆記裡會變成不能按；真的有問題可在主控台設 localStorage nova_sanitize=0 暫時關閉消毒。',
@@ -7910,6 +7918,7 @@ msg.files : (msg.file ? [msg.file] : []);
             { c: '/ppt',  d: '用簡報精靈製作投影片（可接主題）', arg: true },
             { c: '/re',   d: '開啟「新增任務」（可接標題）', arg: true },
             { c: '/ns',   d: '新增對話' },
+            { c: '/nomem', d: '這段對話不要寫進記憶（/nomem off 恢復）' },
             { c: '/ap',   d: 'AI 自主任務（接要完成的事）', arg: true },
             { c: '/pa',   d: '觸發 Power Automate 流程', arg: true },
             { c: '/mcp',  d: '強制用工具呼叫（內建／技能／遠端 MCP）完成', arg: true },
@@ -8284,6 +8293,9 @@ msg.files : (msg.file ? [msg.file] : []);
                         const _mc = await _novaMemStore().retrieveContext(String(text).slice(0, 500));
                         if (_mc && _mc.found) modelText = _mc.context + '\n\n' + text;
                     }
+                    // v1.2.0（App v2.6.129）：使用者明講「記住，…」→ 直接寫進長期記憶（nova-memory.js v1.6.0）
+                    const _mnote = window._novaMemExplicitHook ? window._novaMemExplicitHook(text) : '';
+                    if (_mnote) modelText = _mnote + '\n\n' + modelText;
                 } catch (e) { console.warn('[NOVA][記憶] FC 注入略過', e); }
                 let result;
                 if (provider === 'gemini') {
@@ -15253,6 +15265,14 @@ window.startMultiAgentResearch = async function() {
                     await window.novaRunToolChat(_mcpText, { force: true });
                     return;
                 }
+                // /nomem：這段對話不要寫進記憶（/nomem off 恢復）——v1.2.0（App v2.6.129）
+                if (_lc === '/nomem' || _lc.startsWith('/nomem ')) {
+                    input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                    const _nmOn = !/\boff\b|恢復|取消/.test(_lc.slice(6));
+                    if (window.NovaMemory && NovaMemory.engine && NovaMemory.engine()) { NovaMemory.setSkipped(appState.currentSessionId, _nmOn); showToast(_nmOn ? '🙈 這段對話之後的內容不會寫進記憶（恢復：輸入 /nomem off）' : '🧠 這段對話恢復寫進記憶'); }
+                    else showToast('記憶核心沒有載入');
+                    return;
+                }
                 // /ns：直接新增對話
                 if (_lc === '/ns' || _lc.startsWith('/ns ')) {
                     input.value = ''; autoResizeInput(input); chatInitialInput = '';
@@ -16860,7 +16880,9 @@ if (appState.pendingAnalyzeContextId) {
 
                 // v2.6.25（批次 6b）：AI 記憶——自動帶入相關的長期事實與過去對話摘要（NovaMemory，IndexedDB）
                 if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window._novaMemStore() && _novaMemStore().isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt')) {
+                    const _mnote2 = window._novaMemExplicitHook ? window._novaMemExplicitHook(userText) : '';   // v1.2.0（App v2.6.129）：明講「記住，…」直接寫進長期記憶
                     try { const _mc = await _novaMemStore().retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
+                    if (_mnote2) userText = _mnote2 + '\n\n' + userText;
                 }
 
                 let finalPrompt = userText;

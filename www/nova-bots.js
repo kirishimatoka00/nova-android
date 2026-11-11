@@ -1,5 +1,7 @@
 /* [NOVA Android] nova-bots.js — 由 NOVA Desktop 同名檔案（v1.6.0）移植（純邏輯、不碰 DOM／appState）。
    Android 移植版本紀錄：
+     v1.2.1-android.1 (2026-11-11，App v2.6.129) - 對標桌面 v1.6.1：Bot 用 team_remember 記到團隊記憶的事，同時透過 deps.memPropose 變成「記憶提案」，
+       使用者在設定頁的記憶分頁同意後才寫進主記憶的長期事實。沒有提供 deps.memPropose 時行為不變。
      v1.2.0-android.1 (2026-11-09，App v2.6.128) - 改移植桌面版 v1.6.0（原生 function calling、待批准、哨兵、稽核、用量上限、向量記憶、團隊共用記憶、inbox_summary、chat 任務類型）。
        與桌面版的差異仍只有兩處（皆標有「Android」）：① API.UNSUPPORTED；② 計算可用工具時排除 UNSUPPORTED。
        ★ 手機版目前沒有共用 agent 核心（NovaAgentCore）與常駐大腦，所以：工具呼叫走原本的 JSON 協定、高風險動作照舊「有人在場確認、沒人在場不執行」、
@@ -894,6 +896,8 @@
         if (!store) return out(false, '沒有可用的記憶儲存。');
         await store.memAdd(TEAM_ID, [{ text: tx2 + '（' + ((c.bot && c.bot.displayName) || 'Bot') + ' 記）', kind: 'fact', src: c.task.id }], c.settings.memoryCap);
         c.rememberBox.left--;
+        // v1.2.1-android.1（桌面 v1.6.1）：同時提案給使用者的主記憶（要使用者同意才會寫入；提案失敗不影響這次記錄）
+        try { if (deps.memPropose) deps.memPropose({ text: tx2, from: (c.bot && c.bot.displayName) || 'Bot' }); } catch (e) { /* 提案而已 */ }
         return out(true, '已記到團隊記憶。');
       }
       if (name === 'inbox_summary') {

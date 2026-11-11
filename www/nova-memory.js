@@ -1,7 +1,18 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-memory.js — NOVA Android 的「AI 記憶系統」（IndexedDB 版；跟 index.html 放同一個資料夾 www/）
-   版本：v1.2.0
+   版本：v1.6.0
    版本紀錄：
+   v1.6.0 - App v2.6.129：主記憶接上與桌面共用的記憶核心（新檔 nova-memory-core.js v1.0.0，對標桌面 desktop-patch v3.124.0；nova-memsync.js v1.2.0）。私密記憶完全不動。
+            ① 摘要時直接抽「原子事實」（類型、所屬實體、信心）：偏好／身分／做法類一次就進長期記憶，其餘照頻率；摘要失敗排進重試佇列（存在 meta 的 pending，
+               不改資料庫版本），不再遺失；逐字稿只帶這一段新的對話。
+            ② 檢索改成向量＋關鍵字混合、長期事實有相關度門檻（原本沒向量的一律帶入、有向量的固定帶前 5 筆）、被用到的延後衰減、承接上文的問句帶上前兩句、
+               附「多久以前」、同專案加分。
+            ③ 實體別名（不同寫法併成同一個實體）、記住／忘記（remember／forget）、釘選、這段對話不要記（setSkipped）、Bot 的記憶提案、機密偵測。
+            ④ 記憶整理 maintain（重試、補向量、合併重複、檢查矛盾、濃縮舊摘要；每 20 小時在背景做一次，設定頁可手動）與健檢 lint。
+            ⑤ 不綁 Gemini：沒有 Gemini 金鑰時用 OpenAI 或 Grok 摘要，檢索退成只用關鍵字。
+            ⑥ 每筆記憶多了選用欄位 x（附加資料）、embModel、lastUsed、useCount；舊資料沒有這些欄位照常使用。備份 exportAll 多帶 pending。
+            ⑦ 設定頁：長期事實顯示類型／釘選／別名並可切換釘選；新增「記憶整理與進階」卡片。
+            nova-memory-core.js 沒載入時，全部退回 v1.5.0 的做法。對外多：engine／remember／forget／setPinned／lint／maintain／isSkipped／setSkipped／explicitFromUserText。
    v1.5.0 - App v2.6.89：私密記憶（CFG.priv）完全用 Grok：回覆後摘要、長期事實固化、文件事實抽取都呼叫 Grok（沒有 Grok 金鑰就不處理，不退回 Gemini）；不呼叫嵌入模型，檢索改成本機關鍵字（2 字片段）比對。主記憶不受影響。
    v1.4.0 - App v2.6.64：主記憶的 retrieveContext 結尾帶入相關的「AI 思考」（nova-thoughts.js；私密記憶不帶）。
    v1.3.0 - App v2.6.63：設定頁「長期事實」「對話摘要」改成可收合（預設收起，重新整理後保留展開狀態）；私密記憶專區需先用密碼解鎖（NovaPrivateLock，見 nova-private.js v1.1.0），解鎖後可「上鎖」「變更密碼」。
@@ -188,6 +199,11 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
 
     // ───────── 固化（LLM Wiki 合併） ─────────
     async function consolidateCore(entity, newFact, sourceRef, sessionId, hitCount, srcLabel) {
+        var E0 = engine();
+        if (E0) {   // v1.6.0：走記憶核心（別名解析、事實時間軸、機密偵測）；失敗才用下面原本的做法
+            try { var r0 = await E0.consolidate(await E0.resolveEntity(entity), { text: newFact, kind: 'fact', src: srcLabel ? 'doc' : 'chat', label: srcLabel || undefined }, { sourceRef: sourceRef || '', sessionId: sessionId || '', hitCount: hitCount }); if (r0 && (r0.ok || r0.secret)) return; }
+            catch (e0) { console.warn('[NOVA][記憶] 核心固化失敗，改用原本的做法：', e0); }
+        }
         var now = Date.now();
         var existing = await getOne('core', entity);
         var refs = (existing && Array.isArray(existing.sourceRefs)) ? existing.sourceRefs : [];
@@ -229,12 +245,131 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         }
     }
 
+    // ───────── v1.6.0：記憶核心（nova-memory-core.js；桌面與手機共用同一份邏輯，這裡接 IndexedDB）─────────
+    var _eng = null, _maintBusy = false;
+    function kvGet(k) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? null : v; } catch (e) { return null; } }
+    function kvSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
+    function keyOf(name) { try { return (W.appState && appState.keys && appState.keys[name]) || localStorage.getItem('nova_key_' + name) || ''; } catch (e) { return ''; } }
+    function embModelName() { try { return (typeof NOVA_KB_EMBED_MODEL !== 'undefined' && NOVA_KB_EMBED_MODEL) || 'gemini-embedding-2'; } catch (e) { return 'gemini-embedding-2'; } }
+    function scopeOf(sid) { try { var n = ((W.appState && appState.sessionFolderMap) || {})[String(sid)]; return n ? 'proj:' + n : ''; } catch (e) { return ''; } }
+    // 摘要／合併用的模型：Gemini 輕量 → OpenAI → Grok（主記憶不綁特定廠商；私密記憶仍只用 Grok，見 generate）
+    async function generateAny(prompt, ms) {
+        if (keyOf('gemini')) return generate(prompt, ms);
+        var ok = keyOf('openai'), gk = keyOf('grok'), url, key, model;
+        if (ok) { url = 'https://api.openai.com/v1/chat/completions'; key = ok; model = (W.appState && appState.gptModel) || 'gpt-6-luna'; if (!/^gpt-/.test(model) || /image|tts|audio|realtime|embedding|transcribe/i.test(model)) model = 'gpt-6-luna'; }
+        else if (gk) { url = 'https://api.x.ai/v1/chat/completions'; key = gk; model = (W.appState && appState.grokModel) || ''; if (!/^grok-/.test(model) || /multi|auto|imagine|image|video/.test(model)) model = 'grok-4.3'; }
+        else throw new Error('沒有可用的模型金鑰');
+        var r = await timeoutP(fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key }, body: JSON.stringify({ model: model, messages: [{ role: 'user', content: prompt }] }) }), ms || 20000, '記憶 LLM');
+        if (!r.ok) throw new Error('API 呼叫失敗 ' + r.status);
+        var d = await r.json(); return String((d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+    }
+    function toCore(r) { return r ? { entity: r.entity, fact: r.fact || '', hit_count: r.hitCount || 1, last_updated: r.lastUpdated || 0, vector: r.vector || [], page_md: r.pageMd || '', source_refs: r.sourceRefs || [], x: (r.x && typeof r.x === 'object') ? r.x : undefined, emb_model: r.embModel || '', last_used: r.lastUsed || 0, use_count: r.useCount || 0 } : null; }
+    function toEpi(e) { return e ? { id: e.id, session_id: e.sessionId || '', summary: e.summary || '', topic: e.topic || '', entities: e.entities || [], vector: e.vector || [], created_at: e.createdAt || 0, source_range: e.sourceRange || '', x: (e.x && typeof e.x === 'object') ? e.x : undefined, emb_model: e.embModel || '', last_used: e.lastUsed || 0, use_count: e.useCount || 0 } : null; }
+    async function pendList() { var r = await getOne('meta', 'pending'); return (r && Array.isArray(r.value)) ? r.value : []; }
+    async function pendSave(a) { await put('meta', { key: 'pending', value: a.slice(-100) }); }
+    function engine() {
+        if (CFG.priv || !W.NovaMemoryCore) return null;   // 私密記憶維持原本的做法（只用 Grok、本機關鍵字）
+        if (_eng) return _eng;
+        var store = {
+            coreAll: async function () { return (await getAll('core')).map(toCore); },
+            coreGet: async function (entity) { return toCore(await getOne('core', entity)); },
+            corePut: async function (r) {
+                var cur = (await getOne('core', r.entity)) || {};
+                if (r._vecOnly) { if (!cur.entity) return; cur.vector = r.vector || []; cur.embModel = r.emb_model || ''; await put('core', cur); return; }
+                var hasVec = !!(r.vector && r.vector.length);
+                await put('core', { entity: r.entity, fact: r.fact || '', hitCount: r.hit_count || 1, lastUpdated: r.last_updated || Date.now(), vector: hasVec ? r.vector : (cur.vector || []),
+                    pageMd: r.page_md || '', sourceRefs: r.source_refs || [], x: r.x === undefined ? cur.x : r.x, embModel: hasVec ? (r.emb_model || '') : (cur.embModel || ''), lastUsed: cur.lastUsed || 0, useCount: cur.useCount || 0 });
+            },
+            coreDel: async function (entity) { await del('core', entity); try { W.NovaMemSync && W.NovaMemSync.markCoreDeleted(entity); } catch (e) { /* 同步墓碑 */ } },
+            epiAll: async function () { return (await getAll('episodic')).map(toEpi); },
+            epiPut: async function (e) {
+                var cur = (await getOne('episodic', e.id)) || {};
+                if (e._vecOnly) { if (!cur.id) return; cur.vector = e.vector || []; cur.embModel = e.emb_model || ''; await put('episodic', cur); return; }
+                var hasVec = !!(e.vector && e.vector.length);
+                await put('episodic', { id: e.id, sessionId: e.session_id || '', summary: e.summary || '', topic: e.topic || '', entities: e.entities || [], vector: hasVec ? e.vector : (cur.vector || []),
+                    createdAt: e.created_at || Date.now(), sourceRange: e.source_range || '', x: e.x === undefined ? cur.x : e.x, embModel: hasVec ? (e.emb_model || '') : (cur.embModel || ''), lastUsed: cur.lastUsed || 0, useCount: cur.useCount || 0 });
+                if (e._edited) { try { W.NovaMemSync && W.NovaMemSync.markEpisodicEdited(e.id); } catch (e2) { /* 讓這次修改能同步出去 */ } }
+            },
+            freqGet: async function (entity) { var f = await getOne('entity_freq', entity); return f ? { entity: f.entity, count_30d: f.count30d || 0, last_seen: f.lastSeen || 0 } : null; },
+            freqPut: function (f) { return put('entity_freq', { entity: f.entity, count30d: f.count_30d, lastSeen: f.last_seen }); },
+            freqAll: async function () { return (await getAll('entity_freq')).map(function (f) { return { entity: f.entity, count_30d: f.count30d || 0, last_seen: f.lastSeen || 0 }; }); },
+            pendingAdd: async function (d) {
+                var a = await pendList();
+                a.push({ id: 'mp_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), session_id: String(d.session_id || ''), transcript: String(d.transcript || '').slice(0, 40000), range: String(d.range || ''), scope: String(d.scope || ''), attempts: 0, created_at: d.created_at || Date.now(), last_error: String(d.last_error || '').slice(0, 200) });
+                await pendSave(a); return { ok: true };
+            },
+            pendingAll: pendList,
+            pendingDel: async function (id) { await pendSave((await pendList()).filter(function (p) { return p.id !== id; })); },
+            pendingFail: async function (id, err) { var a = await pendList(); a.forEach(function (p) { if (p.id === id) { p.attempts = (p.attempts || 0) + 1; p.last_error = String(err || '').slice(0, 200); } }); await pendSave(a); },
+            log: logEvent,
+            logRecent: async function (n) { return (await getAll('log')).sort(function (a, b) { return b.ts - a.ts; }).slice(0, n || 100).map(function (l) { return { ts: l.ts, op: l.op, entity: l.entity, detail: l.detail, session_id: l.sessionId }; }); },
+            schema: readSchema,
+            touch: async function (ents, ids, t) {
+                for (var i = 0; i < ents.length; i++) { var c = await getOne('core', ents[i]); if (c) { c.lastUsed = t; c.useCount = (c.useCount || 0) + 1; await put('core', c); } }
+                for (var j = 0; j < ids.length; j++) { var e = await getOne('episodic', ids[j]); if (e) { e.lastUsed = t; e.useCount = (e.useCount || 0) + 1; await put('episodic', e); } }
+            }
+        };
+        _eng = W.NovaMemoryCore.create({
+            store: store, kv: { get: kvGet, set: kvSet },
+            llm: function (prompt, o) { return generateAny(prompt, (o && o.ms) || 20000); },
+            hasLlm: function () { return !!(keyOf('gemini') || keyOf('openai') || keyOf('grok')); },
+            embedDocs: function (texts) { return timeoutP(W.novaKbEmbedDocumentBatch(texts), 15000, '嵌入'); },
+            embedQuery: function (t) { return timeoutP(W.novaKbEmbedQuery(t), 10000, '嵌入'); },
+            hasEmbed: function () { return !!keyOf('gemini') && typeof W.novaKbEmbedDocumentBatch === 'function' && typeof W.novaKbEmbedQuery === 'function'; },
+            embModel: embModelName(), profile: getProfile, changed: changed,
+            onProposal: function () { toast('🧠 Bot 提議記住一件事，請到「設定 → 記憶」確認'); },
+            warn: function () { console.warn.apply(console, arguments); }
+        });
+        return _eng;
+    }
+    async function compress2(E, sessionId, fromAi) {
+        var msgs = sessionMsgs(sessionId), ai = msgs.filter(function (m) { return m.sender === 'ai'; });
+        var target = ai.slice(fromAi, fromAi + COMPRESS_EVERY); if (!target.length) return;
+        var s0 = msgs.findIndex(function (m) { return m.id === target[0].id; }), e0 = msgs.findIndex(function (m) { return m.id === target[target.length - 1].id; });
+        for (var k = 0; k < 3 && s0 > 0 && msgs[s0 - 1].sender === 'user'; k++) s0--;   // 帶上這段開頭的使用者提問；更早的已經摘要過
+        var r = await E.ingestTranscript({ sessionId: String(sessionId), transcript: E.buildTranscript(msgs.slice(Math.max(0, s0), e0 + 1)), range: target[0].time + '~' + target[target.length - 1].time, scope: scopeOf(sessionId) });
+        if (r.ok || r.queued || r.empty) await put('checkpoints', { sessionId: String(sessionId), compressedCount: fromAi + target.length });   // 失敗的已經進重試佇列，進度可以往前
+    }
+    async function maintain(o) {
+        var E = engine(); if (!E) return { ok: false, note: '記憶核心沒有載入' };
+        if (_maintBusy) return { ok: false, note: '記憶整理進行中' };
+        _maintBusy = true;
+        try {
+            var rep = await E.maintain(Object.assign({ budgetMs: 90000 }, o || {}));
+            return { ok: true, rep: rep, note: '重試摘要 ' + rep.pending.done + '/' + rep.pending.tried + '、補向量 ' + rep.embedded + '、合併重複 ' + rep.merged + '、發現矛盾 ' + rep.conflicts + '、濃縮舊摘要 ' + rep.digests };
+        } catch (e) { return { ok: false, note: '記憶整理失敗：' + (e.message || e) }; }
+        finally { _maintBusy = false; }
+    }
+    // 背景：重試佇列有東西、或超過 20 小時沒整理 → 整理一次（最多每小時試一次；手機沒有常駐大腦，靠這裡）
+    function poke() {
+        try {
+            var E = engine(); if (!E || !isOn() || !E.hasLlm()) return;
+            var now = Date.now(), last = Number(kvGet('nova_mem_maintain_last')) || 0, tried = Number(kvGet('nova_mem_maintain_try')) || 0;
+            if (now - tried < 3600000) return;
+            pendList().then(function (p) { if (p.length || now - last > 20 * 3600000) { kvSet('nova_mem_maintain_try', now); maintain({}); } }).catch(function () { /* 背景工作 */ });
+        } catch (e) { /* 背景工作 */ }
+    }
+
     // ───────── 中期摘要 ─────────
     function sessionMsgs(sid) { return (W.appState ? appState.messages : []).filter(function (m) { return String(m.sessionId) === String(sid) && (m.sender === 'user' || m.sender === 'ai'); }); }
     function acceptSid(sid) { return !!sid && (W.NovaPrivate.isPrivate(sid) === CFG.priv); }   // 主記憶只收一般對話、私密記憶只收私密對話
     var _busy = {};
     async function maybeCompress(sessionId, force) {
-        if (!isOn() || !gkey() || !sessionId || !acceptSid(sessionId)) return;
+        if (!isOn() || !sessionId || !acceptSid(sessionId)) return;
+        var E = engine();
+        if (E) {   // v1.6.0：主記憶走記憶核心
+            try {
+                if (E.isSkipped(sessionId) || !E.hasLlm()) return;
+                var ai2 = sessionMsgs(sessionId).filter(function (m) { return m.sender === 'ai'; });
+                var cp2 = await getOne('checkpoints', String(sessionId)), done2 = (cp2 && cp2.compressedCount) || 0, left2 = ai2.length - done2;
+                poke();
+                if (left2 <= 0) return; if (!force && left2 < COMPRESS_EVERY) return;
+                if (_busy[sessionId]) return; _busy[sessionId] = true;
+                compress2(E, sessionId, done2).catch(function (e) { console.warn('[NOVA][記憶] 背景摘要失敗：', e); }).then(function () { _busy[sessionId] = false; });
+            } catch (e) { /* 背景任務 */ }
+            return;
+        }
+        if (!gkey()) return;
         try {
             var ai = sessionMsgs(sessionId).filter(function (m) { return m.sender === 'ai'; });
             var cp = await getOne('checkpoints', String(sessionId)); var done = (cp && cp.compressedCount) || 0;
@@ -268,7 +403,21 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     // ───────── 檢索 ─────────
     async function retrieveContext(queryText, opts) {
         opts = opts || {};
-        if (!isOn() || (!CFG.priv && !gkey()) || (W.NovaPrivate.isCurrent() !== CFG.priv)) return { found: false, context: '' };
+        if (!isOn() || (W.NovaPrivate.isCurrent() !== CFG.priv)) return { found: false, context: '' };
+        var E = engine();
+        if (E) {   // v1.6.0：主記憶走記憶核心的混合檢索；失敗才用下面原本的做法
+            try {
+                var sidN = String((W.appState && appState.currentSessionId) || '');
+                var hist = (W.appState ? appState.messages : []).filter(function (m) { return (m.sender === 'user' || m.sender === 'ai') && m.text && String(m.sessionId) === sidN; }).slice(-5).map(function (m) { return { text: m.text }; });
+                var rr = await E.retrieve(String(queryText || '').slice(0, 600), { coreOnly: !!opts.coreOnly, history: hist, scope: scopeOf(sidN) });
+                var ctx = rr.context || '';
+                if (W.NovaThoughts && !opts.coreOnly) {
+                    try { var th0 = W.NovaThoughts.contextFor(queryText, { entities: rr.core.map(function (c) { return c.entity; }), text: rr.core.map(function (c) { return c.entity + ' ' + c.fact; }).concat(rr.episodic.map(function (p) { return (p.topic || '') + ' ' + (p.summary || ''); })).join(' ') }); if (th0) ctx = ctx ? ctx + '\n' + th0 : th0; } catch (eT) { /* 不影響檢索 */ }
+                }
+                return ctx ? { found: true, context: ctx, coreCount: rr.core.length, episodicCount: rr.episodic.length } : { found: false, context: '' };
+            } catch (eR) { console.warn('[NOVA][記憶] 新版檢索失敗，這次改用原本的檢索：', eR); }
+        }
+        if (!CFG.priv && !gkey()) return { found: false, context: '' };
         try {
             var qv = CFG.priv ? null : (typeof W.novaKbEmbedQuery === 'function') ? await timeoutP(W.novaKbEmbedQuery(String(queryText || '').slice(0, 600)), 10000, '嵌入') : null;
             var core = await getAll('core'), epi = opts.coreOnly ? [] : await getAll('episodic');
@@ -334,18 +483,19 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
     async function stats() { var r = await Promise.all([getAll('core'), getAll('episodic'), getAll('entity_freq'), getAll('log')]); return { core: r[0].length, episodic: r[1].length, entities: r[2].length, log: r[3].length }; }
     async function exportAll() {
         var r = await Promise.all([getAll('core'), getAll('episodic'), getAll('entity_freq'), getAll('checkpoints'), getAll('log'), getOne('meta', 'schema')]);
-        return { v: 1, core: r[0], episodic: r[1], entityFreq: r[2], checkpoints: r[3], log: r[4].slice(-300), schema: (r[5] && r[5].value) || '', profile: getProfile(), mode: isOn() ? 'on' : 'off' };
+        return { v: 1, core: r[0], episodic: r[1], entityFreq: r[2], checkpoints: r[3], log: r[4].slice(-300), schema: (r[5] && r[5].value) || '', profile: getProfile(), mode: isOn() ? 'on' : 'off', pending: await pendList() };   // v1.6.0：多帶重試佇列
     }
     async function importAll(d) {
         if (!d || typeof d !== 'object') return 0; var n = 0;
         var pairs = [['core', d.core], ['episodic', d.episodic], ['entity_freq', d.entityFreq], ['checkpoints', d.checkpoints], ['log', d.log]];
         for (var i = 0; i < pairs.length; i++) { var arr = pairs[i][1]; if (!Array.isArray(arr)) continue; for (var j = 0; j < arr.length; j++) { try { await put(pairs[i][0], arr[j]); n++; } catch (e) { /* 單筆壞掉略過 */ } } }
         if (d.schema) await writeSchema(d.schema);
+        if (Array.isArray(d.pending) && d.pending.length) { try { await pendSave(d.pending); } catch (e) { /* 舊備份沒有 */ } }   // v1.6.0
         if (typeof d.profile === 'string' && d.profile) setProfile(d.profile);
         if (d.mode) setOn(d.mode !== 'off');
         return n;
     }
-    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
+    async function clearAll() { await Promise.all(['core', 'episodic', 'entity_freq', 'checkpoints', 'log'].map(clear)); try { await del('meta', 'pending'); } catch (e) { /* v1.6.0：重試佇列一併清掉 */ } try { !CFG.priv && W.NovaMemSync && W.NovaMemSync.markClearedAll(); } catch (e) {} changed(); }
 
     // ───────── 設定頁 ─────────
     var ui = { root: null }, openSet = {};
@@ -363,12 +513,26 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         var sid = W.appState && appState.currentSessionId;
         el.innerHTML = (LK ? '<div class="nv-card"><div style="display:flex;align-items:center;gap:8px"><b style="flex:1">🔓 私密記憶已解鎖</b><button class="nv-btn" id="nm-relock">上鎖</button></div><details style="margin-top:6px"><summary style="cursor:pointer" class="nv-muted">變更密碼</summary><input id="nm-pw-old" type="password" class="nv-input" placeholder="舊密碼" style="margin-top:6px"><input id="nm-pw-new" type="password" class="nv-input" placeholder="新密碼（至少 4 字元）" style="margin-top:6px"><button class="nv-btn" id="nm-pw-save" style="margin-top:6px">儲存新密碼</button></details></div>' : '') +
             '<div class="nv-card" style="margin-top:' + (LK ? 8 : 0) + 'px"><h4>' + (CFG.priv ? '🕶️ 私密記憶（只供私密對話使用，與上方主記憶完全分開）' : '🧠 AI 記憶') + '</h4><label class="nova-em-item"><input type="checkbox" id="nm-on" ' + (isOn() ? 'checked' : '') + '> <span>啟用記憶（背景摘要對話、固化長期事實、回答前自動帶入相關記憶）</span></label>' +
-            '<p class="nv-muted" style="margin-top:6px">資料只存在這支手機（IndexedDB），不上傳；' + (CFG.priv ? '摘要與固化只用 Grok（需要 Grok 金鑰），檢索在手機本機比對，不經 Gemini／OpenAI／Jev。' : '摘要與固化會呼叫 Gemini 輕量模型。') + '</p></div>' +
+            '<p class="nv-muted" style="margin-top:6px">資料只存在這支手機（IndexedDB），不上傳；' + (CFG.priv ? '摘要與固化只用 Grok（需要 Grok 金鑰），檢索在手機本機比對，不經 Gemini／OpenAI／Jev。' : '摘要與固化會呼叫 Gemini 輕量模型（沒有 Gemini 金鑰時改用 OpenAI 或 Grok）。') + '</p></div>' +
             '<div class="nv-card" style="margin-top:8px"><h4>目前記憶量</h4><div class="nv-muted">長期事實 ' + st.core + ' 筆｜對話摘要 ' + st.episodic + ' 筆｜追蹤中的實體 ' + st.entities + ' 個</div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="nv-btn" id="nm-now">立即整理目前對話</button><button class="nv-btn nv-danger" id="nm-clear">清空全部記憶</button></div></div>' +
             '<div class="nv-card" style="margin-top:8px"><h4>使用者 Profile</h4><textarea id="nm-profile" class="nv-input" rows="3" placeholder="例：我是 XX，從事 XX，目前專案是 XX（讓記憶只記跟你有關的事）">' + esc(getProfile()) + '</textarea><button class="nv-btn" id="nm-profile-save" style="margin-top:6px">儲存 Profile</button></div>' +
-            '<details class="nv-card nm-fold" data-f="core"' + (openSet.core ? ' open' : '') + ' style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">長期事實（' + core.length + '）</summary>' + (core.length ? core.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.entity) + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.fact) + '</div></div><button class="nv-btn nm-del-core" data-k="' + esc(r.entity) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。同一個主題 30 天內被提到 3 次、或匯入文件／筆記時抽到穩定事實，就會出現在這裡。</p>') + '</details>' +
+            '<details class="nv-card nm-fold" data-f="core"' + (openSet.core ? ' open' : '') + ' style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">長期事實（' + core.length + '）</summary>' + (core.length ? core.map(function (r) {
+                var x = (r.x && typeof r.x === 'object') ? r.x : {}, kz = (W.NovaMemoryCore && W.NovaMemoryCore.KIND_ZH) || {}, al = Array.isArray(x.aliases) ? x.aliases : [];   // v1.6.0：類型／釘選／別名
+                var tags = (x.pinned ? ' 📌' : '') + (x.kind && kz[x.kind] ? ' <span class="nv-muted">〔' + esc(kz[x.kind]) + '〕</span>' : '') + (x.scope ? ' <span class="nv-muted">〔' + esc(String(x.scope).replace(/^proj:/, '專案：')) + '〕</span>' : '') + (al.length ? ' <span class="nv-muted">別名：' + esc(al.slice(0, 4).join('、')) + '</span>' : '');
+                return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.entity) + '</b>' + tags + '<div class="nv-muted" style="word-break:break-word">' + esc(r.fact) + '</div></div>'
+                    + (engine() ? '<button class="nv-btn nm-pin-core" data-k="' + esc(r.entity) + '" data-on="' + (x.pinned ? '0' : '1') + '">' + (x.pinned ? '取消釘選' : '釘選') + '</button>' : '')
+                    + '<button class="nv-btn nm-del-core" data-k="' + esc(r.entity) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。同一個主題 30 天內被提到 3 次、或匯入文件／筆記時抽到穩定事實，就會出現在這裡。</p>') + '</details>' +
             '<details class="nv-card nm-fold" data-f="epi"' + (openSet.epi ? ' open' : '') + ' style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">對話摘要（最近 ' + epi.length + ' 筆）</summary>' + (epi.length ? epi.map(function (r) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><b>' + esc(r.topic || '對話') + '</b><div class="nv-muted" style="word-break:break-word">' + esc(r.summary) + '</div></div><button class="nv-btn nm-del-epi" data-k="' + esc(r.id) + '">刪除</button></div>'; }).join('') : '<p class="nv-muted">還沒有。每 10 則 AI 回覆會自動摘要一次。</p>') + '</details>' +
+            (engine() ? (function () {   // v1.6.0：記憶整理與進階（只有主記憶）
+                var E = engine(), last = Number(kvGet('nova_mem_maintain_last')) || 0, props = E.proposals(), skipped = sid != null && E.isSkipped(sid);
+                return '<div class="nv-card" style="margin-top:8px"><h4>🧩 記憶整理與進階</h4><p class="nv-muted">記憶核心 v' + esc(W.NovaMemoryCore.VERSION) + '。' + (keyOf('gemini') ? '檢索：向量＋關鍵字。' : '檢索：只用關鍵字（沒有 Gemini 金鑰，無法算向量）。') + '上次整理：' + (last ? new Date(last).toLocaleString() : '還沒有') + '。</p>'
+                    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="nv-btn" id="nm-maintain">🧹 立即整理</button><button class="nv-btn" id="nm-lint">🩺 健檢</button></div>'
+                    + '<label class="nova-em-item" style="margin-top:6px"><input type="checkbox" id="nm-skip" ' + (skipped ? 'checked' : '') + '> <span>目前這段對話不要寫進記憶</span></label>'
+                    + '<div id="nm-lint-out" class="nv-muted" style="margin-top:6px;white-space:pre-wrap"></div>'
+                    + (props.length ? '<p style="margin-top:8px;font-weight:700">🤖 Bot 的記憶提案（同意後才會寫進長期記憶）</p>' + props.slice(-12).map(function (p) { return '<div class="nova-em-item" style="align-items:flex-start;gap:8px"><div style="flex:1;min-width:0">' + esc(p.text) + ' <span class="nv-muted">（' + esc(p.from || 'Bot') + '）</span></div><button class="nv-btn nm-prop" data-k="' + esc(p.id) + '" data-a="1">同意</button><button class="nv-btn nm-prop" data-k="' + esc(p.id) + '" data-a="0">不要</button></div>'; }).join('') : '')
+                    + '</div>';
+            })() : '') +
             '<details class="nv-card" style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">維護守則（schema）</summary><textarea id="nm-schema" class="nv-input" rows="10" style="margin-top:6px;font-size:12px"></textarea><div style="display:flex;gap:8px;margin-top:6px"><button class="nv-btn" id="nm-schema-save">儲存</button><button class="nv-btn" id="nm-schema-reset">還原預設</button></div></details>' +
             '<details class="nv-card" style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">操作紀錄（最近 20 筆）</summary>' + (log.length ? log.map(function (l) { return '<div class="nv-muted" style="margin-top:4px">' + new Date(l.ts).toLocaleString() + '｜' + esc(l.op) + '｜' + esc(l.entity) + '：' + esc(l.detail) + '</div>'; }).join('') : '<p class="nv-muted">沒有紀錄</p>') + '</details>';
         var $ = function (id) { return el.querySelector('#' + id); };
@@ -385,7 +549,26 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
         }
         $('nm-on').onchange = function (e) { setOn(e.target.checked); toast(e.target.checked ? '🧠 記憶已開啟' : '🧠 記憶已關閉'); };
         $('nm-profile-save').onclick = function () { setProfile($('nm-profile').value); toast('✅ 已儲存 Profile'); };
-        $('nm-now').onclick = async function () { if (!sid || !acceptSid(sid)) { toast(CFG.priv ? '目前不是私密對話' : '目前沒有對話或目前是私密對話'); return; } if (!gkey()) { toast('需要 Gemini API Key'); return; } toast('整理中…'); await maybeCompress(sid, true); setTimeout(function () { renderSettings(); }, 4000); };
+        if (engine()) {   // v1.6.0
+            var E1 = engine();
+            if ($('nm-maintain')) $('nm-maintain').onclick = async function () { if (!E1.hasLlm()) { toast('需要至少一組模型金鑰（Gemini／OpenAI／Grok）'); return; } toast('🧠 記憶整理中…（最多約一分半）'); var r = await maintain({}); toast((r.ok ? '✅ ' : '⚠️ ') + r.note); renderSettings(); };
+            if ($('nm-lint')) $('nm-lint').onclick = async function () {
+                var o = $('nm-lint-out'); if (o) o.textContent = '健檢中…';
+                try { var rep = await E1.lint(), L = [];
+                    if (rep.conflicts.length) L.push('⚡ 互相矛盾（' + rep.conflicts.length + '）：' + rep.conflicts.slice(0, 5).map(function (c) { return c.entity; }).join('、'));
+                    if (rep.dups.length) L.push('👯 疑似重複（' + rep.dups.length + ' 組，按「立即整理」會請模型確認後合併）：' + rep.dups.slice(0, 5).map(function (d) { return d.a + '↔' + d.b; }).join('、'));
+                    if (rep.noVector.length) L.push('🧮 沒有向量（' + rep.noVector.length + ' 筆，按「立即整理」會補算）');
+                    if (rep.modelMismatch) L.push('🔁 向量是舊的嵌入模型算的（' + rep.modelMismatch + ' 筆）');
+                    if (rep.pending) L.push('⏳ 等待重試的對話：' + rep.pending + ' 段');
+                    if (rep.stale.length) L.push('⏰ 很久沒更新也沒用到（' + rep.stale.length + ' 筆）');
+                    if (o) o.textContent = L.length ? L.join('\n') : '✅ 沒有發現需要注意的問題（共 ' + rep.total + ' 筆長期事實）';
+                } catch (e) { if (o) o.textContent = '健檢失敗：' + (e.message || e); }
+            };
+            if ($('nm-skip')) $('nm-skip').onchange = function (e) { if (sid == null) { toast('目前沒有對話'); return; } E1.setSkipped(sid, e.target.checked); toast(e.target.checked ? '🙈 這段對話之後的內容不會寫進記憶' : '🧠 這段對話恢復寫進記憶'); };
+            Array.prototype.forEach.call(el.querySelectorAll('.nm-pin-core'), function (b) { b.onclick = async function () { await E1.setPinned(b.getAttribute('data-k'), b.getAttribute('data-on') === '1'); renderSettings(); }; });
+            Array.prototype.forEach.call(el.querySelectorAll('.nm-prop'), function (b) { b.onclick = async function () { var r = await E1.resolveProposal(b.getAttribute('data-k'), b.getAttribute('data-a') === '1'); if (b.getAttribute('data-a') === '1') toast(r && r.ok ? '✅ 已記住' : '⚠️ 沒有記下'); renderSettings(); }; });
+        }
+        $('nm-now').onclick = async function () { if (!sid || !acceptSid(sid)) { toast(CFG.priv ? '目前不是私密對話' : '目前沒有對話或目前是私密對話'); return; } if (!gkey() && !(engine() && engine().hasLlm())) { toast('需要 Gemini API Key'); return; } toast('整理中…'); await maybeCompress(sid, true); setTimeout(function () { renderSettings(); }, 4000); };
         $('nm-clear').onclick = async function () { var ok = W.showConfirm ? await W.showConfirm('確定清空全部 AI 記憶（長期事實、對話摘要、實體統計）？此操作無法復原。') : true; if (ok) { await clearAll(); toast('已清空'); renderSettings(); } };
         $('nm-schema-save').onclick = async function () { await writeSchema($('nm-schema').value); toast('✅ 已儲存維護守則'); };
         $('nm-schema-reset').onclick = async function () { await resetSchema(); $('nm-schema').value = DEFAULT_SCHEMA_MD; toast('已還原預設'); };
@@ -395,8 +578,35 @@ nova-memory-ingest.js），只要抽取時判斷「值得記住」就會直接�
 
     return { isOn: isOn, setOn: setOn, getProfile: getProfile, setProfile: setProfile, maybeCompress: maybeCompress, compressSession: compressSession, retrieveContext: retrieveContext,
         ingestDocument: ingestDocument, extractFacts: extractFacts, consolidateCore: consolidateCore, updateEntityFreq: updateEntityFreq, stats: stats, exportAll: exportAll, importAll: importAll, clearAll: clearAll,
-        renderSettings: renderSettings, readSchema: readSchema, DEFAULT_SCHEMA_MD: DEFAULT_SCHEMA_MD, _open: open, _getAll: getAll, _getOne: getOne, _put: put, _del: del, _cosine: cosine };
+        renderSettings: renderSettings, readSchema: readSchema, DEFAULT_SCHEMA_MD: DEFAULT_SCHEMA_MD, _open: open, _getAll: getAll, _getOne: getOne, _put: put, _del: del, _cosine: cosine,
+        // v1.6.0：記憶核心（私密記憶的 engine() 是 null，下面這些都安全地回傳「沒做」）
+        engine: engine, maintain: maintain,
+        remember: async function (o) { var E = engine(); return E ? E.remember(o) : { ok: false, error: '記憶核心沒有載入' }; },
+        forget: async function (o) { var E = engine(); return E ? E.forget(o) : { ok: false, error: '記憶核心沒有載入' }; },
+        setPinned: async function (entity, on) { var E = engine(); return E ? E.setPinned(entity, on) : false; },
+        lint: async function () { var E = engine(); return E ? E.lint() : null; },
+        isSkipped: function (sid) { var E = engine(); return E ? E.isSkipped(sid) : false; },
+        setSkipped: function (sid, on) { var E = engine(); return E ? E.setSkipped(sid, on) : false; },
+        propose: function (o) { var E = engine(); return E ? E.propose(o) : { ok: false }; },
+        explicitFromUserText: function (t) { var E = engine(); return E ? E.explicitFromUserText(t) : null; } };
     }
     W.NovaMemory = createMemory({ dbName: 'nova_memory_db', profileKey: 'nova_mem_user_profile', modeKey: 'nova_mem_mode', event: 'nova-memory-changed', priv: false });
+    // v1.6.0：使用者明講「記住，…」→ 直接寫進主記憶（釘選、不衰減）。回傳要附給模型的一句說明（沒觸發回空字串）。
+    //   同一句話 15 秒內只記一次（工具呼叫路徑與一般對話路徑都會呼叫這裡）。私密對話、已關閉記憶、標成「不要記」的對話都不觸發。
+    W._novaMemExplicitHook = function (text) {
+        try {
+            var M = W.NovaMemory;
+            if (!M || !M.engine() || !M.isOn() || W.NovaPrivate.isCurrent()) return '';
+            var sid = W.appState && appState.currentSessionId;
+            if (M.isSkipped(sid)) return '';
+            var mx = M.explicitFromUserText(text);
+            if (!mx) return '';
+            var NOTE = '[系統：使用者這句「記住」的內容已由記憶系統直接寫入長期記憶，簡短確認已經記住即可。]', now = Date.now(), last = W._novaMemExplicitLast;
+            if (last && last.t === mx && now - last.at < 15000) return NOTE;
+            W._novaMemExplicitLast = { t: mx, at: now };
+            M.remember({ text: mx, sessionId: String(sid || '') }).then(function (r) { try { if (r && r.ok) W.showToast && W.showToast(r.duplicate ? '🧠 這件事之前就記住了' : '🧠 已記住（' + r.entity + '）'); else if (r && r.error) W.showToast && W.showToast('🧠 沒有記下：' + r.error); } catch (e) { /* ignore */ } }).catch(function () { /* 記不進去不影響這次回覆 */ });
+            return NOTE;
+        } catch (e) { return ''; }
+    };
     W.NovaMemoryPrivate = createMemory({ dbName: 'nova_memory_private_db', profileKey: 'nova_pmem_user_profile', modeKey: 'nova_pmem_mode', event: 'nova-pmemory-changed', priv: true });
 })();

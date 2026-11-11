@@ -12,7 +12,7 @@
     //   novaAttr(s)：放進 HTML 屬性值用的跳脫（含引號）。novaJsStr(s)：放進行內事件 JS 字串用的跳脫（再包一層 novaAttr）。
     //   novaSanitizeHtml(html)：外部或同步來的 HTML 進畫面前清掉 <script>、on* 事件、javascript: 網址；iframe 只留 YouTube／Vimeo 內嵌。
     //   優先用 vendor/purify.min.js（DOMPurify 3.4.17），沒載入時退回內建的簡易清理。緊急關閉：localStorage nova_sanitize = '0'。
-    window.NOVA_INDEX_VERSION = '2.6.128';   // v2.6.128（v2.6.127 起：index.html 本身的版本；主程式與更新紀錄已搬到 nova-app-main.js，兩者應相同）
+    window.NOVA_INDEX_VERSION = '2.6.129';   // v2.6.129（v2.6.127 起：index.html 本身的版本；主程式與更新紀錄已搬到 nova-app-main.js，兩者應相同）
     (function () {
         var SAFE = /^(https?:|mailto:|tel:|sms:|blob:|data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml);)/i;
         window.novaSafeUrl = function (u) {
@@ -555,7 +555,7 @@
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
-    <script src="./nova-llm.js"></script><script src="./nova-memory.js?v=1.5.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
+    <script src="./nova-llm.js"></script><script src="./nova-memory-core.js?v=1.0.0"></script><script src="./nova-memory.js?v=1.6.0"></script><script src="./nova-autotask-cu.js"></script><script src="./nova-acc-bridge.js?v=1.0.1"></script><script src="./nova-experts.js"></script><script src="./nova-meeting.js"></script><script src="./nova-tasks.js"></script><script src="./deep-research-engine.js"></script><script src="./nova-tts-gemini.js?v=1.0.0"></script><script src="./nova-backup-ext.js?v=1.0.4"></script>
     <script src="./nova-skills.js?v=2.2.0"></script><script src="./nova-jev.js?v=1.5.1"></script><script src="./nova-skill-ui.js?v=1.6.1"></script><script src="./nova-jev-ui.js?v=1.1.0"></script><script src="./nova-remote.js?v=1.1.0"></script><script src="./nova-mainui.js?v=1.1.1"></script><!-- v2.6.23：模型呼叫輔助層＋多專家／會議／並行作業引擎 -->
     <script src="./nova-kb-tables.js"></script><!-- v2.6.21：知識庫表格感知／文件類型共用模組（與 knowledgebank.html 同一份） -->
     <script>
@@ -2312,7 +2312,7 @@
     <div id="toast">✅ 訊息提示</div>
 
   <!-- ================= JavaScript 邏輯與功能實作 ================= -->
-    <script charset="utf-8" src="./nova-app-main.js?v=1.1.0" onerror="window._novaMainLoadFail=true"></script>
+    <script charset="utf-8" src="./nova-app-main.js?v=1.2.0" onerror="window._novaMainLoadFail=true"></script>
     <script>
     // v2.6.127：主程式（原本這裡的內嵌腳本）已搬到 nova-app-main.js；載入失敗時直接在畫面上說明，不會只剩空白畫面
     if (window._novaMainLoadFail) { (function () { var d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fca5a5;padding:24px;font:15px/1.6 sans-serif;'; d.textContent = '⚠️ NOVA 主程式（nova-app-main.js）載入失敗：檔案不存在或讀不到。請確認 www 資料夾裡有 nova-app-main.js 並重新安裝／更新 App。'; (document.body || document.documentElement).appendChild(d); })(); }
@@ -2704,7 +2704,7 @@
 
 <script src="./nova-settings-ui.js?v=1.3.0"></script><!-- v2.6.28：單一展開式模型選單 -->
 <script src="./nova-dr-glue.js?v=1.1.0"></script><!-- v2.6.26：Pro 深度研究接線層 -->
-<script src="./nova-transit.js?v=1.0.0"></script><script src="./nova-bots.js?v=1.6.0"></script><script src="./nova-bots-ui.js?v=1.4.0"></script><script src="./nova-experts-glue.js?v=1.7.0"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
+<script src="./nova-transit.js?v=1.0.0"></script><script src="./nova-bots.js?v=1.6.1"></script><script src="./nova-bots-ui.js?v=1.4.0"></script><script src="./nova-experts-glue.js?v=1.7.1"></script><script src="./nova-autoroute.js?v=1.1.2"></script><script src="./nova-workspace.js?v=1.1.0"></script><script src="./nova-ghost.js?v=1.0.0"></script><script src="./nova-private.js?v=1.2.0"></script>
 <script src="./nova-lean-llm.js?v=1.0.0"></script>
 <script src="./nova-projects.js?v=1.1.0"></script>
 <script src="./nova-thoughts.js?v=1.0.1"></script>
@@ -2814,7 +2814,7 @@
     boot();
 })();
 </script>
-<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.1.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.7.0"></script><script src="./nova-datasync.js?v=1.4.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
+<script src="./nova-schedule-pro.js?v=1.2.0"></script><script src="./nova-chatmenu.js?v=1.0.1"></script><script src="./nova-memsync.js?v=1.2.0"></script><script src="./nova-research-core.js?v=1.2.0"></script><script src="./nova-research-ui.js?v=1.1.2"></script><script src="./nova-insight-core.js?v=1.3.1"></script><script src="./nova-insight.js?v=1.3.1"></script><script src="./nova-google.js?v=1.7.0"></script><script src="./nova-datasync.js?v=1.4.0"></script><script src="./nova-gdrive.js?v=1.0.3"></script><script src="./nova-recrestore.js?v=1.0.0"></script><script src="./nova-recguard.js?v=1.0.0"></script><script src="./nova-firstrun.js?v=1.0.0"></script><script src="./nova-nativerec.js?v=1.0.8"></script><script src="./nova-imagegen.js?v=1.2.0"></script><script src="./nova-termux.js?v=1.1.2"></script><script src="./nova-docs.js?v=1.0.0"></script><script src="./nova-imgsync.js?v=1.0.0"></script><script src="./nova-proactive.js?v=1.1.0"></script><script src="./nova-autoreport.js?v=1.1.0"></script><!-- v2.6.103：自主任務用量／快取／跳回 NOVA --><!-- v2.6.101：AI 主動說話 --><!-- v2.6.97：聊天圖片雲端備份／匯入 --><!-- v2.6.92：文件轉 Markdown／影片字幕 --><!-- v2.6.72：Termux 橋接／執行 Python --><!-- v2.6.68：生圖模式 --><!-- v2.6.39：任務管理對標桌面 -->
 <script src="./nova-notes-pro.js?v=1.2.0"></script><script src="./nova-colorpal.js?v=1.0.0"></script><!-- v2.6.39：筆記本對標桌面 -->
 <script src="./nova-brain-graph.js?v=2.1.1"></script><!-- v2.6.39：大腦圖譜 --><!-- v2.6.23：多專家接線層（要放在所有內嵌腳本之後） -->
 </body>

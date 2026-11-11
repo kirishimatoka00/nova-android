@@ -1,5 +1,11 @@
-/* nova-memsync.js — v1.1.0 (2026-10-23)
- * 版本紀錄：v1.1.0 對標桌面 nova-memory-sync.js v1.1.0：對話摘要的「編輯」也能跨裝置同步（記憶圖譜可編輯對話摘要）。每筆摘要多 updated_at（本機編輯時間存 localStorage nova_mem_ep_edits），
+/* nova-memsync.js — v1.2.0 (2026-11-11)
+ * 版本紀錄：v1.2.0 App v2.6.129，對標桌面 nova-memory-sync.js v1.2.0（記憶架構升級；新檔 nova-memory-core.js v1.0.0、nova-memory.js v1.6.0）：
+ *   同步檔格式維持 version 1，多兩個「選用欄位」：長期事實與對話摘要的 x（附加資料：類型、釘選、範圍、別名、事實時間軸…）、對話摘要的 em（向量的嵌入模型）。
+ *   正規化與合併改用 nova-memory-core.js 的同一份實作（桌面也用它）；核心沒載入時退回本檔 v1.1.0 的實作（那個實作會把 x／em 拿掉，行為等同舊版）。
+ *   【舊版相容】舊版（手機 v2.6.128 以前、桌面 v3.123 以前）不認得 x／em：它同步時照常運作、不會出錯，只是寫回同步檔時會把這兩個欄位拿掉。
+ *   新版合併時把「沒有 x」當成「不知道」而不是「清空」，沿用另一份的 x，所以中間經過舊版裝置也不會遺失。
+ *   套用到手機時保留本機才有的欄位（lastUsed／useCount）；只有 x 變了、內容沒變時不重算向量。
+ *   v1.1.0 對標桌面 nova-memory-sync.js v1.1.0：對話摘要的「編輯」也能跨裝置同步（記憶圖譜可編輯對話摘要）。每筆摘要多 updated_at（本機編輯時間存 localStorage nova_mem_ep_edits），
  *   同 id 兩邊內容不同時 updated_at 較新者贏；收到較新版本的一端覆寫本機（含向量）；刪除墓碑改比「建立或編輯時間的較大者」。新增 markEpisodicEdited(id)。沒編輯過的舊資料行為與 v1.0.0 相同。
  * 手機版「AI 記憶」跨裝置同步：與桌面版 nova-memory-sync.js v1.0.0 使用同一個 Drive 檔案 NOVA_Memory_Sync.json、同一份格式與同一套合併規則，
  *   讓桌面（sidecar SQLite）與手機（IndexedDB nova_memory_db）的記憶互通。
@@ -40,6 +46,7 @@
     return o;
   }
   function sigOf(b) { return JSON.stringify(normalize(b)); }
+  function xSig(x) { var MC = W.NovaMemoryCore; return x === undefined ? '' : (MC && MC.sync ? MC.sync.stable(x) : JSON.stringify(x)); }   // v1.2.0
 
   /* 與桌面版 mergeBundles 同一套規則（a＝本機，b＝遠端） */
   function mergeBundles(a, b, o) {
@@ -76,16 +83,20 @@
   }
 
   /* ───────── 本機（IndexedDB nova_memory_db）↔ 同步格式 ───────── */
+  // v1.2.0：有載入 nova-memory-core.js 時，正規化／合併改用它的實作（多了選用欄位 x、em 與舊版相容規則；桌面用同一份）
+  (function () { var MC = W.NovaMemoryCore; if (MC && MC.sync) { normalize = MC.sync.normalize; mergeBundles = MC.sync.mergeBundles; sigOf = MC.sync.sigOf; } })();
+  function hasCore() { return !!(W.NovaMemoryCore && W.NovaMemoryCore.sync); }
   function M() { return W.NovaMemory; }
   async function collectLocal() {
     var r = await Promise.all([M()._getAll('episodic'), M()._getAll('core'), M()._getAll('entity_freq')]), edits = lsGet(K.epEdit, {});
     return normalize({
-      episodic: r[0].map(function (e) { return { id: e.id, session_id: e.sessionId, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, created_at: e.createdAt, source_range: e.sourceRange, updated_at: num(edits[e.id]) }; }),
-      core: r[1].map(function (c) { return { entity: c.entity, fact: c.fact, hit_count: c.hitCount, last_updated: c.lastUpdated, page_md: c.pageMd, source_refs: c.sourceRefs }; }),
+      episodic: r[0].map(function (e) { return { id: e.id, session_id: e.sessionId, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, created_at: e.createdAt, source_range: e.sourceRange, updated_at: num(edits[e.id]), x: hasCore() ? (e.x || {}) : undefined, em: e.embModel || '' }; }),
+      core: r[1].map(function (c) { return { entity: c.entity, fact: c.fact, hit_count: c.hitCount, last_updated: c.lastUpdated, page_md: c.pageMd, source_refs: c.sourceRefs, x: hasCore() ? (c.x || {}) : undefined }; }),
       entity_freq: r[2].map(function (f) { return { entity: f.entity, count_30d: f.count30d, last_seen: f.lastSeen }; }),
       tombstones: lsGet(K.tomb, {}), clearedAt: num(lsGet(K.cleared, 0))
     });
   }
+  function embModelName() { try { return (typeof NOVA_KB_EMBED_MODEL !== 'undefined' && NOVA_KB_EMBED_MODEL) || 'gemini-embedding-2'; } catch (e) { return 'gemini-embedding-2'; } }   // v1.2.0
   async function embedCore(entity, fact) {
     try { if (typeof W.novaKbEmbedDocumentBatch !== 'function' || !(W.appState && appState.keys && appState.keys.gemini)) return null; var v = await W.novaKbEmbedDocumentBatch(['task: search result | title: ' + entity + ' | text: ' + fact]); return (v && v[0] && v[0].length) ? v[0] : null; } catch (e) { return null; }
   }
@@ -111,19 +122,26 @@
     var needVec = lsGet(K.needVec, []).filter(function (e) { return mergedCore[e]; }), needVecSet = {}; needVec.forEach(function (e) { needVecSet[e] = true; });
     var tasks = [];
     merged.episodic.forEach(function (e) {
-      var l = localEp[e.id]; if (l && (e.updated_at || 0) <= (l.updated_at || 0) && (l.vector.length || !e.vector.length)) return;
-      tasks.push(async function () { await M()._put('episodic', { id: e.id, sessionId: e.session_id, summary: e.summary, topic: e.topic, entities: e.entities, vector: e.vector, createdAt: e.created_at, sourceRange: e.source_range }); if (e.updated_at) { var ed = lsGet(K.epEdit, {}); ed[e.id] = e.updated_at; lsSet(K.epEdit, ed); } res.epAdded++; });
+      var l = localEp[e.id]; if (l && (e.updated_at || 0) <= (l.updated_at || 0) && (l.vector.length || !e.vector.length) && (e.x === undefined || xSig(e.x) === xSig(l.x))) return;   // v1.2.0：x 不同也要寫
+      tasks.push(async function () {
+        var cur = (await M()._getOne('episodic', e.id)) || {}, hasVec = !!(e.vector && e.vector.length);   // v1.2.0：保留本機才有的欄位；來源沒有向量就留本機的
+        await M()._put('episodic', { id: e.id, sessionId: e.session_id, summary: e.summary, topic: e.topic, entities: e.entities, vector: hasVec ? e.vector : (cur.vector || []), createdAt: e.created_at, sourceRange: e.source_range,
+          x: e.x !== undefined ? e.x : cur.x, embModel: hasVec ? (e.em || '') : (cur.embModel || ''), lastUsed: cur.lastUsed || 0, useCount: cur.useCount || 0 }); if (e.updated_at) { var ed = lsGet(K.epEdit, {}); ed[e.id] = e.updated_at; lsSet(K.epEdit, ed); } res.epAdded++; });
     });
     delEp.forEach(function (e) { tasks.push(async function () { await M()._del('episodic', e.id); res.epRemoved++; }); });
     merged.core.forEach(function (c) {
       var l = localCore[c.entity], same = l && l.last_updated === c.last_updated && contentKey(l) === contentKey(c);
-      if (same && !needVecSet[c.entity]) return;
+      var xDiff = c.x !== undefined && (!l || xSig(c.x) !== xSig(l.x));   // v1.2.0
+      if (same && !xDiff && !needVecSet[c.entity]) return;
       tasks.push(async function () {
         var cur = await M()._getOne('core', c.entity);
         if (cur && num(cur.lastUpdated) > c.last_updated) return;   // 同步期間手機剛改過：不覆蓋，下次再處理
         var out = (cur && same) ? { entity: cur.entity, fact: cur.fact, hit_count: cur.hitCount, last_updated: cur.lastUpdated, page_md: cur.pageMd, source_refs: cur.sourceRefs } : c;
-        var vec = await embedCore(out.entity, out.fact);
-        await M()._put('core', { entity: out.entity, fact: out.fact, hitCount: out.hit_count || 1, lastUpdated: out.last_updated, vector: vec || (cur && cur.vector) || [], pageMd: out.page_md || '', sourceRefs: out.source_refs || [] });
+        var xOnly = same && xDiff && !needVecSet[c.entity];   // 只有 x 變了：內容沒變，不用重算向量
+        var vec = xOnly ? null : await embedCore(out.entity, out.fact);
+        await M()._put('core', { entity: out.entity, fact: out.fact, hitCount: out.hit_count || 1, lastUpdated: out.last_updated, vector: vec || (cur && cur.vector) || [], pageMd: out.page_md || '', sourceRefs: out.source_refs || [],
+          x: c.x !== undefined ? c.x : (cur && cur.x), embModel: vec ? embModelName() : ((cur && cur.embModel) || ''), lastUsed: (cur && cur.lastUsed) || 0, useCount: (cur && cur.useCount) || 0 });
+        if (xOnly) return;
         if (vec) delete needVecSet[c.entity]; else needVecSet[c.entity] = true;
         if (!same) res.coreUpdated++;
       });
@@ -207,7 +225,7 @@
     } finally { inFlight = false; }
   }
 
-  W.NovaMemSync = { version: '1.1.0', isEnabled: isEnabled, setEnabled: setEnabled, sync: sync, describe: describe, touch: touch, markEpisodicDeleted: markEpisodicDeleted, markEpisodicEdited: markEpisodicEdited, markCoreDeleted: markCoreDeleted, markClearedAll: markClearedAll, lastInfo: function () { return lsGet(K.lastInfo, null); },
+  W.NovaMemSync = { version: '1.2.0', isEnabled: isEnabled, setEnabled: setEnabled, sync: sync, describe: describe, touch: touch, markEpisodicDeleted: markEpisodicDeleted, markEpisodicEdited: markEpisodicEdited, markCoreDeleted: markCoreDeleted, markClearedAll: markClearedAll, lastInfo: function () { return lsGet(K.lastInfo, null); },
     mergeBundles: mergeBundles, normalize: normalize };
   try { W.addEventListener('nova-memory-changed', touch); } catch (e) {}
 })();
