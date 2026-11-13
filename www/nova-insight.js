@@ -1,4 +1,4 @@
-/* nova-insight.js — v1.3.1 (2026-11-02)
+/* nova-insight.js — v1.4.0 (2026-11-13)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
@@ -10,6 +10,10 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.4.0 2026-11-13  事件串與來源健康度燈號（App v2.6.130；資料層見 nova-insight-core.js v1.4.0，對標桌面 nova-insight.js v1.17.0）：
+ *                      ①事件列表的卡片多「🧵N」（同一事件串有 N 則）；事件詳情多「🧵 同一事件串 N 則」清單，點一則直接開它的詳情。
+ *                      ②列表底部的來源狀態改成燈號統計（🔴／🟡／🟢 各幾個），點開看每個來源的燈號、原因、成功率、平均耗時、上次成功時間。
+ *                      桌面的「背景維護」（sidecar 定時對帳／監看）手機沒有，不移植。
  *   v1.3.1 2026-11-02  地球可以放得更大：最近距離 160→106（可貼近到看得出城市周邊），縮放速度 ×1.3，開啟時預設視角由高度 2.4 拉近到 1.9（地球在畫面上較大）。
  *   v1.3.0 2026-11-01  螢幕小，地球上的事件不再用光柱：城市與事件座標改用不同顏色的細小水波（顏色＝領域，波幅與速度＝嚴重度，同時最多 70 個）；點地球時依距離挑最近的事件點（手指比水波粗），原本的光柱與點擊目標移除。氣象署事件合併修正見 nova-insight-core.js v1.3.1。
  *   v1.2.1 2026-11-01  氣象署授權碼欄位說明改成「會隨 Insight 同步」（資料層見 nova-insight-core.js v1.3.0）。
@@ -244,10 +248,26 @@
     h += '<div class="row sm mut" style="margin-bottom:6px">近 ' + S.hours + ' 小時 · ' + list.length + ' 則' + (S.loading ? ' · 更新中…' : '') + ' <span style="flex:1"></span><button class="btn sm" data-act="draw">篩選／圖層</button></div>';
     if (!list.length) return h + '<div class="card mut">' + (S.loading ? '載入中…' : '沒有符合的事件。可到「篩選／圖層」放寬領域或時間。') + '</div>' + srcStatus();
     return h + list.slice(0, 80).map(function (e) {
-      return '<div class="card" data-act="evopen" data-id="' + esc(e.id) + '"><div style="font-weight:600"><span class="dot" style="background:' + (DOMCOL[e.domain] || '#94a3b8') + '"></span>' + esc(e.title) + '</div><div class="sm mut">' + esc(DOMZH[e.domain] || e.domain) + ' · 嚴重度 ' + e.severity + ' · ' + esc(e.source) + (e.n_sources > 1 ? '等 ' + e.n_sources + ' 家' : '') + ' · ' + ago(e.ts) + (e.city && city(e.city) ? ' · ' + esc(city(e.city).zh) : '') + '</div></div>';
+      return '<div class="card" data-act="evopen" data-id="' + esc(e.id) + '"><div style="font-weight:600"><span class="dot" style="background:' + (DOMCOL[e.domain] || '#94a3b8') + '"></span>' + esc(e.title) + '</div><div class="sm mut">' + esc(DOMZH[e.domain] || e.domain) + ' · 嚴重度 ' + e.severity + ' · ' + esc(e.source) + (e.n_sources > 1 ? '等 ' + e.n_sources + ' 家' : '') + ' · ' + ago(e.ts) + (e.city && city(e.city) ? ' · ' + esc(city(e.city).zh) : '') + (e.story_n >= 2 ? ' · <span class="chip">🧵' + e.story_n + '</span>' : '') + '</div></div>';
     }).join('') + srcStatus();
   }
-  function srcStatus() { var st = S.status.filter(function (s) { return !s.hidden; }); if (!st.length) return ''; var ok = st.filter(function (s) { return s.ok; }).length; return '<div class="sm mut" style="margin-top:6px">來源 ' + ok + '/' + st.length + ' 成功' + st.filter(function (s) { return !s.ok; }).slice(0, 6).map(function (s) { return '；' + esc(s.name) + '：' + esc(s.error); }).join('') + '</div>'; }
+  function srcStatus() {   // v1.4.0：來源健康度燈號（點開看明細）
+    var st = S.status.filter(function (s) { return !s.hidden; }), hl = (C.health && C.health.list) ? C.health.list(false) : [];
+    if (!st.length && !hl.length) return '';
+    var ok = st.filter(function (s) { return s.ok; }).length, cnt = { red: 0, yellow: 0, green: 0 };
+    hl.forEach(function (h) { if (cnt[h.light] != null) cnt[h.light]++; });
+    return '<div class="card row sm" data-act="health" style="margin-top:6px;min-height:44px;justify-content:space-between"><span>來源 ' + ok + '/' + st.length + ' 成功</span><span>' +
+      (hl.length ? '🔴' + cnt.red + ' 🟡' + cnt.yellow + ' 🟢' + cnt.green + ' ›' : '') + '</span></div>';
+  }
+  function showHealth() {
+    var hl = (C.health && C.health.list) ? C.health.list(true) : [], dot = { red: '🔴', yellow: '🟡', green: '🟢', gray: '⚪' };
+    if (!hl.length) return info('來源健康度', '<div class="sm mut">還沒有紀錄（重新整理一次事件之後就會有）。</div>');
+    return info('來源健康度（' + hl.length + ' 個）', '<div class="sm mut" style="margin-bottom:6px">每個來源記最近 20 次。紅＝連續失敗 2 次以上或 2 小時內沒成功；黃＝這次 0 筆、很慢、最近常失敗或剛失敗一次。</div>' +
+      hl.map(function (h) {
+        return '<div class="sm" style="min-height:40px;padding:4px 0;border-top:1px solid rgba(148,163,184,.15)">' + dot[h.light] + ' <b>' + esc(h.name) + '</b> <span class="mut">' + esc(h.reason) + '</span><br><span class="mut">成功率 ' +
+          (h.ok_rate == null ? '—' : Math.round(h.ok_rate * 100) + '%') + '（' + h.runs + ' 次）· 平均 ' + (h.avg_ms == null ? '—' : (h.avg_ms / 1000).toFixed(1) + ' 秒') + ' · 上次成功 ' + (h.last_ok ? ago(h.last_ok) : '從未') + '</span></div>';
+      }).join(''));
+  }
   function spark(vals) { if (!vals || vals.length < 2) return ''; var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), w = 60, h = 20, rg = mx - mn || 1; return '<svg width="' + w + '" height="' + h + '"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="' + vals.map(function (v, i) { return (i * w / (vals.length - 1)).toFixed(1) + ',' + (h - (v - mn) / rg * (h - 2) - 1).toFixed(1); }).join(' ') + '"/></svg>'; }
   function tMk() {
     var h = '<div class="row" style="margin-bottom:6px"><button class="btn sm" data-act="mkrefresh">' + (S.mkBusy ? '載入中…' : '⟳ 重新整理') + '</button><span class="sm mut">5 分鐘快取 · 點一列看一年走勢</span></div>';
@@ -341,11 +361,19 @@
   function drawOpen(on) { if (on === S.draw) return; if (on) { setDraw(true); pushLayer(function () { setDraw(false); }); } else closeTop(); }
 
   /* ───────── 事件詳情／預判／個股 ───────── */
+  function storyHtml(e) {   // v1.4.0：同一事件串的其他報導
+    if (!e.story || !(e.story_n >= 2)) return '';
+    var mem = S.evs.filter(function (x) { return x.story === e.story && x.id !== e.id; }).sort(function (a, b) { return b.ts - a.ts; });
+    if (!mem.length) return '';
+    return '<div style="margin-top:10px"><b class="sm">🧵 同一事件串 ' + (mem.length + 1) + ' 則</b><div class="sm mut">相關報導串在一起（不合併，點一則看它的內容）；偶爾可能把相關但不同的兩件事串在一起。</div>' +
+      mem.slice(0, 12).map(function (x) { return '<div class="sm" data-sa="ev:' + esc(x.id) + '" style="min-height:40px;padding:6px 0;border-top:1px solid rgba(148,163,184,.15);cursor:pointer">• ' + esc(x.title) + ' <span class="mut">' + esc(x.source) + ' · ' + ago(x.ts) + '</span></div>'; }).join('') + '</div>';
+  }
   async function showEvent(id) {
     var e = S.evs.filter(function (x) { return x.id === id; })[0]; if (!e) return; var c = city(e.city);
     var v = await info((DOMZH[e.domain] || e.domain) + '・嚴重度 ' + e.severity, '<div style="font-weight:700;margin-bottom:6px">' + esc(e.title) + '</div><div class="sm mut" style="margin-bottom:8px">' + fdate(e.ts) + ' ' + new Date(e.ts * 1000).toTimeString().slice(0, 5) + (c ? ' · ' + esc(c.zh) : '') + ' · 可信度 ' + esc({ high: '高', medium: '中', low: '低', unverified: '未查證' }[e.confidence] || '') + '</div>' + (e.summary ? '<pre>' + esc(e.summary) + '</pre>' : '') +
-      '<div style="margin-top:8px"><b class="sm">來源（' + e.sources.length + '）</b>' + e.sources.map(function (s) { return '<div class="sm" style="min-height:32px">• ' + esc(s.name) + ' <span class="mut">' + esc({ official: '官方', media: '媒體', social: '社群' }[s.tier] || '') + '</span>' + (s.url ? ' <a href="#" data-url="' + esc(s.url) + '" style="color:var(--ac)">開啟</a>' : '') + '</div>'; }).join('') + '</div><div id="nin-tr"></div>',
+      '<div style="margin-top:8px"><b class="sm">來源（' + e.sources.length + '）</b>' + e.sources.map(function (s) { return '<div class="sm" style="min-height:32px">• ' + esc(s.name) + ' <span class="mut">' + esc({ official: '官方', media: '媒體', social: '社群' }[s.tier] || '') + '</span>' + (s.url ? ' <a href="#" data-url="' + esc(s.url) + '" style="color:var(--ac)">開啟</a>' : '') + '</div>'; }).join('') + '</div>' + storyHtml(e) + '<div id="nin-tr"></div>',
       '<button class="btn" data-sa="trans">翻成中文</button><button class="btn" data-sa="fc">針對此事預判</button>');
+    if (v && String(v).indexOf('ev:') === 0) return showEvent(String(v).slice(3));   // v1.4.0：點事件串裡的另一則
     if (v === 'trans') translateEvent(e); else if (v === 'fc') { S.fc.q = '與「' + e.title.slice(0, 80) + '」相關：此事在未來 30 天內是否會進一步升級或擴大？'; S.tab = 'fc'; if (S.sheet === 'min') S.sheet = 'mid'; applySheet(); render(); }
   }
   async function translateEvent(e) {
@@ -395,6 +423,7 @@
         case 'cwasave': { try { C.cwa.set($('nin-cwa').value); } catch (er) { return toast(er.message, 4500); } toast(C.cwa.get() ? '已儲存氣象署授權碼，重新整理中…' : '已清除氣象署授權碼'); drawOpen(false); return loadEvents(true); }
         case 'clearcity': S.city = ''; drawMap(); return render();
         case 'evopen': return showEvent(id);
+        case 'health': return showHealth();   // v1.4.0
         case 'hours': S.hours = parseInt(el.getAttribute('data-h'), 10); savePrefs(); drawMap(); return render();
         case 'domall': case 'domnone': Object.keys(DOMZH).forEach(function (k) { doms()[k] = a === 'domall'; }); savePrefs(); drawMap(); return render();
         case 'flcadd': { var v = await form('自訂航班區域', [{ k: 'lat', label: '中心緯度', type: 'number', value: '' }, { k: 'lon', label: '中心經度', type: 'number', value: '' }, { k: 'nm', label: '半徑（海浬，20~250）', type: 'number', value: 150 }], '加入'); if (!v) return; var la = parseFloat(v.lat), lo = parseFloat(v.lon); if (!isFinite(la) || !isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) return toast('經緯度不正確'); S.fl.custom.push({ lat: la, lon: lo, nm: Math.max(20, Math.min(250, parseFloat(v.nm) || 150)) }); savePrefs(); renderDraw(); return flStart(); }

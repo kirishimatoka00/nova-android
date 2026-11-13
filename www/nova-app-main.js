@@ -1,9 +1,13 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.2.0
-   最後更新：2026-11-11
+   目前版本：v1.3.0
+   最後更新：2026-11-13
 
    版本紀錄：
+   v1.3.0 - App v2.6.130（對標桌面 desktop-patch v3.127.0～v3.129.0＋Insight v1.17.0）：NOVA_APP_VERSION 改成 2.6.130、NOVA_CHANGELOG 加一筆；
+            斜線指令新增 /g4h（Gemini 4 Hydrogen）、/g4c（Gemini 4 Carbon）與說明；全域 fetch 防護（原本只處理 3.8 Flash 的 temperature／topP／topK）
+            擴大到 4 Carbon／Hydrogen，並把 thinkingBudget 換算成 thinkingLevel（≤1024→LOW、≤4096→MEDIUM、其餘 HIGH）、MINIMAL→LOW
+            （這兩個模型送 thinkingBudget 或 MINIMAL 會 HTTP 400；在 fetch 這層統一處理，不用逐處改呼叫端）。本檔其他程式沒有改動。
    v1.2.0 - App v2.6.129（AI 記憶架構升級，對標桌面 desktop-patch v3.124.0）：NOVA_APP_VERSION 改成 2.6.129、NOVA_CHANGELOG 加一筆；
             兩處帶入記憶的地方（工具呼叫路徑、一般對話路徑）在使用者明講「記住，…」時呼叫 window._novaMemExplicitHook（nova-memory.js v1.6.0）直接寫入長期記憶；
             新增指令 /nomem（這段對話不要寫進記憶，/nomem off 恢復）。記憶本身的邏輯在 nova-memory-core.js／nova-memory.js，本檔其他程式沒有改動。
@@ -31,8 +35,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.129';
+        const NOVA_APP_VERSION = '2.6.130';
         const NOVA_CHANGELOG = [
+            { v: '2.6.130', date: '2026-11-13', notes: [
+                '新模型 Gemini 4 Hydrogen（gemini-4-hydrogen，有免費額度、比 3.8 Flash 快）與 Gemini 4 Carbon（gemini-4-carbon，前沿旗艦、沒有免費額度）：主畫面 Gemini 子模型、筆記辨識、AI 思考、簡報產生器 v42、Pro 深度研究的模型清單都可選；斜線指令 /g4h、/g4c。這兩個模型只收思考等級（不收 thinkingBudget、沒有 MINIMAL）、只有隱式快取：nova-llm.js v1.0.2、全域 fetch 防護、nova-fc.js v1.0.1 與 nova-autoreport.js v1.2.0 的明確快取都已處理；自主任務用量摘要會估這兩個模型的費用（Carbon 2026-12-01 起加倍）。（對標桌面 v3.127.0／v3.129.0；僅 www）',
+                '快速判斷改版（nova-jev.js Android v1.7.0、nova-jev-ui.js v1.2.0，對標桌面 v3.128.0）：可改用 Google Gemini Decision 1（用原本的 Gemini 金鑰）或「自動」（Jev 優先、失敗改用 Gemini）；影子模式（背景問另一家只記錄是否一致）；各用途門檻；判斷紀錄與建議門檻（智慧分派在快速判斷沒把握、改由 AI 決定時記成標註；nova-autoroute.js v1.1.3、nova-experts-glue.js v1.7.2）；各供應者分開冷卻；紀錄可匯出到「文件/NOVA_Jev/」。注意：Gemini 免費方案送出的內容會被 Google 用來改進產品。（僅 www）',
+                'Project Insight 事件串＋來源健康度（nova-insight-core.js v1.4.0、nova-insight.js v1.4.0，對標桌面 nova_insight.py v1.14.0／nova-insight.js v1.17.0）：同一件事的不同報導（中外文、氣象署與 USGS 的同一個地震）串在一起，列表顯示 🧵N、詳情可看同一串的其他報導；列表底部改成來源燈號 🔴🟡🟢，點開看每個來源的成功率與耗時。（僅 www）',
+                '沒有移植的桌面改動（誠實說明）：sidecar 常駐排程器、自主任務瀏覽器元素清單只回傳變化（手機的自主任務走無障礙服務，架構不同）、拆主程式、NovaOffice（手機沒有）、快速判斷的截圖判斷（手機目前沒有會附截圖的判斷點）與 sidecar /jev/ask 轉發（手機沒有 sidecar）。'
+            ] },
             { v: '2.6.129', date: '2026-11-11', notes: [
                 'AI 記憶架構升級（對標桌面 desktop-patch v3.124.0；新檔 nova-memory-core.js v1.0.0〔與桌面共用同一份〕、nova-memory.js v1.6.0、nova-memsync.js v1.2.0、nova-bots.js v1.2.1-android.1、nova-experts-glue.js v1.7.1；僅 www，不需重新打包原生）：① 摘要時直接抽「原子事實」，偏好／身分／做法一次就進長期記憶；說「記住，…」直接寫入並釘選；摘要失敗排進重試佇列不再遺失。② 檢索改成向量＋關鍵字混合、長期事實有相關度門檻（不相關的不再每次都帶）、被用到的延後衰減、承接上文的問句帶上前兩句、附「多久以前」。③ 不同寫法併成同一個實體（別名）、釘選、健檢、記憶整理（重試／補向量／合併重複／檢查矛盾／濃縮舊摘要，每 20 小時背景做一次）、/nomem 這段對話不要記、寫入前機密偵測、Bot 的記憶提案。④ 沒有 Gemini 金鑰時改用 OpenAI 或 Grok 摘要、只用關鍵字檢索。',
                 '記憶跨裝置同步相容：同步檔格式不變，只多了選用欄位；另一台還沒更新的裝置（桌面 v3.123 以前、手機 v2.6.128 以前）照常同步、不會出錯，新資料也不會因為經過舊版裝置而遺失。私密記憶沒有變動。',
@@ -7900,6 +7910,8 @@ msg.files : (msg.file ? [msg.file] : []);
         // ════════════════════════════════════════════════════════════
         window.NOVA_MODEL_SWITCH_COMMANDS = {
             '/gat':   { model: 'gemini', geminiModel: 'gemini-multi',           label: 'Gemini 智慧切換 (Auto)' },
+            '/g4h':   { model: 'gemini', geminiModel: 'gemini-4-hydrogen',      label: 'Gemini 4 Hydrogen' },   // v2.6.130
+            '/g4c':   { model: 'gemini', geminiModel: 'gemini-4-carbon',        label: 'Gemini 4 Carbon' },     // v2.6.130
             '/g4a':   { model: 'gemini', geminiModel: 'gemini-4-argon',         label: 'Gemini 4 Argon' },
             '/g3f':   { model: 'gemini', geminiModel: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
             '/g3.8f': { model: 'gemini', geminiModel: 'gemini-3.8-flash',       label: 'Gemini 3.8 Flash' },
@@ -7927,6 +7939,8 @@ msg.files : (msg.file ? [msg.file] : []);
             { c: '/g3.8f', d: '切換：Gemini 3.8 Flash' },
             { c: '/g3.6f', d: '切換：Gemini 3.6 Flash' },
             { c: '/g3f',  d: '切換：Gemini 3 Flash Preview' },
+            { c: '/g4h',  d: '切換：Gemini 4 Hydrogen' },
+            { c: '/g4c',  d: '切換：Gemini 4 Carbon（沒有免費額度）' },
             { c: '/g4a',  d: '切換：Gemini 4 Argon' },
             { c: '/g3.1p', d: '切換：Gemini 3.1 Pro Preview' },
             { c: '/gk',   d: '切換：Grok 智慧切換' },
@@ -8446,13 +8460,21 @@ msg.files : (msg.file ? [msg.file] : []);
             window.fetch = function (input, init) {
                 try {
                     const url = typeof input === 'string' ? input : ((input && input.url) || '');
-                    if (init && typeof init.body === 'string' && /generativelanguage\.googleapis\.com\/[^?]*\/models\/gemini-3\.8[^\/:?]*:/i.test(url)) {
+                    if (init && typeof init.body === 'string' && /generativelanguage\.googleapis\.com\/[^?]*\/models\/(gemini-3\.8|gemini-4-carbon|gemini-4-hydrogen)[^\/:?]*:/i.test(url)) {
                         const j = JSON.parse(init.body);
                         const gc = j && j.generationConfig;
+                        let changed = false;
                         if (gc && (gc.temperature !== undefined || gc.topP !== undefined || gc.topK !== undefined)) {
-                            delete gc.temperature; delete gc.topP; delete gc.topK;
-                            init = Object.assign({}, init, { body: JSON.stringify(j) });
+                            delete gc.temperature; delete gc.topP; delete gc.topK; changed = true;
                         }
+                        // v2.6.130：4 Carbon／Hydrogen 只收 thinkingLevel LOW／MEDIUM／HIGH（／XHIGH），送 thinkingBudget 或 MINIMAL 會 HTTP 400——
+                        //   在這一層統一換算（budget ≤1024→LOW、≤4096→MEDIUM、其餘 HIGH；MINIMAL→LOW），不用逐處改呼叫端。
+                        const tc = gc && gc.thinkingConfig;
+                        if (tc && /gemini-4-(carbon|hydrogen)/i.test(url)) {
+                            if (tc.thinkingBudget !== undefined) { const b = +tc.thinkingBudget; delete tc.thinkingBudget; if (!tc.thinkingLevel) tc.thinkingLevel = (b >= 0 && b <= 1024) ? 'LOW' : (b > 0 && b <= 4096) ? 'MEDIUM' : 'HIGH'; changed = true; }
+                            if (String(tc.thinkingLevel || '').toUpperCase() === 'MINIMAL') { tc.thinkingLevel = 'LOW'; changed = true; }
+                        }
+                        if (changed) init = Object.assign({}, init, { body: JSON.stringify(j) });
                     }
                 } catch (e) { /* 不影響原請求 */ }
                 return _origFetch.call(this, input, init);

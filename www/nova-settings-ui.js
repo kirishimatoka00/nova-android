@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-settings-ui.js — NOVA Android 設定頁重新分類（跟 index.html 放同一個資料夾 www/）
-   版本：v1.3.1
+   版本：v1.3.2
    版本紀錄：
+   v1.3.2 - App v2.6.130：「⚡ Jev 快速判斷」區塊改名「⚡ 快速判斷（Jev／Gemini Decision）」（nova-jev.js Android v1.7.0 起可改用 Gemini Decision）。
    v1.3.1 - 修正嚴重 bug（自 v2.6.28 起）：build() 清空 scroller 後 tab-main 等外殼消失，原本 switchSettingsTab 對固定 id 清單做 classList 時丟錯，所有分頁同步都沒執行——自主任務「執行器」下拉選了無障礙卻沒存進 localStorage（所以測試連線仍走 atx-agent 而失敗）、模型勾選清單／記憶／語音選單也都沒更新。改為補回隱藏空殼；同步失敗改印 console.warn。
    v1.3.0 - 批次 8（v2.6.32）。「整合」分類新增「🖥️ 電腦遙控」區塊（tab-remote，內容由 nova-remote.js 繪製）。
    v1.2.0 - 批次 7b（v2.6.31）。「Agent 與自主任務」分類新增「⚡ Jev 快速判斷」區塊（tab-jev，內容由 nova-jev-ui.js 繪製）。
@@ -18,7 +19,7 @@
     var CATS = [
         { id: 'general', icon: 'ph-sliders-horizontal', name: '一般與外觀', desc: '介面主題、資料備份與儲存位置。', secs: [['ui', '外觀與主題', '選擇黑夜或白晝模式。'], ['data', '資料與備份', '記憶、儲存位置與完整備份。']] },
         { id: 'models', icon: 'ph-lock-key', name: '模型與金鑰', desc: 'API 金鑰、本機模型，以及主畫面可選的模型。', secs: [['keys', 'API 金鑰與 Local API', '各家 AI 與搜尋服務的金鑰，只存在這支手機。'], ['models', '啟用的模型', '取消勾選的模型不會出現在主畫面選單。']] },
-        { id: 'agent', icon: 'ph-robot', name: 'Agent 與自主任務', desc: 'AI 操作手機的執行器、判斷器與限制。', secs: [['autotask', 'AI 自主任務', '執行器、判斷器、回合數與逾時。'], ['skills', '技能', '自主任務存成技能、重播與管理。'], ['jev', '⚡ Jev 快速判斷', 'TypeSafe 小決策模型：完成複查、技能比對、參數建議。']] },
+        { id: 'agent', icon: 'ph-robot', name: 'Agent 與自主任務', desc: 'AI 操作手機的執行器、判斷器與限制。', secs: [['autotask', 'AI 自主任務', '執行器、判斷器、回合數與逾時。'], ['skills', '技能', '自主任務存成技能、重播與管理。'], ['jev', '⚡ 快速判斷（Jev／Gemini Decision）', '小決策模型：完成複查、技能比對、參數建議、智慧分派。']] },
         { id: 'memory', icon: 'ph-brain', name: '記憶', desc: '跨對話的長期記憶與 Profile。', secs: [['memory', 'AI 記憶', '中期摘要、長期事實與維護守則。']] },
         { id: 'integrations', icon: 'ph-plug', name: '整合', desc: 'Google、Telegram、行事曆與工具。', secs: [['remote', '🖥️ 電腦遙控', '內嵌電腦端 NOVA Desktop，遠端操作。'], ['google', 'Google 與代理', '系統代理、雲端備份與 Canvas CORS 代理。'], ['tg', 'Telegram', '接收排程推播與提醒。'], ['cal', '行事曆', '行事曆提醒與同步。'], ['tools', '工具與 MCP', 'Function Calling、遠端 MCP、Context Caching。']] },
         { id: 'voice', icon: 'ph-microphone', name: '語音與錄音', desc: '朗讀、語音辨識與錄音。', secs: [['voice', '語音與朗讀', '人聲、AWS Polly 與語音設定。'], ['rec', '錄音', '錄音與口譯設定。']] }

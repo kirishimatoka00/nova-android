@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.7.1
+   版本：v1.7.2
    版本紀錄：
+   v1.7.2 - App v2.6.130（搭配 nova-jev.js Android v1.7.0）：智慧分派在快速判斷沒把握、改由 AI 判斷時，把 AI 的結果記成那筆快速判斷的標註（NovaJev.label）。
    v1.7.1 - App v2.6.129。多 Bot 的 deps 多一個 memPropose：Bot 記到團隊記憶的事同時變成「記憶提案」（NovaMemory.propose，nova-memory.js v1.6.0），
             使用者在設定頁的記憶分頁同意後才進主記憶。記憶核心沒載入時不做任何事。
    v1.7.0 - App v2.6.128。對標桌面 v3.122.0～v3.123.0（nova-bots.js 改移植桌面 v1.6.0）：
@@ -1234,6 +1235,7 @@ window.NovaExpertsGlue = (function () {
             if (!m) return { route: 'chat', reason: '' };
             const j = JSON.parse(m[0]);
             const route = String(j.route || 'chat').toLowerCase() === 'experts' ? 'experts' : 'chat';
+            try { if (window.NovaJev && NovaJev.label) NovaJev.label('dispatch', text, route); } catch (e) { /* 標註失敗不影響 */ }   // v1.7.2
             return { route: route, reason: String(j.reason || '').slice(0, 60) };
         } catch (e) {
             console.warn('[NOVA][智慧分派] 判斷失敗，照一般對話處理：', e && e.message);

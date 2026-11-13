@@ -2,6 +2,7 @@
  * nova-thoughts.js — NOVA Android「AI 思考」（自我創造）記憶架構（移植自桌面版 nova-thoughts.js v0.2.1；跟 index.html 放同一個資料夾 www/）
  *
  * 版本記錄（只記這個檔案自己的變更）：
+ *  v1.0.2（2026-11-13，App v2.6.130）思考用模型清單新增 gemini-4-hydrogen、gemini-4-carbon（對標桌面 nova-thoughts.js v0.2.4）。
  *  v1.0.1（2026-11-08，App v2.6.123）思考用模型清單：新增 gemini-4-argon、grok-4.7；移除 gemini-2.5-pro、gemini-2.5-flash（已存的舊選擇由清單外的值顯示為未知時，請重新選一次）。
  *  v1.0.0（2026-10-17，App v2.6.64）首版，對標桌面版 v0.2.1（desktop-patch v3.73.0～v3.73.2）：
  *    ・「記憶叢集」＝以一個記憶實體為中心、相關記憶筆數 ≥ 門檻（預設 3）的一群；每個叢集可獨立開關（預設關），模式：自動（有新記憶）／定時／手動。
@@ -15,7 +16,7 @@
  */
 (function () {
   'use strict';
-  var VERSION = '1.0.0', KEY = 'nova_thoughts_v1';
+  var VERSION = '1.0.2', KEY = 'nova_thoughts_v1';
   var MIN_ITEMS_DEFAULT = 3, TICK_MS = 20 * 60 * 1000, MAX_PER_CLUSTER = 8, MAX_PER_RUN = 2;
   var H = null, running = false, timer = null, CL_CACHE = null, UI_BUSY = {};
 
@@ -182,7 +183,7 @@
 
   /* ───────────── 設定頁面板 ───────────── */
   var MODELS = [
-    ['Gemini', 'gemini', [['gemini-4-argon', 'Gemini 4 Argon'], ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview（深度）'], ['gemini-3.8-flash', 'Gemini 3.8 Flash'], ['gemini-3.6-flash', 'Gemini 3.6 Flash']]],
+    ['Gemini', 'gemini', [['gemini-4-hydrogen', 'Gemini 4 Hydrogen'], ['gemini-4-carbon', 'Gemini 4 Carbon'], ['gemini-4-argon', 'Gemini 4 Argon'], ['gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview（深度）'], ['gemini-3.8-flash', 'Gemini 3.8 Flash'], ['gemini-3.6-flash', 'Gemini 3.6 Flash']]],
     ['GPT（OpenAI）', 'gpt', [['gpt-6.1-sol', 'GPT-6.1 Sol'], ['gpt-6-luna', 'GPT-6 Luna']]],
     ['Grok（xAI）', 'grok', [['grok-4.7', 'Grok 4.7'], ['grok-4.6', 'Grok 4.6'], ['grok-4.5', 'Grok 4.5'], ['grok-4.3', 'Grok 4.3']]]
   ];

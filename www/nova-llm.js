@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-llm.js — NOVA Android 的「模型呼叫輔助層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.1
+   版本：v1.0.2
    版本紀錄：
+   v1.0.2 - App v2.6.130（對標桌面 nova-app-main.js v1.8.0／v1.10.0）。_novaDrThinkingConfig：gemini-4-carbon／gemini-4-hydrogen 只收 thinkingLevel
+            （LOW／MEDIUM／HIGH，送 thinkingBudget 或 MINIMAL 會 HTTP 400），minimal 一律升成 LOW。API 版本照舊走 v1beta（名稱不含 gemini-3／preview）。
    v1.0.1 - App v2.6.123。_novaDrResolveGeminiModel：舊設定裡的 gemini-2.5-pro／gemini-2.5-flash（已從模型列表移除）自動轉成 gemini-3.1-pro-preview／gemini-3.6-flash。
    v1.0.0 - 初版（批次 4）。把桌面版 index.html 裡 _novaDr* ／ _novaCallModel 這組「多專家／深度研究引擎共用的小工具」
             獨立成一支檔案，讓手機版的多專家協作（nova-experts-glue.js）、之後的深度研究 Pro 引擎共用：
@@ -31,6 +33,7 @@
         if (name.indexOf('image') !== -1 || name.indexOf('imagen') !== -1 || name.indexOf('lite') !== -1) return null;
         var isPro = name.indexOf('pro') !== -1;
         var lvl = ['minimal', 'low', 'medium', 'high'].indexOf(level) !== -1 ? level : 'low';
+        if (/^gemini-4-(carbon|hydrogen)/.test(name)) return { thinkingLevel: lvl === 'minimal' ? 'LOW' : lvl.toUpperCase() };   // v1.0.2
         if (/^gemini-3/.test(name)) {
             if (lvl === 'minimal' && (isPro || /^gemini-3\.8/.test(name))) return { thinkingLevel: 'LOW' };
             return { thinkingLevel: lvl.toUpperCase() };

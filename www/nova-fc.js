@@ -5,6 +5,8 @@
    不碰 DOM、不碰 appState，所有外部依賴（fetch、金鑰、確認視窗）都由呼叫端注入，可用 node 直接測試。
 
    版本紀錄：
+     v1.0.1 (2026-11-13) - App v2.6.130：Context Caching 遇到 gemini-4-carbon／gemini-4-hydrogen 直接略過（它們只有隱式快取，不支援 cachedContents；
+        原本會先送一次建立請求、失敗後才封鎖 10 分鐘）。對標桌面 nova-app-main.js v1.8.0／v1.10.0 的技能快取略過。
      v1.0.0 (2026-10-11) - 初版（App 2.6.22，批次 3）。
         ① 工具註冊表 createRegistry()：多個「來源」（本地技能、遠端 MCP、內建工具）各自提供工具清單，合併成一份，函式名稱唯一化。
         ② Gemini 迴圈 runGeminiLoop()：送出帶 functionDeclarations 的請求 → 模型回 functionCall → 執行（同一輪多個呼叫並行；
@@ -136,6 +138,7 @@
     var now = Date.now();
     var emit = function (e) { if (o.onEvent) { try { o.onEvent(e); } catch (x) {} } };
     if (cacheBlocked[o.model] && cacheBlocked[o.model] > now) return null;
+    if (/^gemini-4-(carbon|hydrogen)/.test(String(o.model || ''))) { emit({ type: 'cache_skipped', reason: o.model + ' 不支援顯式快取（只有隱式快取）' }); return null; }   // v1.0.1
     var body = {
       model: 'models/' + o.model,
       contents: o.contents,

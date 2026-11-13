@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-dr-glue.js — NOVA Android「Pro 深度研究」接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.1.1
    版本紀錄：
+   v1.1.1 - App v2.6.130（對標桌面 nova-app-main.js v1.8.0／v1.10.0）：模型能力標籤——gemini-4-carbon 標「旗艦」（沒有免費額度、思考時間長），
+            gemini-4-hydrogen 標「均衡」（比 3.8 Flash 快、有免費額度）；原本兩者都會落到「均衡」的通用說明。
    v1.1.0 - v2.6.37：設定視窗改版成桌面版「多 AI 深度協同研究控制台」（v3.59.0）：研究深度、Firecrawl／Grok 勾選、進階（規劃／撰稿／審稿／Grok 交叉審查、讀取／搜尋接地／Grok 三個勾選式模型池與快速預設、搜尋策略）、
             研究主題＋參考檔案上傳（文字／CSV／Excel／PDF）、專案經理／資料研究員／審查委員三角色、「🤖 AI 模型智能分配」（gemini-3.1-pro-preview 依任務性質改寫所有模型設定）。start() 同步支援多模型池、Grok 池、交叉審查、參考檔案。入口名稱改為「深度研究」。
    v1.0.0 - 初版（批次 6a）。引擎本體沿用 deep-research-engine.js（桌面版 v1.1.0 原樣移植）；這支檔案負責把引擎接到手機版 App，移植自桌面版 index.html 的
@@ -330,6 +332,8 @@
         if (/^gemini-/.test(v)) {
             if (/multi|image|imagen|nano-banana|tts|live|audio|embedding|veo|robotics|computer/i.test(v)) return none;
             var old = /^gemini-2\./.test(v) ? '舊代・' : '';
+            if (/^gemini-4-carbon/.test(v)) return mkc('旗艦', '前沿旗艦・長時間思考｜規劃・撰稿・審稿', ['plan', 'write', 'critic'], 3, '1M', '沒有免費額度；思考時間長、單價最高');   // v1.1.1
+            if (/^gemini-4-hydrogen/.test(v)) return mkc('均衡', '快速・新一代｜規劃・讀取・搜尋・撰稿', ['plan', 'read', 'search', 'write', 'critic'], 2, '1M', '比 3.8 Flash 快、品質更好；有免費額度');   // v1.1.1
             if (/pro/.test(v)) return mkc('旗艦', old + '旗艦推理｜規劃・撰稿・審稿', ['plan', 'write', 'critic'], 3, '1M', 'Google 搜尋接地；長文品質與推理最強，額度與成本最高');
             if (/lite/.test(v)) return mkc('輕量', old + '輕量低成本｜讀取・搜尋', ['read', 'search'], 1, '1M', '最快最便宜，適合大量逐頁抽取事實');
             return mkc('均衡', old + '均衡快速｜規劃・讀取・搜尋', ['plan', 'read', 'search', 'critic'], 2, '1M', 'Google 搜尋接地；速度與品質平衡，讀取池主力');

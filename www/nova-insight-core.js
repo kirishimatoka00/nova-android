@@ -1,4 +1,4 @@
-/* nova-insight-core.js — v1.3.1 (2026-11-01)
+/* nova-insight-core.js — v1.4.0 (2026-11-13)
  * Project Insight（全球事件、市場、個股）手機版「資料引擎」：把桌面 python-engine/nova_insight.py v1.10.1 的免金鑰資料來源改成純 JS 在手機執行（CapacitorHttp 已啟用，fetch 不受跨網域限制）。
  * 對應桌面：事件（34 個 RSS＋USGS 地震＋GDACS 災害＋NASA EONET＋GDELT）→ 領域分類（13 類）／地點比對（109 城市＋77 國家）／嚴重度／標題相似度合併；
  *   全球市場（Yahoo 圖表端點，29 個指數／黃金／原油／比特幣／VIX）；天氣（Open-Meteo）；預測市場（Polymarket 搜尋）；個股搜尋與日線歷史（Yahoo）；
@@ -6,6 +6,14 @@
  * 刻意不做（使用者指定）：船位（AIS）完全不接；Windy 鏡頭不接（只有自訂鏡頭）；政府公開鏡頭（需 sidecar 代理 HLS）不做；衛星軌道、基本面（SEC／FinMind）這版沒做。
  * 資料內容（城市、來源、領域關鍵字、市場代號、台股名稱）由桌面 Python 模組直接匯出產生，不是手寫，所以和桌面一致。
  * 版本紀錄
+ *   v1.4.0 2026-11-13  事件串＋來源健康度（App v2.6.130；對標桌面 nova_insight.py v1.14.0，演算法與門檻逐條照搬）：
+ *                      ①事件串：合併之後再「串起來」（不合併、各自保留）：(a)標題詞彙交集 ≥2、相似度 ≥0.2 且時間差 36 小時內；(b)同城市、同領域、
+ *                      一則中文一則外文、時間差 6 小時內、嚴重度都 ≥3；(c)地震：兩則都有座標、150 公里內、20 分鐘內。以最熱的那則當種子，只跟種子比
+ *                      （不做傳遞式串接）。每則事件多 story／story_n，events.get() 多回傳 stories（2 則以上的串，依熱度，最多 30 串）。快取的舊事件沒有串時補算。
+ *                      ②來源健康度：每次更新後記下每個來源最近 20 次的成功／失敗、耗時、筆數，存本機（nova_insight_health_v1，不同步——手機與桌面連線
+ *                      環境不同，各看各的）。燈號規則與桌面相同（紅＝連續失敗 ≥2 次或 2 小時內沒成功；黃＝這次 0 筆、≥8 秒、最近失敗 ≥3 成或剛失敗一次）。
+ *                      手機的來源狀態沒有 id，以來源名稱當 key；選用來源（Reddit）失敗不計。對外新增 health.list(full)。
+ *                      【誠實說明】跟桌面一樣，事件串與燈號都是用假資料測的；串接門檻可能把相關但不同的兩件事串在一起（只串、不合併）。
  *   v1.1.0 2026-11-01  手動新增的直播頻道可同步（對標桌面 nova-insight.js v1.13.2）：nova_insight_channels_v1 加入 syncKeys，新增／移除自訂頻道時觸發同步；被隱藏的預設頻道仍只存本機。
  *   v1.3.1 2026-11-01  修「氣象署 32 則，列表／地球上幾乎看不到」（對標桌面 nova_insight.py v1.11.1）：氣象署與 USGS 的地震標題是同一個範本，被標題相似度合併成一筆。這兩個來源改成各自獨立（仍以相同網址合併）；氣象署標題尾端加台灣時間（例「（11/01 07:58）」），同地點同規模的兩次地震才不會同 id。
  *   v1.3.0 2026-11-01  API 金鑰隨 Insight 同步（對標桌面 nova-insight.js v1.15.0）：syncKeys 新增 windy／ais／govcam（TDX、TfL、中央氣象署）／fincfg（FMP、SEC）四份設定；手機只用到 govcam 裡的 cwa，其他原樣保存並回傳。氣象署授權碼改存 nova_insight_govcam_v1.cwa（舊的 nova_insight_cwa_key 自動搬移）。
@@ -272,7 +280,89 @@
     });
     out.sort(function (a, b) { return b.hot - a.hot; }); return out;
   }
-  var evState = { events: [], at: 0, status: [], busy: null };
+  /* ───────── v1.4.0：事件串（對標桌面 nova_insight.py assign_stories） ───────── */
+  var CJK_RE = /[一-鿿]/g, QUAKE_RE = /地震|規模|earthquake|\bM\s?\d/i;
+  function isCjk(s) { s = String(s || ''); return (s.match(CJK_RE) || []).length >= Math.max(2, Math.floor(s.length / 5)); }
+  function assignStories(events) {
+    var n = events.length; if (!n) return [];
+    var toks = events.map(function (e) { return tokens(e.title || ''); }), cjk = events.map(function (e) { return isCjk(e.title || ''); });
+    var quake = events.map(function (e) { return QUAKE_RE.test(e.title || '') && e.lat != null && e.lon != null; }), ts = events.map(function (e) { return +e.ts || 0; });
+    function linked(i, j) {
+      var ei = events[i], ej = events[j], dt = Math.abs(ts[i] - ts[j]);
+      if (quake[i] || quake[j]) return quake[i] && quake[j] && dt <= 20 * 60 && hav(ei.lat, ei.lon, ej.lat, ej.lon) <= 150;
+      if (dt > 36 * 3600) return false;
+      var ti = Object.keys(toks[i]), tj = toks[j], tjn = Object.keys(tj).length;
+      if (ti.length && tjn) { var inter = 0; ti.forEach(function (w) { if (tj[w]) inter++; }); if (inter >= 2 && inter / (ti.length + tjn - inter) >= 0.2) return true; }
+      return !!(cjk[i] !== cjk[j] && dt <= 6 * 3600 && ei.city && ei.city === ej.city && ei.domain === ej.domain && (ei.severity || 1) >= 3 && (ej.severity || 1) >= 3);
+    }
+    var order = events.map(function (_, k) { return k; }).sort(function (a, b) { return (events[b].hot || 0) - (events[a].hot || 0); });
+    var seeds = [], memberOf = {};
+    order.forEach(function (k) { for (var s = 0; s < seeds.length; s++) { if (linked(seeds[s], k)) { memberOf[k] = seeds[s]; return; } } seeds.push(k); memberOf[k] = k; });
+    var groups = {}; for (var i = 0; i < n; i++) (groups[memberOf[i]] = groups[memberOf[i]] || []).push(i);
+    var stories = [];
+    Object.keys(groups).forEach(function (root) {
+      var idx = groups[root], ids = idx.map(function (k) { return events[k].id; }).sort(), sid = 's' + sha12(ids[0]).slice(0, 10);
+      idx.forEach(function (k) { events[k].story = sid; events[k].story_n = idx.length; });
+      if (idx.length >= 2) {
+        var top = idx.reduce(function (a, b) { return (events[b].hot || 0) > (events[a].hot || 0) ? b : a; }), doms = {};
+        idx.forEach(function (k) { if (events[k].domain) doms[events[k].domain] = 1; });
+        stories.push({ id: sid, title: events[top].title, n: idx.length, ids: idx.slice().sort(function (a, b) { return ts[b] - ts[a]; }).map(function (k) { return events[k].id; }),
+          domains: Object.keys(doms).sort(), max_sev: Math.max.apply(null, idx.map(function (k) { return events[k].severity || 1; })),
+          first: Math.floor(Math.min.apply(null, idx.map(function (k) { return ts[k]; }))), last: Math.floor(Math.max.apply(null, idx.map(function (k) { return ts[k]; }))),
+          hot: Math.round(idx.reduce(function (s2, k) { return s2 + (events[k].hot || 0); }, 0) * 100) / 100 });
+      }
+    });
+    stories.sort(function (a, b) { return b.hot - a.hot; }); return stories.slice(0, 30);
+  }
+  /* ───────── v1.4.0：來源健康度（對標桌面 nova_insight.py _health_update／_health_light） ───────── */
+  var HKEY = 'nova_insight_health_v1', HEALTH = lsGet(HKEY, {}) || {};
+  function healthUpdate(status, nowS) {
+    (status || []).forEach(function (st) {
+      if (st.hidden) return;   // 選用來源失敗不計
+      var sid = st.name; if (!sid) return;
+      var h = HEALTH[sid] || (HEALTH[sid] = { name: sid, runs: [], last_ok: 0, last_fail: 0, consec_fail: 0, last_error: '' });
+      var ok = !!st.ok;
+      h.runs = (h.runs || []).slice(-19).concat([{ t: Math.floor(nowS), ok: ok, ms: Math.round(st.ms || 0), n: Math.round(st.n || 0) }]);
+      if (ok) { h.last_ok = Math.floor(nowS); h.consec_fail = 0; }
+      else { h.last_fail = Math.floor(nowS); h.consec_fail = (h.consec_fail || 0) + 1; h.last_error = String(st.error || '').slice(0, 160); }
+    });
+    lsSet(HKEY, HEALTH, false);
+  }
+  function healthLight(h, nowS) {
+    var runs = h.runs || []; if (!runs.length) return ['gray', '還沒有紀錄'];
+    var last = runs[runs.length - 1], recent = runs.slice(-10), fails = recent.filter(function (r) { return !r.ok; }).length, sinceOk = h.last_ok ? nowS - h.last_ok : null;
+    if (!last.ok) {
+      if ((h.consec_fail || 0) >= 2 || sinceOk == null || sinceOk > 2 * 3600) return ['red', '連續失敗 ' + (h.consec_fail || 0) + ' 次' + (h.last_error ? '（' + h.last_error.slice(0, 60) + '）' : '')];
+      return ['yellow', '這次失敗（' + (h.last_error || '原因不明').slice(0, 60) + '），上一次是成功的'];
+    }
+    if (last.n === 0) return ['yellow', '連得上，但這次沒有取得任何資料'];
+    if (last.ms >= 8000) return ['yellow', '很慢（' + (last.ms / 1000).toFixed(1) + ' 秒）'];
+    if (recent.length >= 4 && fails / recent.length >= 0.3) return ['yellow', '最近 ' + recent.length + ' 次有 ' + fails + ' 次失敗'];
+    return ['green', '正常（' + last.n + ' 筆，' + (last.ms / 1000).toFixed(1) + ' 秒）'];
+  }
+  function sourcesHealth(full) {
+    var nowS = now(), out = [];
+    Object.keys(HEALTH).forEach(function (sid) {
+      var h = HEALTH[sid], lr = healthLight(h, nowS), runs = h.runs || [], item = { id: sid, name: h.name || sid, light: lr[0], reason: lr[1] };
+      if (full) {
+        var oks = runs.filter(function (r) { return r.ok; });
+        item.last_ok = h.last_ok || 0; item.last_fail = h.last_fail || 0; item.consec_fail = h.consec_fail || 0; item.last_error = h.last_error || '';
+        item.ok_rate = runs.length ? Math.round(oks.length / runs.length * 100) / 100 : null;
+        item.avg_ms = oks.length ? Math.round(oks.reduce(function (s2, r) { return s2 + r.ms; }, 0) / oks.length) : null;
+        item.last_n = runs.length ? runs[runs.length - 1].n : 0; item.runs = runs.length;
+      }
+      out.push(item);
+    });
+    var ord = { red: 0, yellow: 1, gray: 2, green: 3 };
+    out.sort(function (a, b) { return (ord[a.light] - ord[b.light]) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); });
+    return out;
+  }
+  function withStories(st) {   // 快取來的舊事件沒有事件串：補算一次
+    if (st.events.length && !st.events[0].story) { try { st.stories = assignStories(st.events); } catch (e) { st.stories = []; } }
+    st.stories = (st.stories || []).filter(function (x) { return x.n >= 2; });
+    return st;
+  }
+  var evState = { events: [], at: 0, status: [], busy: null, stories: [] };
   var OPTIONAL = { reddit_world: 1, reddit_ml: 1 };   // 選用來源：失敗不顯示（Reddit 對未登入 RSS 常回 429）
   async function getEvents(force) {
     if (!force && evState.events.length && now() - evState.at < 600) return evState;
@@ -289,12 +379,13 @@
         try { var evs = await Promise.race([j[1](), new Promise(function (_, rej) { setTimeout(function () { rej(new Error('逾時')); }, 20000); })]); raw = raw.concat(evs); status.push({ name: j[0], ok: true, n: evs.length, ms: Date.now() - t0 }); }
         catch (e) { if (j[2]) { status.push({ name: j[0], ok: true, n: 0, ms: Date.now() - t0, hidden: true }); return; } status.push({ name: j[0], ok: false, error: String((e && e.message) || e).slice(0, 100), ms: Date.now() - t0 }); }
       })), deadline]);
-      if (raw.length) { evState.events = mergeEvents(raw, nowS).filter(function (e) { return e.ts >= nowS - KEEP_HOURS * 3600; }); evState.at = nowS; try { LS.setItem('nova_insight_evcache_v1', JSON.stringify({ at: nowS, events: evState.events.slice(0, 250) })); } catch (e) { /* 容量 */ } }
+      healthUpdate(status, now());   // v1.4.0
+      if (raw.length) { evState.events = mergeEvents(raw, nowS).filter(function (e) { return e.ts >= nowS - KEEP_HOURS * 3600; }); try { evState.stories = assignStories(evState.events); } catch (e) { evState.stories = []; } evState.at = nowS; try { LS.setItem('nova_insight_evcache_v1', JSON.stringify({ at: nowS, events: evState.events.slice(0, 250) })); } catch (e) { /* 容量 */ } }
       evState.status = status; return evState;
     })().finally(function () { evState.busy = null; });
     return evState.busy;
   }
-  function cachedEvents() { if (!evState.events.length) { var c = lsGet('nova_insight_evcache_v1', null); if (c && c.events) { evState.events = c.events; evState.at = c.at; } } return evState; }
+  function cachedEvents() { if (!evState.events.length) { var c = lsGet('nova_insight_evcache_v1', null); if (c && c.events) { evState.events = c.events; evState.at = c.at; try { evState.stories = assignStories(evState.events); } catch (e) { evState.stories = []; } } } return withStories(evState); }
 
   /* ───────── 市場、天氣、預測市場、個股 ───────── */
   var MKT_NAMES = {}; DATA.markets.forEach(function (m) { MKT_NAMES[m[0]] = [m[1], m[2]]; });
@@ -562,14 +653,14 @@
   root.NovaInsightCore = {
     version: VERSION, DATA: DATA, syncKeys: SYNC_KEYS.slice(), CITIES: CITIES, CITY_BY_ID: CITY_BY_ID, FL_PRESETS: FL_PRESETS,
     lsGet: lsGet, lsSet: lsSet,
-    events: { get: getEvents, cached: cachedEvents }, cwa: { get: cwaKey, set: function (k) { k = String(k || '').trim(); if (k && !/^[A-Za-z0-9_\-]{6,120}$/.test(k)) throw new Error('授權碼格式不對（只能英數、底線、減號）'); var o = govCfg(); if (k) o.cwa = k; else delete o.cwa; lsSet('nova_insight_govcam_v1', o, true); } }, markets: getMarkets, weather: getWeather, predmarkets: searchPredmarkets, history: getHistory, stockSearch: stockSearch, flights: getFlights, isTwFlight: isTwFlight,
+    events: { get: getEvents, cached: cachedEvents }, health: { list: sourcesHealth }, cwa: { get: cwaKey, set: function (k) { k = String(k || '').trim(); if (k && !/^[A-Za-z0-9_\-]{6,120}$/.test(k)) throw new Error('授權碼格式不對（只能英數、底線、減號）'); var o = govCfg(); if (k) o.cwa = k; else delete o.cwa; lsSet('nova_insight_govcam_v1', o, true); } }, markets: getMarkets, weather: getWeather, predmarkets: searchPredmarkets, history: getHistory, stockSearch: stockSearch, flights: getFlights, isTwFlight: isTwFlight,
     channels: { all: allChannels, custom: customChannels, hidden: hiddenChannels, src: liveSrc, resolve: resolveChannel, add: addChannel, remove: removeChannel, restore: restoreChannels },
     cams: { list: myCams, add: addCam, rename: renameCam, remove: removeCam, classify: classifyCam },
     fore: { load: loadFore, save: saveFore, make: makeForecast, setOutcome: setForecastOutcome, del: deleteForecast, brier: brierStats },
     stk: { load: stkLoad, save: stkSave, add: stkAdd, remove: stkRemove, max: STK_N, mktOf: mktOf },
     pt: { load: ptLoad, save: ptSave, add: ptAdd, del: ptDelete, positions: ptPositions, qtyUnit: qtyUnit, curPrice: curPrice, feeFor: feeFor },
     journal: { load: jrLoad, save: saveJournalRules },
-    _t: { parseCwa: parseCwa, classifyDomain: classifyDomain, baseSeverity: baseSeverity, locateText: locateText, parseFeed: parseFeed, itemToEvent: itemToEvent, mergeEvents: mergeEvents, nearestCity: nearestCity, tokens: tokens, acRows: acRows, parseJson: parseJson, brier: brierStats }
+    _t: { assignStories: assignStories, healthUpdate: healthUpdate, healthLight: healthLight, resetHealth: function () { HEALTH = {}; }, parseCwa: parseCwa, classifyDomain: classifyDomain, baseSeverity: baseSeverity, locateText: locateText, parseFeed: parseFeed, itemToEvent: itemToEvent, mergeEvents: mergeEvents, nearestCity: nearestCity, tokens: tokens, acRows: acRows, parseJson: parseJson, brier: brierStats }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.NovaInsightCore;
 })(typeof window !== 'undefined' ? window : globalThis);

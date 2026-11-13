@@ -1,7 +1,13 @@
 /* ═════════════════════════════════════════════
    nova-jev-ui.js — NOVA Android 的 Jev 設定頁＋與技能／自主任務的銜接（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.0
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.130（搭配 nova-jev.js Android v1.7.0，對標桌面 index.html v3.128.0 的設定頁）：
+            ① 區塊改名「⚡ 快速判斷（Jev／Gemini Decision）」，新增「判斷供應者」（Jev／Gemini Decision 1／自動）與「影子模式」，附 Gemini 免費方案的隱私提醒；
+            ② 「各用途門檻與判斷紀錄」表格（#jev-tune，由 nova-jev.js 產生；只列手機有接上的五個用途）＋「匯出判斷紀錄」（存到手機「文件/NOVA_Jev/」）／「清除紀錄」；
+            ③ init 注入：geminiKey（appState.keys.gemini 或 localStorage nova_key_gemini）、showToast、mergeGroups: []（手機只有智慧分派一個訊息題組，
+               不夾帶意圖分類／模型分級）、tuneFeatures、saveLog（Capacitor Filesystem；沒有時退回瀏覽器下載）。
+            ④ 總開關說明改成「需要 Jev 金鑰或 Gemini 金鑰（依供應者）」。截圖相關的「有截圖時附上」不顯示（手機目前沒有會附截圖的判斷）。
    v1.1.0 - App v2.6.58。設定頁多一個「智慧分派」開關（jev-f-dispatch，對應 nova-jev.js v1.5.0 的 routeTask）。
    v1.0.0 - 批次 7b（App v2.6.31）。① 設定頁「⚡ Jev 快速判斷」區塊（#tab-jev，id 跟 nova-jev.js 的 loadUI／saveUI 對得上：jev-key／jev-enabled／jev-thr／jev-f-*）。
             ② 銜接層 window.NovaJevUI：verifyDone（自主任務宣告完成前複查）。
@@ -33,8 +39,15 @@
     function render() {
         var el = $('tab-jev'); if (!el || !J()) return; el.textContent = '';
         el.appendChild(mk('div', 'font-size:12px;opacity:.75;line-height:1.5;', 'Jev 是 TypeSafe AI 的小決策模型：只回預先定義的選項（選一個／打分／機率），延遲約 0.1～0.5 秒、很便宜；不產生文字，所以只拿來做「判斷」。預設關閉，要填金鑰並打開總開關才會動；任何失敗都會退回原本流程。送出的內容（任務目標、執行紀錄摘要、技能描述）會傳到 TypeSafe AI。'));
+        // v1.2.0：判斷供應者／影子模式
+        var pv = field('判斷供應者', 'Gemini Decision 1 是 Google 2026-11-11 推出的判斷模型，格式跟 Jev 幾乎一樣，用 NOVA 原本的 Gemini 金鑰；價格約 Jev 的 2.4 倍（一次判斷通常不到 0.001 美元）。注意：Gemini 免費方案送出的內容（訊息文字、任務目標）會被 Google 用來改進產品，付費方案不會。');
+        var ps = mk('select', INP); ps.id = 'jev-provider';
+        [['jev', 'Jev（TypeSafe AI）'], ['gemini', 'Gemini Decision 1（用 Gemini 金鑰）'], ['auto', '自動（Jev 優先，失敗時改用 Gemini）']].forEach(function (o) { ps.appendChild(new Option(o[1], o[0])); });
+        ps.onchange = function () { J().saveUI(true); };
+        pv.appendChild(ps); el.appendChild(pv);
+        el.appendChild(toggle('jev-shadow', '影子模式', '主要供應者回答後，背景再問另一家（兩把金鑰都要有），只記錄兩邊是否一致、不影響決定；用來在換供應者前比較，會多花另一家的費用。'));
         var f = field('TypeSafe API Key', '存在這支手機的本機儲存，不會同步。'); var key = mk('input', INP); key.id = 'jev-key'; key.type = 'password'; key.autocomplete = 'off'; key.placeholder = 'API Key'; key.onchange = function () { J().saveUI(true); }; f.appendChild(key); el.appendChild(f);
-        el.appendChild(toggle('jev-enabled', '啟用 Jev（總開關）', '關閉時下面所有用途都不會呼叫 Jev。'));
+        el.appendChild(toggle('jev-enabled', '啟用快速判斷（總開關）', '需要 Jev 金鑰或 Gemini 金鑰（依上面的供應者）。關閉時下面所有用途都不會呼叫。'));
         var t = field('信心門檻（0.5～0.95）', '越高越保守：只在很有把握時才採用 Jev 的判斷。預設 0.7。'); var thr = mk('input', INP); thr.id = 'jev-thr'; thr.type = 'number'; thr.step = '0.05'; thr.min = '0.5'; thr.max = '0.95'; thr.inputMode = 'decimal'; thr.onchange = function () { J().saveUI(true); }; t.appendChild(thr); el.appendChild(t);
         WIRED.forEach(function (w) { el.appendChild(toggle('jev-f-' + w[0], w[1], w[2])); });
         var row = mk('div', 'display:flex;gap:8px;margin-top:12px;');
@@ -43,13 +56,38 @@
         row.append(save, test); el.appendChild(row);
         var out = mk('div', 'font-size:12px;margin-top:8px;word-break:break-all;'); out.id = 'jev-test-result'; el.appendChild(out);
         var st = mk('div', 'font-size:11px;opacity:.7;margin-top:8px;white-space:pre-wrap;line-height:1.5;'); st.id = 'jev-stats'; el.appendChild(st);
+        // v1.2.0：各用途門檻與判斷紀錄
+        var tf = field('各用途門檻與判斷紀錄', '門檻留空＝用上面的全域門檻。「影子一致」是兩家答案相同的比例；「標註一致」是快速判斷沒把握、改由 AI 決定時兩者相同的比例（目前只有智慧分派有標註）。標註滿 20 筆才會建議門檻。紀錄只存在這支手機，最近 400 筆。');
+        var tune = mk('div', 'overflow-x:auto;margin-top:6px;'); tune.id = 'jev-tune'; tf.appendChild(tune); el.appendChild(tf);
+        var row2 = mk('div', 'display:flex;gap:8px;margin-top:8px;');
+        var exp = mk('button', 'flex:1;min-height:44px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:transparent;color:inherit;font-weight:700;', '⬇ 匯出判斷紀錄'); exp.type = 'button'; exp.onclick = function () { J().downloadLog(); };
+        var clr = mk('button', 'flex:1;min-height:44px;border-radius:10px;border:1px solid var(--nv-line,#334155);background:transparent;color:inherit;font-weight:700;', '🗑 清除紀錄'); clr.type = 'button'; clr.onclick = function () { J().clearLogUI(); };
+        row2.append(exp, clr); el.appendChild(row2);
         J().loadUI();
     }
     W.novaJevRenderSettings = render;
 
     // ── 銜接 nova-skill-ui.js 預期的介面 ──
+    async function saveLog(text) {   // v1.2.0：判斷紀錄存到手機「文件/NOVA_Jev/」
+        var name = 'NOVA_Jev_判斷紀錄_' + new Date().toISOString().slice(0, 10) + '.json';
+        var FS = W.Capacitor && W.Capacitor.Plugins && W.Capacitor.Plugins.Filesystem;
+        if (FS) {
+            await FS.writeFile({ path: 'NOVA_Jev/' + name, data: text, directory: 'DOCUMENTS', encoding: 'utf8', recursive: true });
+            toast('✅ 已存到「文件/NOVA_Jev/' + name + '」');
+            return;
+        }
+        var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name;
+        document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
+    function toast(m) { try { if (typeof W.showToast === 'function') W.showToast(m); } catch (e) { /* */ } }
     function install() {
         var j = J(); if (!j || j._androidGlue) return; j._androidGlue = true;
+        try {   // v1.2.0
+            j.init({
+                geminiKey: function () { try { return (W.appState && W.appState.keys && W.appState.keys.gemini) || localStorage.getItem('nova_key_gemini') || ''; } catch (e) { return ''; } },
+                showToast: toast, mergeGroups: [], tuneFeatures: WIRED.map(function (w) { return w[0]; }), saveLog: saveLog
+            });
+        } catch (e) { /* 舊版 nova-jev.js 沒有這些選項也不影響 */ }
         j.isOn = function (use) { try { return !!j.isActive(use); } catch (e) { return false; } };
         j.matchSkill = async function (goal, cands) {
             try { var r = await j.pickSkills(goal, (cands || []).map(function (c) { return { name: c.name, desc: c.text, outline: c.text }; }), 1); return r && r.ok && r.names && r.names[0] ? { name: r.names[0] } : null; } catch (e) { return null; }

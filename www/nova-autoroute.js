@@ -1,7 +1,9 @@
 /* ═════════════════════════════════════════════
    nova-autoroute.js — NOVA Android 一般對話「智慧分派」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.1
+   版本：v1.1.3
    版本紀錄：
+   v1.1.3 - App v2.6.130（搭配 nova-jev.js Android v1.7.0）：Jev／Gemini Decision 沒把握、改由輕量 Gemini 判斷時，把 Gemini 的結果記成那筆快速判斷的標註
+            （NovaJev.label('dispatch', …)），設定頁用它算智慧分派的一致率與建議門檻。快速判斷有把握直接採用的不標註。
    v1.1.2 - App v2.6.89。私密對話不做智慧分派判斷。
    v1.1.1 - App v2.6.76。定位改由 novaAutoTask.run 統一附加（所有自主任務都適用），這裡不再自己附加座標。
    v1.1.0 - App v2.6.75。新增「自主任務」這條路（參考桌面版 NovaAutoRoute／nova-jev.js routeTask）：一般對話送出的話，除了判斷要不要派專家，
@@ -129,6 +131,7 @@
             if (route === 'experts' && !w.experts) route = 'chat';
             if (route === 'autonomous' && !w.autonomous) route = 'chat';
             if (route !== 'experts' && route !== 'autonomous') route = 'chat';
+            try { if (window.NovaJev && NovaJev.label) NovaJev.label('dispatch', t, route); } catch (e) { /* 標註失敗不影響 */ }   // v1.1.3
             return { route: route, needsScreen: route === 'autonomous' && !!j.needs_screen, reason: String(j.reason || '').slice(0, 60), via: 'llm' };
         } catch (e) {
             console.warn('[NOVA][智慧分派] 判斷失敗，照一般對話處理：', e && e.message);

@@ -2,6 +2,9 @@
    nova-autoreport.js — 自主任務的「結束處理」：token 用量統計、提示詞明確快取、完成／失敗時跳回 NOVA（跟 index.html 放同一個資料夾 www/）
    版本：v1.1.0
    版本紀錄：
+   v1.2.0 - App v2.6.130（對標桌面 nova-auto-plan.js v1.0.1／v1.0.2）。① 明確快取遇到 gemini-4-carbon／gemini-4-hydrogen 直接略過並在對話區說明一次
+            （它們只有隱式快取）；② 價格表加入 Carbon（$2／$10／快取 $0.10，2026-12-01 起加倍）與 Hydrogen（$1.50／$7.50／快取 $0.075，標準價），
+            各模型的調價日可以不同（原本固定 2027-01-01），用量摘要的價格說明改成通用文字。
    v1.1.0 - App v2.6.104。任務結束自動輸出執行 log 檔（對標桌面版 v3.31.40「匯出執行紀錄」，格式沿用 schema 'nova-autonomous-run'）：存到 Documents/NOVA_AutoRun/NOVA_AutoRun_<目標>_<時間>.json（不彈分享視窗，避免蓋掉跳回 NOVA）；
             內容＝目標／狀態／起訖與耗時／設定快照／統計／steps（任務期間對話區出現的每一則系統訊息，含時間與距上一步秒數）／actions（每回合 AI 的完整動作與執行結果）／codeOutputs（run_python 程式碼、run_shell 指令）／usage（逐次呼叫的 tokens 與是否用快取）／cache。
             不含截圖與金鑰。設定頁新增「自動存 log 檔」開關（nova_auto_log_file，預設開）與「匯出上次任務 log」按鈕（會開分享）；上一次的 log 另存 localStorage nova_auto_lastrun_log（超過 1.5MB 不存）。
@@ -59,13 +62,16 @@
     var PRICES = {
         'gemini-3.8-flash': { inp: 0.75, out: 3.75, cached: 0.075 },
         'gemini-3.7-flash': { inp: 0.75, out: 3.75, cached: 0.075 },
-        'gemini-3.6-flash': { inp: 0.75, out: 3.75, cached: 0.075 }
+        'gemini-3.6-flash': { inp: 0.75, out: 3.75, cached: 0.075 },
+        'gemini-4-carbon': { inp: 2, out: 10, cached: 0.10, doubleFrom: Date.UTC(2026, 11, 1) },   // v1.2.0
+        'gemini-4-hydrogen': { inp: 1.5, out: 7.5, cached: 0.075, standardNow: true }              // v1.2.0：標準價，沒有公布調價
     };
     var STORAGE_USD_PER_M_HOUR = 4.50;   // 明確快取儲存費（官方價格頁的數字，只用於估算）
     function priceOf(model, now) {
         var p = PRICES[String(model || '').toLowerCase().replace(/^models\//, '')];
         if (!p) return null;
-        var mult = (now == null ? Date.now() : now) >= Date.UTC(2027, 0, 1) ? 2 : 1;
+        if (p.standardNow) return { inp: p.inp, out: p.out, cached: p.cached, standard: true };
+        var mult = (now == null ? Date.now() : now) >= (p.doubleFrom || Date.UTC(2027, 0, 1)) ? 2 : 1;   // v1.2.0：各模型的調價日可以不同
         return { inp: p.inp * mult, out: p.out * mult, cached: p.cached * mult, standard: mult === 2 };
     }
 
@@ -146,7 +152,7 @@
         var pct = sum.prompt ? Math.round(sum.cached / sum.prompt * 100) : 0;
         var t = '📊 這次自主任務用量：' + rows.length + ' 次呼叫｜輸入 ' + fmt(sum.prompt) + '（快取命中 ' + fmt(sum.cached) + '，' + pct + '%）｜輸出 ' + fmt(sum.out) +
             '｜思考 ' + fmt(sum.thoughts) + '｜合計 ' + fmt(sum.total) + ' tokens';
-        if (priced) t += '｜約 $' + cost.toFixed(4) + (standard ? '（標準價）' : '（優惠價，2027-01-01 起加倍）');
+        if (priced) t += '｜約 $' + cost.toFixed(4) + (standard ? '（標準價）' : '（優惠價，之後會調高：3.6～3.8 Flash 2027-01-01、4 Carbon 2026-12-01 起加倍）');
         else t += '｜（這個模型沒有價格資料，不估費用）';
         if (st.cacheLog.length) t += '\n🧊 明確快取：建立 ' + st.cacheLog.length + ' 次（共 ' + fmt(createTok) + ' tokens，按一般輸入價計費，已算進合計），估算儲存費 $' + storageUsd.toFixed(4) + '（實際以 Google 帳單為準）';
         else if (sum.prompt && !sum.cached) t += '\n（沒有任何快取命中）';
@@ -209,6 +215,7 @@
             var prefix = ctx.prefix, full = ctx.full;
             if (!prefix || prefix.length < CACHE_MIN_CHARS) { noteOnce('short', 'ℹ️ 固定規則前綴只有 ' + (prefix ? prefix.length : 0) + ' 字元（不足 ' + CACHE_MIN_CHARS + '），這次任務不使用提示詞快取。'); return null; }
             if (!ctx.key || /image|imagen/i.test(String(ctx.model || ''))) return null;
+            if (/^gemini-4-(carbon|hydrogen)/i.test(String(ctx.model || ''))) { noteOnce('no_explicit', 'ℹ️ ' + ctx.model + ' 不支援明確快取（只有自動的隱式快取），這次任務不建立快取。'); return null; }   // v1.2.0
             if (payload.systemInstruction || payload.tools || payload.toolConfig || payload.cachedContent) return null;
             if (full.indexOf(prefix) !== 0 || full.length === prefix.length) return null;
             var entry = await getOrCreate(ctx.model, prefix, ctx.key);

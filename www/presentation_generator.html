@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 <!--
+  ═══ presentation_generator v42（Android；2026-11-13，App v2.6.130）═══
+  v42：模型清單新增 gemini-4-hydrogen（Gemini 4 Hydrogen）與 gemini-4-carbon（Gemini 4 Carbon），放在 4 Argon 前面（四個文字模型下拉都有）。
+       這兩個模型不收 thinkingBudget（送了會 HTTP 400）：本檔只在模型名稱含 flash 時送 thinkingBudget:0，它們的名稱不含 flash，所以不受影響；
+       temperature 會被它們忽略。Carbon 沒有免費額度。預設值與備援順序沒有改。
   ═══ presentation_generator v41（Android；2026-11-08，App v2.6.123）═══
   v41：模型清單更新——新增 gemini-4-argon（首選文字／排版／背景生成／審查）、grok-build-0.1（首選文字；grok-4.7 原本就有）；移除 gemini-2.5-pro、gemini-2.5-flash（各下拉選單）。
        寫死用到這兩個型號的預設值與備援順序（排版／審稿修正／聯網搜尋／配圖提示／自訂配色／內容產生備援）改用 gemini-3.1-pro-preview（Pro 用途）與 gemini-3.6-flash（Flash 用途）；
@@ -190,6 +194,8 @@
                         <label class="block text-slate-400 mb-1.5 font-semibold">首選文字模型 (LLM)</label>
                         <select id="sel-text-model" onchange="updateHeaderBadge()" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
                             <optgroup label="── Gemini 系列 ──">
+                                <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+                                <option value="gemini-4-carbon">Gemini 4 Carbon</option>
                                 <option value="gemini-4-argon">Gemini 4 Argon</option>
                                 <option value="gemini-3.8-flash">Gemini 3.8 Flash (最新旗艦)</option>
                                 <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
@@ -251,6 +257,8 @@
                         <label class="block text-slate-400 mb-1.5 font-semibold">排版 LLM</label>
                         <select id="sel-layout-model" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-slate-200 focus:border-violet-500 outline-none">
                             <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview（最佳排版）</option>
+                            <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+                            <option value="gemini-4-carbon">Gemini 4 Carbon</option>
                             <option value="gemini-4-argon">Gemini 4 Argon</option>
                             <option value="gemini-3.8-flash">Gemini 3.8 Flash（快速）</option>
                             <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite（極速）</option>
@@ -360,6 +368,8 @@
                                 <label class="text-[10px] text-slate-400 shrink-0">生成模型</label>
                                 <select id="sel-bg-model" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 text-[11px] focus:border-amber-500 outline-none">
                                     <option value="gemini-3.6-flash">Gemini 3.6 Flash（快速）</option>
+                                    <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+                                    <option value="gemini-4-carbon">Gemini 4 Carbon</option>
                                     <option value="gemini-4-argon">Gemini 4 Argon</option>
                                     <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview（最高品質）</option>
                                 </select>
@@ -464,6 +474,8 @@
                                 <select id="sel-review-model" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-slate-200 text-[11px] focus:border-violet-500 outline-none">
                                     <option value="grok-4.7">Grok 4.7（推薦）</option>
                                     <option value="grok-latest">Grok Latest</option>
+                                    <option value="gemini-4-hydrogen">Gemini 4 Hydrogen</option>
+                                    <option value="gemini-4-carbon">Gemini 4 Carbon</option>
                                     <option value="gemini-4-argon">Gemini 4 Argon</option>
                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                     <option value="gpt-6-luna">GPT-6 Luna（支援看圖）</option>
