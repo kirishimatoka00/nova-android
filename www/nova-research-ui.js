@@ -1,10 +1,12 @@
-/* nova-research-ui.js — v1.1.2 (2026-11-01)
+/* nova-research-ui.js — v1.1.3 (2026-11-14)
  * NovaResearch（研發情報 × 實驗系統）手機版介面。引擎與儲存在 nova-research-core.js，雲端同步在 nova-datasync.js（檔名 NOVA_Research_Sync.json，與桌面互通）。
  * 入口：+選單「研發」鈕 → 全螢幕 #nrs-win（含安全區；Android 返回鍵先關抽屜、再關視窗）。
  * 手機版版面：頂列（返回／專案切換／同步／設定）＋橫向膠囊分頁（專案／情報／監看／材料／實驗／最佳化／報告）；內容一律單欄卡片；
  *   新增與編輯都用底部抽屜；實驗工作表改成「每筆實驗一張可編輯卡片」（輸入離開焦點即存檔）；觸控目標 ≥44px；桌面 hover 提示改成點一下展開。
  * 注入：NovaResearchUI.init({ llm({system,user,timeoutMs}), toast(msg,ms), saveNote({title,html}) })。沒有 llm 時情報摘要與報告生成按鈕會提示「模型尚未就緒」。
  * 版本紀錄
+ *   v1.1.3 2026-11-14  App v2.6.132：頂列 ⟳ 同步的提示依實際情況顯示（配合 nova-datasync.js v1.5.0）——上一次同步還在跑 → 「上一次同步還在進行」；
+ *                      子開關關閉才顯示「同步已關閉」（原本「正在同步／卡住」也顯示成「同步已關閉」，看起來像設定問題）；沒有設定同步密語等其他略過理由照實顯示。
  *   v1.1.2 2026-11-01  設定視窗金鑰說明改成「會隨研發同步」；同步套用金鑰後重新讀取設定（見 nova-research-core.js v1.2.0／nova-datasync.js v1.2.0）。
  *   v1.1.1 2026-11-01  設定視窗顯示實際儲存位置（Documents／App 私有），私有時提供「授權所有檔案存取」鈕（配合 nova-research-core.js v1.1.0 的寫入退路）。
  *   v1.1.0 2026-11-01  情報自動存進專案（對標桌面 nova-research.js v1.2.0）：有選專案時搜尋有結果就自動存、AI 摘要完成後更新同一份（同專案同查詢覆蓋，不會越存越多），重搜同查詢保留舊摘要；
@@ -504,7 +506,16 @@
   async function syncNow() {
     var ds = W.NovaDataSync; if (!ds || !ds.run) return toast('同步模組未載入');
     var b = $('nrs-syncb'); if (b) b.textContent = '…';
-    try { var out = await ds.run(true), r = out && out.research; toast(!r ? '同步進行中' : r.error ? '同步失敗：' + r.error : r.skipped ? '同步已關閉（⚙ 設定可開啟）' : '☁️ ' + r.text, 5000); }
+    try {
+      var out = await ds.run(true), r = out && out.research, msg;
+      if (!r) msg = '上一次同步還在進行，請稍後再試';
+      else if (r.error) msg = '同步失敗：' + r.error;
+      else if (r.skipped === 'disabled') msg = '研發同步已關閉（⚙ 設定可開啟）';
+      else if (r.skipped === 'busy') msg = '研發同步還在進行，請稍後再試';
+      else if (r.skipped) msg = '這次沒有同步：' + (r.text || r.skipped);
+      else msg = '☁️ ' + r.text;
+      toast(msg, 5000);
+    }
     catch (e) { toast('同步失敗：' + e.message, 5000); }
     if (b) b.textContent = '⟳';
   }

@@ -1,4 +1,4 @@
-/* nova-datasync.js — v1.4.0 (2026-11-09)
+/* nova-datasync.js — v1.5.0 (2026-11-14)
  * 手機版「NovaResearch／Project Insight 資料同步」：把桌面 nova-data-sync.js v1.0.0 的比對／合併核心原樣移植，遠端存取改走 NovaGoogle._drive（Drive REST）。
  * 與桌面互通：同一個 Google 帳號的 Drive 根目錄，檔名 NOVA_Research_Sync.json（研發：專案／材料／實驗／情報／監看定義／報告／筆記）、NOVA_Insight_Sync.json（Insight：預判、個股、虛擬交易、日誌…）。
  *   檔案格式：{v:1, items:{鍵:{h:雜湊,ts:時間,v:內容}}, deleted:{鍵:時間}, at, from}；鍵＝「種類/id」（Research）或 localStorage 項目名（Insight）。
@@ -7,6 +7,13 @@
  * 觸發：Drive 同步（nova-google.js 的 syncNow 在記憶同步後呼叫 NovaDataSync.syncAll）、資料改動後 4 秒（nova-research-changed／nova-insight-changed）、App 回到前景、設定頁手動按鈕。
  * 子開關（預設開）：localStorage nova_dsync_research_on／nova_dsync_insight_on；上次同步狀態 nova_dsync_<id>_state／_info；檔案 id 快取 nova_dsync_<id>_fileid。
  * 版本紀錄
+ *   v1.5.0 2026-11-14  App v2.6.132。修「NovaResearch 無法同步」：一次 Drive 請求沒有回應（同步途中 App 切到背景、網路斷線），
+ *                      run() 的 running 與 sync() 的 inFlight 旗標就永遠停在「執行中」，之後自動與手動同步全部被略過，直到完全關閉 App 重開
+ *                      （研發頁按 ⟳ 只會顯示「同步進行中」或誤導的「同步已關閉」）。在模擬環境重現過（讓一次讀取不回應 → 手動同步回 null、直接同步回 busy）。
+ *                      ① Drive 存取加逾時：find／read 60 秒、write／trash 120 秒，逾時丟錯（這次同步中止、不覆蓋任何資料，下次重試）。
+ *                      ② 執行中旗標改記開始時間，超過 3 分鐘視為卡住、自動解除；手動同步遇到真的正在跑的同步，丟出「上一次同步還在進行（N 秒）」。
+ *                      ③ 同步失敗也記到 nova_dsync_<id>_info（{at, text:'失敗：…', error:true}），研發設定視窗看得到最後一次失敗原因。
+ *                      ④ 回傳的 skipped 理由不變（busy／disabled／no-passphrase），介面依理由顯示（見 nova-research-ui.js v1.1.3）。合併核心沒有改動。
  *   v1.4.0 2026-11-09  App v2.6.125。同步密語＝金鑰加密同步（對標桌面 nova-data-sync.js v1.1.0／desktop-patch v3.121.0，核心比對與加密原樣移植）：
  *                      ① 設定「同步密語」（localStorage nova_sync_passphrase，只存在這台、不上傳、不進備份）後，研發金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定
  *                         改走加密檔 NOVA_Secrets_Sync.json（PBKDF2-SHA256 20 萬次 → AES-GCM，每項各自 IV；比對雜湊加 salt），原本的研發／Insight／Bot 同步檔不再帶這些明文（雲端舊明文會被移除）；
@@ -20,7 +27,11 @@
  */
 (function (root) {
   'use strict';
-  var VERSION = '1.1.0';   // 核心對應桌面 nova-data-sync.js v1.1.0
+  var VERSION = '1.1.0';   // 核心對應桌面 nova-data-sync.js v1.1.0（v1.5.0 只改手機端的逾時／卡住解除，核心不變）
+  var DRIVE_TIMEOUT_READ = 60000, DRIVE_TIMEOUT_WRITE = 120000, STALE_MS = 180000;
+  function withTimeout(pr, ms, what) {
+    var t; return Promise.race([pr, new Promise(function (_, rej) { t = setTimeout(function () { rej(new Error(what + '逾時（' + Math.round(ms / 1000) + ' 秒沒有回應），這次同步中止、沒有覆蓋任何資料，稍後會再試')); }, ms); })]).finally(function () { clearTimeout(t); });
+  }
   var TOMB_KEEP_MS = 90 * 24 * 3600 * 1000;
 
   /* ── 純函式：正規化、雜湊、合併（可單獨測試）── */
@@ -195,7 +206,15 @@
     function isEnabled(id) { return st().getItem(K(id).on) !== '0'; }
     function setEnabled(id, on) { try { st().setItem(K(id).on, on ? '1' : '0'); } catch (e) { /* */ } }
     function lastInfo(id) { return lsGet(K(id).info, null); }
-    function drv() { var d = D.drive(); if (!d) throw new Error('尚未連線 Google（請先在「Google」設定頁登入並授權 Drive）'); return d; }
+    function drv() {
+      var d = D.drive(); if (!d) throw new Error('尚未連線 Google（請先在「Google」設定頁登入並授權 Drive）');
+      return {   // v1.5.0：每個 Drive 呼叫都有逾時，避免一次沒回應就讓同步永遠卡在「執行中」
+        find: function (n) { return withTimeout(Promise.resolve(d.find(n)), DRIVE_TIMEOUT_READ, '查詢 Drive 檔案'); },
+        read: function (id, soft) { return withTimeout(Promise.resolve(d.read(id, soft)), DRIVE_TIMEOUT_READ, '讀取 Drive 同步檔'); },
+        write: function (id, name, obj) { return withTimeout(Promise.resolve(d.write(id, name, obj)), DRIVE_TIMEOUT_WRITE, '寫入 Drive 同步檔'); },
+        trash: function (id) { return withTimeout(Promise.resolve(d.trash(id)), DRIVE_TIMEOUT_WRITE, '刪除 Drive 重複檔'); }
+      };
+    }
     function checkBundle(p, b) {
       if (!b || typeof b !== 'object' || typeof b.items !== 'object' || b.items === null) throw new Error('遠端的 ' + p.file + ' 格式不對，為避免覆蓋它，這次同步中止');
       return b;
@@ -267,8 +286,8 @@
       if (!p) return { skipped: 'unknown' };
       if (!isEnabled(id)) return { skipped: 'disabled' };
       if (p.encrypted && !secretsReady()) return { skipped: 'no-passphrase', text: '尚未設定同步密語，未同步' };
-      if (inFlight[id]) return { skipped: 'busy' };
-      inFlight[id] = true;
+      if (inFlight[id] && (D.now() - inFlight[id]) < STALE_MS) return { skipped: 'busy', since: inFlight[id] };   // v1.5.0：超過 3 分鐘視為卡住，直接重跑
+      inFlight[id] = D.now();
       try {
         var L = await p.collect();                       // 失敗就丟例外 → 整個中止（不會當成「全部刪除」）
         var skip = [];
@@ -304,7 +323,10 @@
         lsSet(K(id).info, { at: D.now(), text: out.text });
         if (nPut || res.applyDel.length) { try { if (p.after) p.after(out); } catch (e) { /* */ } }
         return out;
-      } finally { inFlight[id] = false; }
+      } catch (e) {   // v1.5.0：失敗也留紀錄，設定視窗看得到原因
+        try { lsSet(K(id).info, { at: D.now(), text: '失敗：' + ((e && e.message) || String(e)), error: true }); } catch (e2) { /* */ }
+        throw e;
+      } finally { inFlight[id] = 0; }
     }
     function describe(r) {
       var a = [];
@@ -404,16 +426,20 @@
         if (ins) { try { root.dispatchEvent(new root.CustomEvent('nova-insight-synced')); } catch (e) { /* */ } }
       }
     });
-    var timer = null, running = false;
+    var timer = null, running = 0;   // v1.5.0：記開始時間（0＝沒在跑）
     function connected() { return !!(root.NovaGoogle && root.NovaGoogle.isConnected && root.NovaGoogle.isConnected() && root.NovaGoogle._drive); }
     async function run(manual) {
-      if (running) return null; if (!connected()) { if (manual) throw new Error('尚未連線 Google'); return null; }
-      running = true;
+      if (running && (Date.now() - running) < STALE_MS) {
+        if (manual) throw new Error('上一次同步還在進行（已 ' + Math.round((Date.now() - running) / 1000) + ' 秒），請稍後再按一次');
+        return null;
+      }
+      if (!connected()) { if (manual) throw new Error('尚未連線 Google'); return null; }
+      running = Date.now();
       try {
         var out = await inst.syncAll({ device: 'android' });
         try { root.dispatchEvent(new root.CustomEvent('nova-dsync-done', { detail: out })); } catch (e) { /* */ }
         return out;
-      } finally { running = false; }
+      } finally { running = 0; }
     }
     inst.run = run;
     inst.schedule = function () { if (!connected()) return; clearTimeout(timer); timer = setTimeout(function () { run(false).catch(function () { /* */ }); }, 4000); };
