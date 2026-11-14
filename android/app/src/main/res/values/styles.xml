@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 版本紀錄（本檔）
+         v2.6.133 2026-11-14：狀態列／導覽列／colorPrimary 的啟動預設色 #020617 → #131a24（B 案黑夜背景，與 App 同色；App 載入後由 JS 依主題設定）。需重新打包 APK 才生效。 -->
 
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
         <!-- App 基本色系 -->
-        <item name="colorPrimary">#020617</item>
-        <item name="colorPrimaryDark">#020617</item>
+        <item name="colorPrimary">#131a24</item>
+        <item name="colorPrimaryDark">#131a24</item>
         <item name="colorAccent">#6366f1</item>
 
         <!-- ★ 讓狀態列與導覽列跟 App 同色（深色） -->
-        <item name="android:statusBarColor">#020617</item>
-        <item name="android:navigationBarColor">#020617</item>
+        <item name="android:statusBarColor">#131a24</item>
+        <item name="android:navigationBarColor">#131a24</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>

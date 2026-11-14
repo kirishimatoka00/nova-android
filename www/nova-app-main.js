@@ -1,9 +1,13 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.1
+   目前版本：v1.4.2
    最後更新：2026-11-14
 
    版本紀錄：
+   v1.4.2 - App v2.6.133：系統狀態列（上）與導覽列（下）跟 App 背景同色。新增 window.novaSyncSystemBars(theme)：讀 nova-ui.css 的 --nv-canvas
+            （B 案黑夜 #131a24、白晝 #fafbfd）設定 StatusBar、NovaSystemBars 導覽列與 meta theme-color；applyTheme 與啟動時的 StatusBar 初始化都改呼叫它。
+            原本寫死黑夜 #020617、白晝 #ffffff，v2.6.131 換成 B 案底色後，上下兩條跟 App 背景明顯不同色（手機截圖：黑夜 #030617 對 #131a24、白晝 #ffffff 對 #fafbfd）。
+            用既有的原生外掛（StatusBar、NovaSystemBars〔v2.6.67 起〕），不需要重新打包 APK。NOVA_APP_VERSION 2.6.133、NOVA_CHANGELOG 加一筆。
    v1.4.1 - App v2.6.132：只改 NOVA_APP_VERSION（2.6.132）與 NOVA_CHANGELOG 一筆（修 NovaResearch 無法同步，改動在 nova-datasync.js v1.5.0、nova-research-ui.js v1.1.3）；本檔程式沒有改動。
    v1.4.0 - App v2.6.131（B 案配色，對標桌面 nova-app-main.js v1.12.0～v1.14.0；搭配 nova-ui.css v1.20.0、nova-subpage-light.css v1.1.0）：只改白晝樣式表（#light-theme-fix）：
             ① 色碼換成桌面 B 案冷色（由相同選擇器對照桌面 v1.14.0 的值得出，共 679 處）：中性灰 #f3f4f6／#e5e7eb／#374151／#111827→#f1f4f8／#e1e6ee／#334155／#0f172a，
@@ -44,8 +48,11 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.132';
+        const NOVA_APP_VERSION = '2.6.133';
         const NOVA_CHANGELOG = [
+            { v: '2.6.133', date: '2026-11-14', notes: [
+                '手機最上方的狀態列與最下方的導覽列（返回／首頁／最近工作）跟 App 背景同色（nova-app-main.js v1.4.2；僅 www，不需重新打包原生）：v2.6.131 換成 B 案配色後，上下兩條仍是舊的近黑 #020617（黑夜）與純白（白晝），跟 App 背景 #131a24／#fafbfd 不同色。現在直接取 App 背景色設定，切換黑夜／白晝時一起變；狀態列圖示在白晝為深色、黑夜為淺色。另外原生的啟動預設色（MainActivity、styles.xml）也改成 #131a24，下次重新打包 APK 後，開 App 的第一瞬間也不會先閃舊的近黑。【未在真機驗證】'
+            ] },
             { v: '2.6.132', date: '2026-11-14', notes: [
                 '修 NovaResearch 無法同步（nova-datasync.js v1.5.0、nova-research-ui.js v1.1.3；僅 www，不需重新打包原生）：同步途中 App 切到背景或網路斷線時，一次 Drive 請求可能永遠沒有回應，同步的「執行中」旗標就一直不解除，之後自動與手動同步全部被略過，要完全關閉 App 重開才恢復；研發頁按 ⟳ 只顯示「同步進行中」或誤導的「同步已關閉」。現在每個 Drive 請求有逾時（讀 60 秒、寫 120 秒，逾時就中止、不覆蓋資料，下次再試），卡超過 3 分鐘的旗標自動解除；失敗原因會記在研發設定視窗的「上次同步」；⟳ 的提示依實際情況顯示。已用雲端上真實的 NOVA_Research_Sync.json 在模擬環境測過（正常同步取回 47 項；讓一次讀取不回應後，逾時中止並在恢復後正常同步）。【未在真機驗證】'
             ] },
@@ -4441,35 +4448,27 @@ return html;
 
             if (theme === 'light') {
                 document.documentElement.classList.add('theme-light');
-                try { if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaSystemBars) Capacitor.Plugins.NovaSystemBars.setNavBar({ color: '#ffffff', light: true }).catch(function(){}); } catch(e) {}   // v2.6.67：系統導覽列
-                // ★ Android：白晝模式 → 狀態列/導航列改為白色
-                if (window.Capacitor && window.Capacitor.getPlatform() === 'android') {
-                    try {
-                        const { StatusBar } = Capacitor.Plugins;
-                        if (StatusBar) {
-                            StatusBar.setBackgroundColor({ color: '#ffffff' });
-                            StatusBar.setStyle({ style: 'LIGHT' });
-                        }
-                    } catch(e) { console.warn('StatusBar light 設定失敗:', e); }
-                }
-                const metaTheme = document.querySelector('meta[name="theme-color"]');
-                if (metaTheme) metaTheme.setAttribute('content', '#f8fafc');
             } else {
                 document.documentElement.classList.remove('theme-light');
-                try { if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaSystemBars) Capacitor.Plugins.NovaSystemBars.setNavBar({ color: '#020617', light: false }).catch(function(){}); } catch(e) {}   // v2.6.67：系統導覽列
-                // ★ Android：深色模式 → 狀態列/導航列恢復 App 深色
-                if (window.Capacitor && window.Capacitor.getPlatform() === 'android') {
-                    try {
-                        const { StatusBar } = Capacitor.Plugins;
-                        if (StatusBar) {
-                            StatusBar.setBackgroundColor({ color: '#020617' });
-                            StatusBar.setStyle({ style: 'DARK' });
-                        }
-                    } catch(e) { console.warn('StatusBar dark 設定失敗:', e); }
-                }
-                const metaTheme = document.querySelector('meta[name="theme-color"]');
-                if (metaTheme) metaTheme.setAttribute('content', '#020617');
             }
+            window.novaSyncSystemBars(theme);   // v1.4.2：狀態列／導覽列跟 App 背景同色（取代原本寫死的 #ffffff／#020617）
+        };
+        // v1.4.2（App v2.6.133）：系統狀態列（上）與導覽列（下）跟 App 背景同色——直接讀 nova-ui.css 的 --nv-canvas（B 案：黑夜 #131a24、白晝 #fafbfd），
+        //   之後 token 再改也會自動跟上；原本寫死黑夜 #020617、白晝 #ffffff，跟 App 背景差一截。
+        window.novaSyncSystemBars = function(theme) {
+            var light = (theme === 'light'), c = '';
+            try { c = getComputedStyle(document.documentElement).getPropertyValue('--nv-canvas').trim(); } catch(e) {}
+            if (!/^#[0-9a-fA-F]{6}$/.test(c)) c = light ? '#fafbfd' : '#131a24';
+            try { if (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.NovaSystemBars) Capacitor.Plugins.NovaSystemBars.setNavBar({ color: c, light: light }).catch(function(){}); } catch(e) {}
+            if (window.Capacitor && typeof window.Capacitor.getPlatform === 'function' && window.Capacitor.getPlatform() === 'android') {
+                try {
+                    var SB = Capacitor.Plugins && Capacitor.Plugins.StatusBar;
+                    if (SB) { SB.setBackgroundColor({ color: c }); SB.setStyle({ style: light ? 'LIGHT' : 'DARK' }); }
+                } catch(e) { console.warn('StatusBar 設定失敗:', e); }
+            }
+            var metaTheme = document.querySelector('meta[name="theme-color"]');
+            if (metaTheme) metaTheme.setAttribute('content', c);
+            return c;
         };
         window.updateThemeButtons = function() {
             const t = appState.theme || 'dark';
@@ -11259,10 +11258,8 @@ const mimeStr = base64URI.slice(5, splitIndex).split(';')[0];
                 try {
                     const { StatusBar } = Capacitor.Plugins;
                     if (StatusBar) {
-                        const isDark = (appState.theme !== 'light');
-                        StatusBar.setBackgroundColor({ color: isDark ? '#020617' : '#ffffff' });
-                        StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' });
                         StatusBar.setOverlaysWebView({ overlay: false });
+                        if (typeof window.novaSyncSystemBars === 'function') window.novaSyncSystemBars(appState.theme);   // v1.4.2：顏色統一由 novaSyncSystemBars 決定（跟 App 背景同色）
                     }
                 } catch(e) { console.warn('StatusBar init 失敗:', e); }
             }

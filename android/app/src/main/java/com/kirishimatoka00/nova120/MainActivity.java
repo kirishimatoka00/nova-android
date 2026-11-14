@@ -12,6 +12,10 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
+/*
+ * 版本紀錄（本檔）
+ *   v2.6.133 2026-11-14  啟動時的預設導覽列顏色 #020617 → #131a24（B 案黑夜背景；App 載入後由 JS novaSyncSystemBars 依主題設定）。需重新打包 APK 才生效。
+ */
 public class MainActivity extends BridgeActivity {
 
     private static final int PERM_REQ_CODE = 1001;
@@ -35,7 +39,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NovaProactivePlugin.class);   // v2.6.101：AI 主動說話
         super.onCreate(savedInstanceState);
         NovaProactive.saveLaunch(this, getIntent() == null ? null : getIntent().getStringExtra(NovaProactive.EXTRA_OPEN));   // v2.6.101：從主動訊息通知點開時，記下要切換的對話
-        try { getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#020617")); } catch (Exception e) { /* 之後由 JS 依主題設定 */ }   // v2.6.67：啟動預設深色導覽列
+        try { getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#131a24")); } catch (Exception e) { /* 之後由 JS 依主題設定 */ }   // v2.6.67：啟動預設深色導覽列；v2.6.133：#020617→#131a24（B 案黑夜背景，與 App 同色）
 
         // ★ Step 1：App 啟動時主動請求所有必要的 Android 系統權限
         // 若未提前請求，WebView 的 getUserMedia / geolocation 即使宣告了也無法使用
