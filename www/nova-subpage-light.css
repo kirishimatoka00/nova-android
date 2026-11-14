@@ -1,22 +1,29 @@
 /* ═════════════════════════════════════════════════════════════════
    nova-subpage-light.css — 向量資料庫（knowledgebank.html）與簡報生成（presentation_generator.html）的白晝配色
-   版本：v1.0.0
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.131（B 案配色，對標桌面 nova-ui.css v1.2.0、nova-app-main.js v1.13.0～v1.14.0、knowledgebank v1.5.0～v1.6.0、presentation_generator v54～v55）：
+            ① 白晝 token 由米白暖灰＋陶土橘換成冷色藍灰＋鈷藍（#fafbfd／#ffffff／#f4f6fa／#e1e6ee／字 #0f172a／強調 #2f63d6），跟主畫面一致；
+            ② 新增黑夜規則（限定 html:not(.theme-light)）：slate 底色換 B 案藍灰（#020617→#131a24）、text-slate-500／600 提亮到 ≥ 4.5:1；
+            ③ 白晝亮色字（blue／emerald／violet／amber／sky…-200～500，在白底只有 1.4～2.8:1）換成同色相深色版；
+            ④ 白晝只用一個強調色：漸層與彩色實心主要鈕（簡報「開始生成」原本白字疊白底看不見）一律鈷藍實心白字，紅色系改紅色實心鈕。
    v1.0.0 - App v2.6.62。這兩頁原本的白晝模式是「slate 色相反轉」（簡報頁甚至用 filter:invert 整頁反色），出來是偏藍的淺藍底，
             跟主畫面（nova-ui.css 的米白暖灰 token）不協調；改成跟主畫面同一組色：底 #faf9f5、卡片 #fdfcfa、次級 #f3f1ea、線 #e8e5dc、字 #141413、強調 #c15f3c。
             只在 <html class="theme-light"> 生效，黑夜模式完全不動。主要動作按鈕（藍／紫／綠）維持原色。
    ═════════════════════════════════════════════════════════════════ */
 html.theme-light {
-  --nv-canvas: #faf9f5; --nv-card: #fdfcfa; --nv-card-2: #f3f1ea; --nv-line: #e8e5dc; --nv-line-strong: #d9d5c9;
-  --nv-text: #141413; --nv-text-2: #3d3929; --nv-muted: #6b6860; --nv-faint: #8a8679; --nv-accent: #c15f3c;
+  /* v1.1.0：B 案冷色藍灰＋鈷藍（與 nova-ui.css v1.20.0 同一組） */
+  --nv-canvas: #fafbfd; --nv-card: #ffffff; --nv-card-2: #f4f6fa; --nv-line: #e1e6ee; --nv-line-strong: #cdd5e1;
+  --nv-text: #0f172a; --nv-text-2: #334155; --nv-muted: #526077; --nv-faint: #5f6c80; --nv-accent: #2f63d6; --nv-accent-text: #2a58c0;
+  --nv-accent-soft: rgba(47,99,214,.10); --nv-on-accent: #ffffff;
 }
 html.theme-light, html.theme-light body { background: var(--nv-canvas) !important; color: var(--nv-text); }
 html.theme-light body::after { background: var(--nv-canvas) !important; }
 /* 背景 */
 html.theme-light body .bg-slate-950, html.theme-light body .bg-slate-900 { background-color: var(--nv-canvas) !important; }
-html.theme-light body .bg-slate-900\/95 { background-color: rgba(250,249,245,.96) !important; }
-html.theme-light body .bg-slate-950\/90 { background-color: rgba(250,249,245,.92) !important; }
-html.theme-light body .bg-slate-900\/60 { background-color: rgba(253,252,250,.7) !important; }
+html.theme-light body .bg-slate-900\/95 { background-color: rgba(250,251,253,.96) !important; }
+html.theme-light body .bg-slate-950\/90 { background-color: rgba(250,251,253,.92) !important; }
+html.theme-light body .bg-slate-900\/60 { background-color: rgba(255,255,255,.7) !important; }
 html.theme-light body .bg-slate-800, html.theme-light body .bg-slate-800\/60, html.theme-light body .bg-slate-800\/50 { background-color: var(--nv-card-2) !important; }
 html.theme-light body .bg-slate-700 { background-color: var(--nv-line) !important; }
 html.theme-light body .bg-slate-600 { background-color: var(--nv-line-strong) !important; }
@@ -54,4 +61,44 @@ html.theme-light body select, html.theme-light body input:not([type=checkbox]):n
 html.theme-light body ::placeholder { color: var(--nv-faint) !important; }
 html.theme-light ::-webkit-scrollbar-thumb { background: var(--nv-line-strong); }
 /* 頂部頁首 */
-html.theme-light body .sticky.top-0, html.theme-light body header { background-color: rgba(250,249,245,.96) !important; border-color: var(--nv-line) !important; }
+html.theme-light body .sticky.top-0, html.theme-light body header { background-color: rgba(250,251,253,.96) !important; border-color: var(--nv-line) !important; }
+
+/* ═══ v1.1.0（App v2.6.131）B 案配色一致性：與 nova-ui.css v1.20.0 §25 同一組規則（這兩頁不載入 nova-ui.css，所以在這裡另寫一份） ═══ */
+/* ── 黑夜：底色換 B 案藍灰、灰字提亮到 ≥ 4.5:1（本檔原本只管白晝；黑夜的規則一律限定 html:not(.theme-light)） ── */
+html:not(.theme-light) body.bg-slate-950, html:not(.theme-light) body .bg-slate-950 { background-color: #131a24 !important; }
+html:not(.theme-light) body .bg-slate-950\/90 { background-color: rgba(19,26,36,.92) !important; }
+html:not(.theme-light) body .bg-slate-900 { background-color: #1a2230 !important; }
+html:not(.theme-light) body .bg-slate-900\/95 { background-color: rgba(26,34,48,.96) !important; }
+html:not(.theme-light) body .bg-slate-900\/60 { background-color: rgba(26,34,48,.65) !important; }
+html:not(.theme-light) body .bg-slate-800 { background-color: #222c3b !important; }
+html:not(.theme-light) body .bg-slate-800\/50, html:not(.theme-light) body .bg-slate-800\/60 { background-color: rgba(34,44,59,.6) !important; }
+html:not(.theme-light) body .border-slate-800 { border-color: #253043 !important; }
+html:not(.theme-light) body .border-slate-700 { border-color: #334058 !important; }
+html:not(.theme-light) body .text-slate-500 { color: #93a0b4 !important; }
+html:not(.theme-light) body .text-slate-600 { color: #8b98ad !important; }
+html:not(.theme-light) body input::placeholder, html:not(.theme-light) body textarea::placeholder { color: #6b7a90 !important; opacity: 1; }
+/* ── 白晝：亮色字（*-200～500）換同色相深色版（≥ 4.5:1；sky 併入鈷藍） ── */
+html.theme-light body .text-blue-200, html.theme-light body .text-blue-300, html.theme-light body .text-blue-400, html.theme-light body .text-blue-500 { color: #2a58c0 !important; }
+html.theme-light body .text-sky-200, html.theme-light body .text-sky-300, html.theme-light body .text-sky-400, html.theme-light body .text-sky-500 { color: #2a58c0 !important; }
+html.theme-light body .text-emerald-200, html.theme-light body .text-emerald-300, html.theme-light body .text-emerald-400, html.theme-light body .text-emerald-500 { color: #1f7a58 !important; }
+html.theme-light body .text-green-200, html.theme-light body .text-green-300, html.theme-light body .text-green-400, html.theme-light body .text-green-500 { color: #1f7a58 !important; }
+html.theme-light body .text-purple-200, html.theme-light body .text-purple-300, html.theme-light body .text-purple-400, html.theme-light body .text-purple-500 { color: #5b46b0 !important; }
+html.theme-light body .text-violet-200, html.theme-light body .text-violet-300, html.theme-light body .text-violet-400, html.theme-light body .text-violet-500 { color: #5b46b0 !important; }
+html.theme-light body .text-amber-200, html.theme-light body .text-amber-300, html.theme-light body .text-amber-400, html.theme-light body .text-amber-500 { color: #93620f !important; }
+html.theme-light body .text-yellow-200, html.theme-light body .text-yellow-300, html.theme-light body .text-yellow-400, html.theme-light body .text-yellow-500 { color: #8a5a00 !important; }
+html.theme-light body .text-cyan-200, html.theme-light body .text-cyan-300, html.theme-light body .text-cyan-400, html.theme-light body .text-cyan-500 { color: #1d6b7a !important; }
+html.theme-light body .text-teal-200, html.theme-light body .text-teal-300, html.theme-light body .text-teal-400, html.theme-light body .text-teal-500 { color: #1f6f66 !important; }
+html.theme-light body .text-red-200, html.theme-light body .text-red-300, html.theme-light body .text-red-400, html.theme-light body .text-red-500 { color: #b42318 !important; }
+html.theme-light body .text-rose-200, html.theme-light body .text-rose-300, html.theme-light body .text-rose-400, html.theme-light body .text-rose-500 { color: #b4234a !important; }
+html.theme-light body .text-pink-200, html.theme-light body .text-pink-300, html.theme-light body .text-pink-400, html.theme-light body .text-pink-500 { color: #a8327a !important; }
+html.theme-light body .text-orange-200, html.theme-light body .text-orange-300, html.theme-light body .text-orange-400, html.theme-light body .text-orange-500 { color: #a24a12 !important; }
+html.theme-light body .text-indigo-200, html.theme-light body .text-indigo-300, html.theme-light body .text-indigo-400, html.theme-light body .text-indigo-500 { color: #4338ca !important; }
+html.theme-light body .text-lime-200, html.theme-light body .text-lime-300, html.theme-light body .text-lime-400, html.theme-light body .text-lime-500 { color: #3f6212 !important; }
+html.theme-light body .text-fuchsia-200, html.theme-light body .text-fuchsia-300, html.theme-light body .text-fuchsia-400, html.theme-light body .text-fuchsia-500 { color: #9b2c9b !important; }
+html.theme-light body [class*="bg-red-9"][class*="text-red-"] { background-color: #fdecec !important; color: #b42318 !important; border-color: #f2b8b8 !important; }
+/* ── 白晝：只用一個強調色——漸層／彩色實心主要鈕一律鈷藍實心、白字（對標桌面 nova-app-main.js v1.13.0 ②、presentation_generator v54～v55、knowledgebank v1.5.0～v1.6.0） ── */
+html.theme-light body button:is([class*="bg-gradient-to-"], [class~="bg-violet-600"], [class~="bg-indigo-600"], [class~="bg-purple-600"], [class~="bg-emerald-600"], [class~="bg-teal-600"], [class~="bg-sky-600"], [class~="bg-blue-600"], [class~="bg-blue-500"], [class~="bg-amber-600"], [class~="bg-amber-500"], [class~="bg-orange-600"]),
+html.theme-light body #btn-generate { background: #2f63d6 !important; background-image: none !important; border-color: #2f63d6 !important; color: #ffffff !important; box-shadow: none !important; }
+html.theme-light body button:is([class*="bg-gradient-to-"], [class~="bg-violet-600"], [class~="bg-indigo-600"], [class~="bg-purple-600"], [class~="bg-emerald-600"], [class~="bg-teal-600"], [class~="bg-sky-600"], [class~="bg-blue-600"], [class~="bg-blue-500"], [class~="bg-amber-600"], [class~="bg-amber-500"], [class~="bg-orange-600"]) :is(i, span),
+html.theme-light body #btn-generate :is(i, span) { color: #ffffff !important; }
+html.theme-light body button[class~="bg-rose-600"], html.theme-light body button[class~="bg-red-600"] { background: #c03333 !important; color: #fff !important; border-color: #c03333 !important; }

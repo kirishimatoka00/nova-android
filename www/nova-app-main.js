@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.3.0
-   最後更新：2026-11-13
+   目前版本：v1.4.0
+   最後更新：2026-11-14
 
    版本紀錄：
+   v1.4.0 - App v2.6.131（B 案配色，對標桌面 nova-app-main.js v1.12.0～v1.14.0；搭配 nova-ui.css v1.20.0、nova-subpage-light.css v1.1.0）：只改白晝樣式表（#light-theme-fix）：
+            ① 色碼換成桌面 B 案冷色（由相同選擇器對照桌面 v1.14.0 的值得出，共 679 處）：中性灰 #f3f4f6／#e5e7eb／#374151／#111827→#f1f4f8／#e1e6ee／#334155／#0f172a，
+               說明灰字 #9ca3af／#6b7280→#526077（白底 ≥ 4.5:1）、藍 #2563eb／#3b82f6→鈷藍 #2f63d6、紫綠琥珀紅換成冷色版、天藍併入鈷藍；註解與選擇器裡的色碼沒有動。
+            ② 「所有按鈕一律灰底」的通用規則改成只套在黑夜本來就有底色的按鈕（class 有 bg-*、或行內 background），條件包進 :where() 降權重（桌面 v1.13.0 ①）；
+               沒有底色的圖示鈕／文字鈕在白晝維持透明，後面「實心強調色鈕」等規則才蓋得過它。
+            ③ 樣式表最後加上桌面 v1.13.0 ② 的「白晝只用一個強調色」：黑夜各色實心鈕（紫、綠、青、靛、琥珀…500～700）白晝一律鈷藍實心白字，紅／玫瑰系為紅色實心鈕
+               （原本深度研究「開始分析作業」、筆記「儲存變更」、Google「連接」等主要鈕被淡化成灰底後又被 nova-ghost.js 變成無框文字，看不出是主要動作）。
+            ④ NOVA_APP_VERSION 改成 2.6.131、NOVA_CHANGELOG 加一筆。本檔其他程式沒有改動。
    v1.3.0 - App v2.6.130（對標桌面 desktop-patch v3.127.0～v3.129.0＋Insight v1.17.0）：NOVA_APP_VERSION 改成 2.6.130、NOVA_CHANGELOG 加一筆；
             斜線指令新增 /g4h（Gemini 4 Hydrogen）、/g4c（Gemini 4 Carbon）與說明；全域 fetch 防護（原本只處理 3.8 Flash 的 temperature／topP／topK）
             擴大到 4 Carbon／Hydrogen，並把 thinkingBudget 換算成 thinkingLevel（≤1024→LOW、≤4096→MEDIUM、其餘 HIGH）、MINIMAL→LOW
@@ -35,8 +43,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.130';
+        const NOVA_APP_VERSION = '2.6.131';
         const NOVA_CHANGELOG = [
+            { v: '2.6.131', date: '2026-11-14', notes: [
+                '介面配色 B 案（冷色藍灰＋鈷藍，對標桌面 nova-ui.css v1.1.0／v1.2.0、nova-app-main.js v1.12.0～v1.14.0、knowledgebank v1.5.0～v1.6.0、presentation_generator v54～v55；nova-ui.css v1.20.0、nova-subpage-light.css v1.1.0、nova-app-main.js v1.4.0；僅 www）：黑夜與白晝都換成跟桌面同一組色。黑夜底色由近黑 #020617 換成藍灰 #131a24，說明灰字提亮到 4.5:1 以上，綠／天藍／靛色實心鈕底色加深一階。白晝由米白暖灰＋陶土橘換成冷色藍灰＋鈷藍，只用一個強調色：所有彩色主要鈕都是鈷藍實心白字（原本有些被淡化成看不出是按鈕），淡色字（藍／綠／紫／琥珀 400）換成同色相深色版；＋選單功能方塊白底＋強調色圖示；筆記標籤、深度研究說明橫幅、AI 大腦圖譜面板白晝可讀；主題選擇卡選中改強調色；向量資料庫與簡報頁同步換色（簡報「開始生成」白晝原本看不見）。',
+                '檢查方式：36 個畫面（主畫面、抽屜、＋選單、排程、筆記、錄音、設定 10 個分頁、生圖、電腦遙控、技能、深度研究、Insight、研發、Google、專案、大腦圖譜、筆記圖譜、多專家、資料夾、確認框、工作資料夾、雙 AI、多 AI 控制台、向量資料庫、簡報）黑夜／白晝各截圖並自動量測文字對比：改前 256 處低於 WCAG 4.5:1，改後 0 處。【在電腦的 Chrome 以 Note10+ 尺寸模擬，未在真機驗證】'
+            ] },
             { v: '2.6.130', date: '2026-11-13', notes: [
                 '新模型 Gemini 4 Hydrogen（gemini-4-hydrogen，有免費額度、比 3.8 Flash 快）與 Gemini 4 Carbon（gemini-4-carbon，前沿旗艦、沒有免費額度）：主畫面 Gemini 子模型、筆記辨識、AI 思考、簡報產生器 v42、Pro 深度研究的模型清單都可選；斜線指令 /g4h、/g4c。這兩個模型只收思考等級（不收 thinkingBudget、沒有 MINIMAL）、只有隱式快取：nova-llm.js v1.0.2、全域 fetch 防護、nova-fc.js v1.0.1 與 nova-autoreport.js v1.2.0 的明確快取都已處理；自主任務用量摘要會估這兩個模型的費用（Carbon 2026-12-01 起加倍）。（對標桌面 v3.127.0／v3.129.0；僅 www）',
                 '快速判斷改版（nova-jev.js Android v1.7.0、nova-jev-ui.js v1.2.0，對標桌面 v3.128.0）：可改用 Google Gemini Decision 1（用原本的 Gemini 金鑰）或「自動」（Jev 優先、失敗改用 Gemini）；影子模式（背景問另一家只記錄是否一致）；各用途門檻；判斷紀錄與建議門檻（智慧分派在快速判斷沒把握、改由 AI 決定時記成標註；nova-autoroute.js v1.1.3、nova-experts-glue.js v1.7.2）；各供應者分開冷卻；紀錄可匯出到「文件/NOVA_Jev/」。注意：Gemini 免費方案送出的內容會被 Google 用來改進產品。（僅 www）',
@@ -2438,161 +2450,161 @@ return html;
             if (!style) {
                 style = document.createElement('style'); style.id = 'light-theme-fix';
                 style.innerHTML = `
-                        .theme-light .active\:bg-blue-700 { background-color: #eff6ff !important; }
-                        .theme-light .active\:bg-slate-600 { background-color: #cbd5e1 !important; }
-                        .theme-light .active\:bg-slate-700\/60 { background-color: #e2e8f0 !important; }
-                        .theme-light .active\:bg-slate-800 { background-color: #f1f5f9 !important; }
-                        .theme-light .active\:bg-slate-800\/60 { background-color: #f1f5f9 !important; }
-                        .theme-light .active\:bg-slate-900 { background-color: #f8fafc !important; }
+                        .theme-light .active\:bg-blue-700 { background-color: #e8effc !important; }
+                        .theme-light .active\:bg-slate-600 { background-color: #cdd5e1 !important; }
+                        .theme-light .active\:bg-slate-700\/60 { background-color: #e1e6ee !important; }
+                        .theme-light .active\:bg-slate-800 { background-color: #f1f4f8 !important; }
+                        .theme-light .active\:bg-slate-800\/60 { background-color: #f1f4f8 !important; }
+                        .theme-light .active\:bg-slate-900 { background-color: #fafbfd !important; }
                         .theme-light .after\:border-slate-300 { border-color: #334155 !important; }
-                        .theme-light .after\:border-white { border-color: #cbd5e1 !important; }
+                        .theme-light .after\:border-white { border-color: #cdd5e1 !important; }
                         .theme-light .after\:from-slate-900 { --tw-gradient-from: #ffffff !important; }
-                        .theme-light .bg-amber-700 { background-color: #fffbeb !important; }
+                        .theme-light .bg-amber-700 { background-color: #fbf2e0 !important; }
                         .theme-light .bg-black\/60 { background-color: rgba(100,116,139,0.60) !important; }
-                        .theme-light .bg-blue-600\/90 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-700 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-700\/30 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-800 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-900 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-900\/30 { background-color: #eff6ff !important; }
-                        .theme-light .bg-blue-900\/50 { background-color: #eff6ff !important; }
-                        .theme-light .bg-emerald-600\/20 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-600\/30 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-700 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-800 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-900 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-900\/30 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-900\/40 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-emerald-900\/50 { background-color: #ecfdf5 !important; }
-                        .theme-light .bg-green-700 { background-color: #f0fdf4 !important; }
-                        .theme-light .bg-green-900 { background-color: #f0fdf4 !important; }
-                        .theme-light .bg-green-900\/50 { background-color: #f0fdf4 !important; }
-                        .theme-light .bg-orange-700 { background-color: #fff7ed !important; }
-                        .theme-light .bg-orange-900 { background-color: #fff7ed !important; }
-                        .theme-light .bg-orange-900\/40 { background-color: #fff7ed !important; }
-                        .theme-light .bg-purple-700 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-800 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-900 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-900\/20 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-900\/50 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-950 { background-color: #faf5ff !important; }
-                        .theme-light .bg-purple-950\/30 { background-color: #faf5ff !important; }
-                        .theme-light .bg-red-800 { background-color: #fef2f2 !important; }
-                        .theme-light .bg-red-900 { background-color: #fef2f2 !important; }
-                        .theme-light .bg-red-900\/50 { background-color: #fef2f2 !important; }
-                        .theme-light .bg-red-950 { background-color: #fef2f2 !important; }
-                        .theme-light .bg-red-950\/95 { background-color: #fef2f2 !important; }
-                        .theme-light .bg-slate-600 { background-color: #cbd5e1 !important; }
-                        .theme-light .bg-slate-700 { background-color: #e2e8f0 !important; }
-                        .theme-light .bg-slate-700\/50 { background-color: #e2e8f0 !important; }
-                        .theme-light .bg-slate-700\/60 { background-color: #e2e8f0 !important; }
-                        .theme-light .bg-slate-800 { background-color: #f1f5f9 !important; }
-                        .theme-light .bg-slate-800\/50 { background-color: #f1f5f9 !important; }
-                        .theme-light .bg-slate-800\/60 { background-color: #f1f5f9 !important; }
-                        .theme-light .bg-slate-800\/80 { background-color: #f1f5f9 !important; }
-                        .theme-light .bg-slate-900 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-900\/50 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-900\/60 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-900\/80 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-900\/95 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-950 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-950\/50 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-950\/80 { background-color: #f8fafc !important; }
-                        .theme-light .bg-slate-950\/90 { background-color: #f8fafc !important; }
-                        .theme-light .border-cyan-700 { border-color: #a5f3fc !important; }
-                        .theme-light .border-cyan-700\/40 { border-color: #a5f3fc !important; }
-                        .theme-light .border-green-700 { border-color: #bbf7d0 !important; }
-                        .theme-light .border-green-700\/50 { border-color: #bbf7d0 !important; }
-                        .theme-light .border-purple-700 { border-color: #ddd6fe !important; }
-                        .theme-light .border-purple-700\/40 { border-color: #ddd6fe !important; }
-                        .theme-light .border-purple-800 { border-color: #ddd6fe !important; }
-                        .theme-light .border-purple-800\/40 { border-color: #ddd6fe !important; }
-                        .theme-light .border-red-600 { border-color: #fecaca !important; }
+                        .theme-light .bg-blue-600\/90 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-700 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-700\/30 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-800 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-900 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-900\/30 { background-color: #e8effc !important; }
+                        .theme-light .bg-blue-900\/50 { background-color: #e8effc !important; }
+                        .theme-light .bg-emerald-600\/20 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-600\/30 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-700 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-800 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-900 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-900\/30 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-900\/40 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-emerald-900\/50 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-green-700 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-green-900 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-green-900\/50 { background-color: #e7f5ee !important; }
+                        .theme-light .bg-orange-700 { background-color: #faeee1 !important; }
+                        .theme-light .bg-orange-900 { background-color: #faeee1 !important; }
+                        .theme-light .bg-orange-900\/40 { background-color: #faeee1 !important; }
+                        .theme-light .bg-purple-700 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-800 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-900 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-900\/20 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-900\/50 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-950 { background-color: #eeeafb !important; }
+                        .theme-light .bg-purple-950\/30 { background-color: #eeeafb !important; }
+                        .theme-light .bg-red-800 { background-color: #fdecec !important; }
+                        .theme-light .bg-red-900 { background-color: #fdecec !important; }
+                        .theme-light .bg-red-900\/50 { background-color: #fdecec !important; }
+                        .theme-light .bg-red-950 { background-color: #fdecec !important; }
+                        .theme-light .bg-red-950\/95 { background-color: #fdecec !important; }
+                        .theme-light .bg-slate-600 { background-color: #cdd5e1 !important; }
+                        .theme-light .bg-slate-700 { background-color: #e1e6ee !important; }
+                        .theme-light .bg-slate-700\/50 { background-color: #e1e6ee !important; }
+                        .theme-light .bg-slate-700\/60 { background-color: #e1e6ee !important; }
+                        .theme-light .bg-slate-800 { background-color: #f1f4f8 !important; }
+                        .theme-light .bg-slate-800\/50 { background-color: #f1f4f8 !important; }
+                        .theme-light .bg-slate-800\/60 { background-color: #f1f4f8 !important; }
+                        .theme-light .bg-slate-800\/80 { background-color: #f1f4f8 !important; }
+                        .theme-light .bg-slate-900 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-900\/50 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-900\/60 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-900\/80 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-900\/95 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-950 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-950\/50 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-950\/80 { background-color: #fafbfd !important; }
+                        .theme-light .bg-slate-950\/90 { background-color: #fafbfd !important; }
+                        .theme-light .border-cyan-700 { border-color: #c7dad2 !important; }
+                        .theme-light .border-cyan-700\/40 { border-color: #c7dad2 !important; }
+                        .theme-light .border-green-700 { border-color: #bfe5d2 !important; }
+                        .theme-light .border-green-700\/50 { border-color: #bfe5d2 !important; }
+                        .theme-light .border-purple-700 { border-color: #cfc6f0 !important; }
+                        .theme-light .border-purple-700\/40 { border-color: #cfc6f0 !important; }
+                        .theme-light .border-purple-800 { border-color: #cfc6f0 !important; }
+                        .theme-light .border-purple-800\/40 { border-color: #cfc6f0 !important; }
+                        .theme-light .border-red-600 { border-color: #f2b8b8 !important; }
                         .theme-light .border-slate-300 { border-color: #334155 !important; }
-                        .theme-light .border-slate-400 { border-color: #64748b !important; }
-                        .theme-light .border-slate-500 { border-color: #94a3b8 !important; }
-                        .theme-light .border-slate-600 { border-color: #cbd5e1 !important; }
-                        .theme-light .border-slate-700 { border-color: #e2e8f0 !important; }
-                        .theme-light .border-slate-700\/50 { border-color: #e2e8f0 !important; }
-                        .theme-light .border-slate-800 { border-color: #f1f5f9 !important; }
-                        .theme-light .border-slate-800\/50 { border-color: #f1f5f9 !important; }
-                        .theme-light .border-white { border-color: #cbd5e1 !important; }
-                        .theme-light .focus\:border-slate-400 { border-color: #64748b !important; }
-                        .theme-light .focus\:border-slate-500 { border-color: #94a3b8 !important; }
-                        .theme-light .from-blue-900 { --tw-gradient-from: #eff6ff !important; }
-                        .theme-light .from-blue-900\/30 { --tw-gradient-from: #eff6ff !important; }
-                        .theme-light .from-green-900 { --tw-gradient-from: #f0fdf4 !important; }
-                        .theme-light .from-green-900\/30 { --tw-gradient-from: #f0fdf4 !important; }
-                        .theme-light .from-indigo-900 { --tw-gradient-from: #eef2ff !important; }
-                        .theme-light .from-sky-900 { --tw-gradient-from: #f0f9ff !important; }
-                        .theme-light .from-sky-900\/30 { --tw-gradient-from: #f0f9ff !important; }
-                        .theme-light .from-slate-900 { --tw-gradient-from: #f8fafc !important; }
+                        .theme-light .border-slate-400 { border-color: #526077 !important; }
+                        .theme-light .border-slate-500 { border-color: #64748b !important; }
+                        .theme-light .border-slate-600 { border-color: #cdd5e1 !important; }
+                        .theme-light .border-slate-700 { border-color: #e1e6ee !important; }
+                        .theme-light .border-slate-700\/50 { border-color: #e1e6ee !important; }
+                        .theme-light .border-slate-800 { border-color: #f1f4f8 !important; }
+                        .theme-light .border-slate-800\/50 { border-color: #f1f4f8 !important; }
+                        .theme-light .border-white { border-color: #cdd5e1 !important; }
+                        .theme-light .focus\:border-slate-400 { border-color: #526077 !important; }
+                        .theme-light .focus\:border-slate-500 { border-color: #64748b !important; }
+                        .theme-light .from-blue-900 { --tw-gradient-from: #e8effc !important; }
+                        .theme-light .from-blue-900\/30 { --tw-gradient-from: #e8effc !important; }
+                        .theme-light .from-green-900 { --tw-gradient-from: #e7f5ee !important; }
+                        .theme-light .from-green-900\/30 { --tw-gradient-from: #e7f5ee !important; }
+                        .theme-light .from-indigo-900 { --tw-gradient-from: #e8effc !important; }
+                        .theme-light .from-sky-900 { --tw-gradient-from: #e8effc !important; }
+                        .theme-light .from-sky-900\/30 { --tw-gradient-from: #e8effc !important; }
+                        .theme-light .from-slate-900 { --tw-gradient-from: #fafbfd !important; }
                         .theme-light .group-hover\:text-white { color: #0f172a !important; }
-                        .theme-light .hover\:bg-blue-700 { background-color: #eff6ff !important; }
-                        .theme-light .hover\:bg-blue-800\/50 { background-color: #eff6ff !important; }
-                        .theme-light .hover\:bg-blue-900\/30 { background-color: #eff6ff !important; }
-                        .theme-light .hover\:bg-emerald-700 { background-color: #ecfdf5 !important; }
-                        .theme-light .hover\:bg-emerald-800\/50 { background-color: #ecfdf5 !important; }
-                        .theme-light .hover\:bg-emerald-800\/60 { background-color: #ecfdf5 !important; }
-                        .theme-light .hover\:bg-purple-800\/50 { background-color: #faf5ff !important; }
-                        .theme-light .hover\:bg-red-700 { background-color: #fef2f2 !important; }
-                        .theme-light .hover\:bg-red-800\/50 { background-color: #fef2f2 !important; }
-                        .theme-light .hover\:bg-red-900\/30 { background-color: #fef2f2 !important; }
-                        .theme-light .hover\:bg-slate-600 { background-color: #cbd5e1 !important; }
-                        .theme-light .hover\:bg-slate-700 { background-color: #e2e8f0 !important; }
-                        .theme-light .hover\:bg-slate-800 { background-color: #f1f5f9 !important; }
-                        .theme-light .hover\:bg-slate-800\/50 { background-color: #f1f5f9 !important; }
-                        .theme-light .hover\:bg-slate-800\/60 { background-color: #f1f5f9 !important; }
-                        .theme-light .hover\:border-slate-500 { border-color: #94a3b8 !important; }
-                        .theme-light .hover\:border-slate-600 { border-color: #cbd5e1 !important; }
-                        .theme-light .hover\:border-slate-700 { border-color: #e2e8f0 !important; }
+                        .theme-light .hover\:bg-blue-700 { background-color: #e8effc !important; }
+                        .theme-light .hover\:bg-blue-800\/50 { background-color: #e8effc !important; }
+                        .theme-light .hover\:bg-blue-900\/30 { background-color: #e8effc !important; }
+                        .theme-light .hover\:bg-emerald-700 { background-color: #e7f5ee !important; }
+                        .theme-light .hover\:bg-emerald-800\/50 { background-color: #e7f5ee !important; }
+                        .theme-light .hover\:bg-emerald-800\/60 { background-color: #e7f5ee !important; }
+                        .theme-light .hover\:bg-purple-800\/50 { background-color: #eeeafb !important; }
+                        .theme-light .hover\:bg-red-700 { background-color: #fdecec !important; }
+                        .theme-light .hover\:bg-red-800\/50 { background-color: #fdecec !important; }
+                        .theme-light .hover\:bg-red-900\/30 { background-color: #fdecec !important; }
+                        .theme-light .hover\:bg-slate-600 { background-color: #cdd5e1 !important; }
+                        .theme-light .hover\:bg-slate-700 { background-color: #e1e6ee !important; }
+                        .theme-light .hover\:bg-slate-800 { background-color: #f1f4f8 !important; }
+                        .theme-light .hover\:bg-slate-800\/50 { background-color: #f1f4f8 !important; }
+                        .theme-light .hover\:bg-slate-800\/60 { background-color: #f1f4f8 !important; }
+                        .theme-light .hover\:border-slate-500 { border-color: #64748b !important; }
+                        .theme-light .hover\:border-slate-600 { border-color: #cdd5e1 !important; }
+                        .theme-light .hover\:border-slate-700 { border-color: #e1e6ee !important; }
                         .theme-light .hover\:text-slate-300 { color: #334155 !important; }
                         .theme-light .hover\:text-white { color: #0f172a !important; }
-                        .theme-light .placeholder-slate-500::placeholder { color: #94a3b8 !important; }
+                        .theme-light .placeholder-slate-500::placeholder { color: #64748b !important; }
                         .theme-light .text-slate-100 { color: #0f172a !important; }
                         .theme-light .text-slate-200 { color: #1e293b !important; }
                         .theme-light .text-slate-300 { color: #334155 !important; }
-                        .theme-light .text-slate-400 { color: #64748b !important; }
-                        .theme-light .text-slate-500 { color: #94a3b8 !important; }
-                        .theme-light .text-slate-600 { color: #cbd5e1 !important; }
+                        .theme-light .text-slate-400 { color: #526077 !important; }
+                        .theme-light .text-slate-500 { color: #64748b !important; }
+                        .theme-light .text-slate-600 { color: #cdd5e1 !important; }
                         .theme-light .text-white { color: #0f172a !important; }
                         .theme-light .text-white\/60 { color: #0f172a !important; }
                         .theme-light .text-white\/70 { color: #0f172a !important; }
                         .theme-light .text-white\/80 { color: #0f172a !important; }
-                        .theme-light .to-blue-700 { --tw-gradient-to: #eff6ff !important; }
-                        .theme-light .to-blue-900 { --tw-gradient-to: #eff6ff !important; }
-                        .theme-light .to-blue-900\/30 { --tw-gradient-to: #eff6ff !important; }
-                        .theme-light .to-emerald-900 { --tw-gradient-to: #ecfdf5 !important; }
-                        .theme-light .to-emerald-900\/30 { --tw-gradient-to: #ecfdf5 !important; }
-                        .theme-light .to-indigo-900 { --tw-gradient-to: #eef2ff !important; }
-                        .theme-light .to-indigo-900\/30 { --tw-gradient-to: #eef2ff !important; }
-                        .theme-light .to-slate-800 { --tw-gradient-to: #f1f5f9 !important; }html.theme-light { background-color: #f8fafc !important; color-scheme: light; }
-                        html.theme-light body { background-color: #f8fafc !important; }
-                        html.theme-light body::after { background-color: #f8fafc !important; }
-                        html.theme-light ::-webkit-scrollbar-track { background: #e2e8f0 !important; }
-                        html.theme-light ::-webkit-scrollbar-thumb { background: #94a3b8 !important; }
-                        html.theme-light audio::-webkit-media-controls-panel { background-color: #e2e8f0 !important; color: #0f172a !important; }
+                        .theme-light .to-blue-700 { --tw-gradient-to: #e8effc !important; }
+                        .theme-light .to-blue-900 { --tw-gradient-to: #e8effc !important; }
+                        .theme-light .to-blue-900\/30 { --tw-gradient-to: #e8effc !important; }
+                        .theme-light .to-emerald-900 { --tw-gradient-to: #e7f5ee !important; }
+                        .theme-light .to-emerald-900\/30 { --tw-gradient-to: #e7f5ee !important; }
+                        .theme-light .to-indigo-900 { --tw-gradient-to: #e8effc !important; }
+                        .theme-light .to-indigo-900\/30 { --tw-gradient-to: #e8effc !important; }
+                        .theme-light .to-slate-800 { --tw-gradient-to: #f1f4f8 !important; }html.theme-light { background-color: #fafbfd !important; color-scheme: light; }
+                        html.theme-light body { background-color: #fafbfd !important; }
+                        html.theme-light body::after { background-color: #fafbfd !important; }
+                        html.theme-light ::-webkit-scrollbar-track { background: #e1e6ee !important; }
+                        html.theme-light ::-webkit-scrollbar-thumb { background: #64748b !important; }
+                        html.theme-light audio::-webkit-media-controls-panel { background-color: #e1e6ee !important; color: #0f172a !important; }
                         html.theme-light audio::-webkit-media-controls-current-time-display,
                         html.theme-light audio::-webkit-media-controls-time-remaining-display { color: #0f172a !important; }
-                        html.theme-light #nova-copy-menu { background: #ffffff !important; border-color: #cbd5e1 !important; box-shadow: 0 8px 32px rgba(0,0,0,0.15) !important; }
+                        html.theme-light #nova-copy-menu { background: #ffffff !important; border-color: #cdd5e1 !important; box-shadow: 0 8px 32px rgba(15,23,42,0.15) !important; }
                         html.theme-light #nova-copy-menu button { color: #1e293b !important; }
-                        html.theme-light #nova-copy-menu button:active { background: #e2e8f0 !important; }
-                        html.theme-light #nova-copy-menu .menu-divider { background: #cbd5e1 !important; }
+                        html.theme-light #nova-copy-menu button:active { background: #e1e6ee !important; }
+                        html.theme-light #nova-copy-menu .menu-divider { background: #cdd5e1 !important; }
                         /* === Additional hardcoded-color fixes for settings modal, sidebar & notes === */
                         
                         /* Settings modal backdrop & panel */
-                        html.theme-light #settings-modal { background-color: rgba(148,163,184,0.5) !important; }
-                        html.theme-light #settings-modal > div { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+                        html.theme-light #settings-modal { background-color: rgba(100,116,139,0.5) !important; }
+                        html.theme-light #settings-modal > div { background-color: #ffffff !important; border-color: #e1e6ee !important; }
                         html.theme-light #settings-modal h3 { color: #0f172a !important; }
                         
                         /* Settings tab bar background */
                         html.theme-light .theme-light .flex.gap-1.bg-slate-800,
-                        html.theme-light [class*="flex"][class*="gap-1"][class*="bg-slate-800"] { background-color: #f1f5f9 !important; }
+                        html.theme-light [class*="flex"][class*="gap-1"][class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
                         
                         /* Settings tab inactive buttons */
                         html.theme-light #stab-voice, html.theme-light #stab-tg, html.theme-light #stab-ui,
                         html.theme-light #stab-rec, html.theme-light #stab-cal, html.theme-light #stab-main.inactive {
-                        color: #475569 !important;
+                        color: #46536a !important;
                         }
                         
                         /* Settings input fields - all in settings modal */
@@ -2601,60 +2613,60 @@ return html;
                         html.theme-light #settings-modal input[type="number"],
                         html.theme-light #settings-modal select {
                         background-color: #ffffff !important;
-                        border-color: #cbd5e1 !important;
+                        border-color: #cdd5e1 !important;
                         color: #0f172a !important;
                         }
-                        html.theme-light #settings-modal input::placeholder { color: #94a3b8 !important; }
+                        html.theme-light #settings-modal input::placeholder { color: #64748b !important; }
                         
                         /* Settings section panels (blue/gradient, slate-800 cards) */
                         html.theme-light #settings-modal .bg-slate-800,
-                        html.theme-light #settings-modal [class*="bg-slate-800"] { background-color: #f1f5f9 !important; }
+                        html.theme-light #settings-modal [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
                         html.theme-light #settings-modal [class*="bg-slate-900"],
                         html.theme-light #settings-modal [class*="bg-slate-950"] { background-color: #ffffff !important; }
                         html.theme-light #settings-modal [class*="bg-gradient-to-r"][class*="blue-900"],
                         html.theme-light #settings-modal [class*="bg-gradient-to-r"][class*="indigo-900"],
                         html.theme-light #settings-modal [class*="from-blue-900"],
                         html.theme-light #settings-modal [class*="from-indigo-900"] {
-                        background: #eff6ff !important;
-                        border-color: #bfdbfe !important;
+                        background: #e8effc !important;
+                        border-color: #bcd0f5 !important;
                         }
-                        html.theme-light #settings-modal [class*="border-blue-500"] { border-color: #bfdbfe !important; }
-                        html.theme-light #settings-modal [class*="border-slate-700"] { border-color: #e2e8f0 !important; }
+                        html.theme-light #settings-modal [class*="border-blue-500"] { border-color: #bcd0f5 !important; }
+                        html.theme-light #settings-modal [class*="border-slate-700"] { border-color: #e1e6ee !important; }
                         
                         /* Settings text colors - light visible on white */
                         html.theme-light #settings-modal [class*="text-slate-300"],
                         html.theme-light #settings-modal [class*="text-slate-400"],
-                        html.theme-light #settings-modal [class*="text-slate-500"] { color: #475569 !important; }
+                        html.theme-light #settings-modal [class*="text-slate-500"] { color: #46536a !important; }
                         html.theme-light #settings-modal [class*="text-white"] { color: #0f172a !important; }
                         
                         /* Settings section with cyan/slate-800 cards (Recording tab) */
                         html.theme-light #settings-modal [class*="bg-slate-800"][class*="border-slate-700"],
                         html.theme-light #settings-modal [class*="bg-slate-800"][class*="border-cyan-700"] {
-                        background-color: #f8fafc !important;
-                        border-color: #cbd5e1 !important;
+                        background-color: #fafbfd !important;
+                        border-color: #cdd5e1 !important;
                         }
                         
                         /* Calendar preview card in settings */
                         html.theme-light #settings-modal [class*="bg-slate-700"],
-                        html.theme-light #settings-modal [class*="bg-slate-800\\/60"] { background-color: #f1f5f9 !important; }
+                        html.theme-light #settings-modal [class*="bg-slate-800\\/60"] { background-color: #f1f4f8 !important; }
                         
                         /* Scrollbar in settings */
-                        html.theme-light #settings-modal .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9 !important; }
-                        html.theme-light #settings-modal .scrollbar-thin::-webkit-scrollbar-thumb { background: #94a3b8 !important; }
+                        html.theme-light #settings-modal .scrollbar-thin::-webkit-scrollbar-track { background: #f1f4f8 !important; }
+                        html.theme-light #settings-modal .scrollbar-thin::-webkit-scrollbar-thumb { background: #64748b !important; }
                         
                         /* Mobile sidebar menu */
                         html.theme-light #mobile-menu { background: rgba(248,250,252,0.97) !important; }
-                        html.theme-light #mobile-menu [class*="border-slate-800"] { border-color: #e2e8f0 !important; }
-                        html.theme-light #mobile-menu [class*="text-slate-400"] { color: #64748b !important; }
+                        html.theme-light #mobile-menu [class*="border-slate-800"] { border-color: #e1e6ee !important; }
+                        html.theme-light #mobile-menu [class*="text-slate-400"] { color: #526077 !important; }
                         html.theme-light #mobile-menu [class*="text-white"] { color: #0f172a !important; }
-                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f5f9 !important; }
-                        html.theme-light #mobile-menu [class*="border-slate-700"] { border-color: #e2e8f0 !important; }
-                        html.theme-light #mobile-menu [class*="text-slate-400"] { color: #475569 !important; }
+                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
+                        html.theme-light #mobile-menu [class*="border-slate-700"] { border-color: #e1e6ee !important; }
+                        html.theme-light #mobile-menu [class*="text-slate-400"] { color: #46536a !important; }
                         
                         /* Top nav bar (mobile) */
                         html.theme-light [class*="bg-slate-900"][class*="border-b"][class*="border-slate-800"] {
                         background-color: #ffffff !important;
-                        border-color: #e2e8f0 !important;
+                        border-color: #e1e6ee !important;
                         }
                         html.theme-light [class*="bg-slate-800\\/50"][class*="border-slate-700\\/50"] {
                         background-color: rgba(241,245,249,0.8) !important;
@@ -2668,24 +2680,24 @@ return html;
                         
                         /* Confirm dialog */
                         html.theme-light #custom-confirm-modal { background-color: rgba(100,116,139,0.5) !important; }
-                        html.theme-light #custom-confirm-modal > div { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+                        html.theme-light #custom-confirm-modal > div { background-color: #ffffff !important; border-color: #e1e6ee !important; }
                         html.theme-light #custom-confirm-modal p { color: #1e293b !important; }
                         
                         /* Canvas code block buttons */
                         html.theme-light [style*="background:linear-gradient(135deg,#0c1829"] {
-                        background: #eff6ff !important;
-                        border-color: #bfdbfe !important;
+                        background: #e8effc !important;
+                        border-color: #bcd0f5 !important;
                         }
                         
                         /* Bottom action bar on main chat */
-                        html.theme-light [class*="bg-slate-900"][class*="border-t"] { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+                        html.theme-light [class*="bg-slate-900"][class*="border-t"] { background-color: #ffffff !important; border-color: #e1e6ee !important; }
                         
                         /* Chat message bubbles from user */
-                        html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] { background-color: #e2e8f0 !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] { background-color: #e1e6ee !important; }
                         
                         /* Note card container */
-                        html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
-                        html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"][class*="border-slate-800"] { background-color: #f8fafc !important; border-color: #e2e8f0 !important; }
+                        html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] { background-color: #ffffff !important; border-color: #e1e6ee !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"][class*="border-slate-800"] { background-color: #fafbfd !important; border-color: #e1e6ee !important; }
                         
                         /* ================================================================
                            NOVA Light Mode Supplemental — v2 contrast & component fixes
@@ -2700,103 +2712,103 @@ return html;
                         /* ── Typography: body text & labels ── */
                         html.theme-light body,
                         html.theme-light .text-slate-200,
-                        html.theme-light .text-slate-300 { color: #374151 !important; }
-                        html.theme-light .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light .text-slate-500 { color: #9ca3af !important; }
-                        html.theme-light .text-white     { color: #111827 !important; }
+                        html.theme-light .text-slate-300 { color: #334155 !important; }
+                        html.theme-light .text-slate-400 { color: #526077 !important; }
+                        html.theme-light .text-slate-500 { color: #526077 !important; }
+                        html.theme-light .text-white     { color: #0f172a !important; }
                         
                         /* Settings modal header */
-                        html.theme-light #settings-modal h3 { color: #111827 !important; }
-                        html.theme-light #settings-modal .text-white  { color: #111827 !important; }
+                        html.theme-light #settings-modal h3 { color: #0f172a !important; }
+                        html.theme-light #settings-modal .text-white  { color: #0f172a !important; }
                         html.theme-light #settings-modal .text-slate-200,
-                        html.theme-light #settings-modal .text-slate-300 { color: #374151 !important; }
+                        html.theme-light #settings-modal .text-slate-300 { color: #334155 !important; }
                         html.theme-light #settings-modal .text-slate-400,
-                        html.theme-light #settings-modal .text-slate-500 { color: #6b7280 !important; }
+                        html.theme-light #settings-modal .text-slate-500 { color: #526077 !important; }
                         
                         /* ── Toggle switches: track + knob ── */
                         /* Unchecked track: light gray */
-                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #d1d5db !important; }
+                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #cdd5e1 !important; }
                         /* Checked track: keep accent color (via peer-checked:bg-*) */
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #8b5cf6 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #10b981 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #06b6d4 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #22c55e !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #3b82f6 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #6d5bc4 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #4f8b85 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #2f63d6 !important; }
                         /* Toggle knob: always white with shadow */
                         html.theme-light [class*="peer"][class*="rounded-full"]::after,
                         html.theme-light div[class*="after:bg-white"][class*="rounded-full"]::after {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+                            border-color: #cdd5e1 !important;
+                            box-shadow: 0 1px 3px rgba(15,23,42,0.2) !important;
                         }
                         
                         /* ── Top toolbar chips ── */
                         /* 連網搜尋 badge */
                         html.theme-light #web-search-badge {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         /* 清空對話 button */
                         html.theme-light button[onclick*="clearChatHistory"] {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #6b7280 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #526077 !important;
                         }
                         /* Top bar container */
                         html.theme-light [class*="bg-slate-900\\/50"][class*="border-b"][class*="border-slate-800"] {
                             background-color: rgba(255,255,255,0.9) !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                             backdrop-filter: blur(8px) !important;
                         }
                         
                         /* ── Model selector dropdowns ── */
                         html.theme-light #gemini-sub-model-select {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         html.theme-light #grok-sub-model-select,
                         html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #1f2937 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #1e293b !important;
                         }
                         
                         /* ── Settings tab bar ── */
                         html.theme-light #settings-modal [class*="flex"][class*="gap-1"][class*="bg-slate-800"],
                         html.theme-light #settings-modal div.flex.gap-1 {
-                            background-color: #f1f5f9 !important;
+                            background-color: #f1f4f8 !important;
                             border-radius: 0.75rem !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]) {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]):hover {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         
                         /* ── Backup/restore buttons at bottom of settings ── */
                         html.theme-light button[onclick*="exportSettings"],
                         html.theme-light label[for="import-settings-input"] {
-                            background-color: #f1f5f9 !important;
-                            border-color: #cbd5e1 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="exportSettings"] i,
-                        html.theme-light label[for="import-settings-input"] i { color: #4b5563 !important; }
+                        html.theme-light label[for="import-settings-input"] i { color: #46536a !important; }
                         
                         /* ── Calendar settings: 重新整理 / 立即排程通知 buttons ── */
                         html.theme-light button[onclick*="calRefreshPreview"] {
-                            background-color: #f0fdf4 !important;
-                            border: 1px solid #86efac !important;
-                            color: #166534 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #ecfdf5 !important;
-                            border: 1px solid #6ee7b7 !important;
-                            color: #065f46 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         
                         /* ── Settings input fields ── */
@@ -2804,64 +2816,64 @@ return html;
                         html.theme-light #settings-modal select,
                         html.theme-light #settings-modal textarea {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light #settings-modal input::placeholder { color: #9ca3af !important; }
+                        html.theme-light #settings-modal input::placeholder { color: #526077 !important; }
                         
                         /* ── Settings section cards ── */
                         html.theme-light #settings-modal .bg-slate-800\/60,
                         html.theme-light #settings-modal [class*="bg-slate-800"],
                         html.theme-light #settings-modal [class*="bg-slate-700"] {
-                            background-color: #f9fafb !important;
-                            border-color: #e5e7eb !important;
+                            background-color: #fafbfd !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="bg-slate-900"],
                         html.theme-light #settings-modal [class*="bg-slate-950"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="from-blue-900"],
                         html.theme-light #settings-modal [class*="from-indigo-900"] {
-                            background: linear-gradient(to right, #eff6ff, #eef2ff) !important;
-                            border-color: #c7d2fe !important;
+                            background: linear-gradient(to right, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         
                         /* ── Recording tab: yellow 選擇 button stays yellow ── */
                         html.theme-light button[onclick*="pickRecordingDirectory"] {
-                            background-color: #d97706 !important;
+                            background-color: #b06a26 !important;
                             color: #ffffff !important;
                         }
                         
                         /* ── Canvas code block card (inline style, target by data-enc attr) ── */
                         html.theme-light [data-enc] {
-                            background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-                            border-color: #bfdbfe !important;
+                            background: linear-gradient(135deg, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         html.theme-light [data-enc] p:first-child { color: #1e293b !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #2563eb !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #2f63d6 !important; }
                         html.theme-light [data-enc] > div:last-child {
                             background: rgba(37,99,235,0.12) !important;
-                            border-color: rgba(37,99,235,0.3) !important;
-                            color: #1d4ed8 !important;
+                            border-color: rgba(47,99,214,0.3) !important;
+                            color: #244fae !important;
                         }
                         
                         /* ── Inline code spans ── */
-                        html.theme-light code { background-color: #f1f5f9 !important; color: #374151 !important; }
+                        html.theme-light code { background-color: #f1f4f8 !important; color: #334155 !important; }
                         
                         /* ── User message bubble ── */
                         html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] {
-                            background-color: #e9eef6 !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         
                         /* ── Note cards ── */
                         html.theme-light .bg-slate-900.rounded-2xl,
                         html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
-                        html.theme-light .note-html-content { color: #374151 !important; }
+                        html.theme-light .note-html-content { color: #334155 !important; }
                         html.theme-light .note-html-content::after {
                             background-image: linear-gradient(to top, #ffffff, transparent) !important;
                         }
@@ -2871,31 +2883,31 @@ return html;
                             background: rgba(248,250,252,0.98) !important;
                             backdrop-filter: blur(12px) !important;
                         }
-                        html.theme-light #mobile-menu .text-white   { color: #111827 !important; }
-                        html.theme-light #mobile-menu .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f3f4f6 !important; }
-                        html.theme-light #mobile-menu button { color: #374151 !important; }
-                        html.theme-light #mobile-menu .text-blue-400 { color: #2563eb !important; }
-                        html.theme-light #mobile-menu border-b { border-color: #e5e7eb !important; }
+                        html.theme-light #mobile-menu .text-white   { color: #0f172a !important; }
+                        html.theme-light #mobile-menu .text-slate-400 { color: #526077 !important; }
+                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
+                        html.theme-light #mobile-menu button { color: #334155 !important; }
+                        html.theme-light #mobile-menu .text-blue-400 { color: #2f63d6 !important; }
+                        html.theme-light #mobile-menu border-b { border-color: #e1e6ee !important; }
                         
                         /* ── Input bar & plus menu ── */
                         html.theme-light #plus-menu,
                         html.theme-light [id^="plus-menu"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light [class*="bg-slate-800"][class*="rounded-full"] {
-                            background-color: #f3f4f6 !important;
+                            background-color: #f1f4f8 !important;
                         }
-                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #374151 !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #334155 !important; }
                         
                         /* ── System / AI message text ── */
-                        html.theme-light .text-slate-200 { color: #1f2937 !important; }
-                        html.theme-light [class*="text-slate-300"] { color: #374151 !important; }
+                        html.theme-light .text-slate-200 { color: #1e293b !important; }
+                        html.theme-light [class*="text-slate-300"] { color: #334155 !important; }
                         
                         /* ── Page root background ── */
-                        html.theme-light body { background-color: #f9fafb !important; }
-                        html.theme-light .flex.h-\[100dvh\] { background-color: #f9fafb !important; }
+                        html.theme-light body { background-color: #fafbfd !important; }
+                        html.theme-light .flex.h-\[100dvh\] { background-color: #fafbfd !important; }
                         
                         /* ============================================================
                            NOVA Light Mode — Claude-style Universal Button Reset
@@ -2904,17 +2916,19 @@ return html;
                            ============================================================ */
                         
                         /* 1. Universal button base */
-                        html.theme-light button,
+                        /* v1.4.0（B 案，對標桌面 nova-app-main.js v1.13.0 ①）：只套在黑夜模式本來就有底色的按鈕（class 有 bg-*、或行內 background）；沒有底色的圖示鈕／文字鈕在白晝也維持透明。
+                           條件包在 :where() 裡＝權重只剩 html.theme-light button，後面「圖示鈕透明」「實心強調色鈕」等例外規則才蓋得過它 */
+                        html.theme-light button:where(:is([class^="bg-"],[class*=" bg-"],[style*="background"]):not([class~="bg-transparent"])),
                         html.theme-light label.btn,
                         html.theme-light label[role="button"] {
-                            background-color: #f3f4f6 !important;
-                            color: #111827 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
+                            border-color: #cdd5e1 !important;
                         }
-                        html.theme-light button:hover,
+                        html.theme-light button:where(:is([class^="bg-"],[class*=" bg-"],[style*="background"]):not([class~="bg-transparent"])):hover,
                         html.theme-light label.btn:hover {
-                            background-color: #e5e7eb !important;
-                            color: #111827 !important;
+                            background-color: #e1e6ee !important;
+                            color: #0f172a !important;
                         }
                         
                         /* 2. Icon-only ghost buttons (no bg, just tap target) */
@@ -2924,89 +2938,89 @@ return html;
                         html.theme-light button[class*="hover:text-"] {
                             background-color: transparent !important;
                             border-color: transparent !important;
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light button[class*="hover:text-red"] { color: #6b7280 !important; }
-                        html.theme-light button[class*="hover:text-red"]:hover { color: #dc2626 !important; background-color: #fee2e2 !important; }
-                        html.theme-light button[class*="hover:text-blue"]:hover { color: #2563eb !important; background-color: #eff6ff !important; }
-                        html.theme-light button[class*="hover:text-emerald"]:hover { color: #059669 !important; background-color: #ecfdf5 !important; }
-                        html.theme-light button[class*="hover:text-purple"]:hover { color: #7c3aed !important; background-color: #f5f3ff !important; }
-                        html.theme-light button[class*="hover:text-yellow"]:hover { color: #d97706 !important; background-color: #fffbeb !important; }
+                        html.theme-light button[class*="hover:text-red"] { color: #526077 !important; }
+                        html.theme-light button[class*="hover:text-red"]:hover { color: #b42318 !important; background-color: #f8d0d0 !important; }
+                        html.theme-light button[class*="hover:text-blue"]:hover { color: #2f63d6 !important; background-color: #e8effc !important; }
+                        html.theme-light button[class*="hover:text-emerald"]:hover { color: #1f7a58 !important; background-color: #e7f5ee !important; }
+                        html.theme-light button[class*="hover:text-purple"]:hover { color: #5b46b0 !important; background-color: #eeeafb !important; }
+                        html.theme-light button[class*="hover:text-yellow"]:hover { color: #b06a26 !important; background-color: #fbf2e0 !important; }
                         
                         /* 3. Primary blue buttons — keep blue */
                         html.theme-light button[class*="bg-blue-6"],
                         html.theme-light button[class*="bg-blue-7"] {
-                            background-color: #2563eb !important;
+                            background-color: #2f63d6 !important;
                             color: #ffffff !important;
-                            border-color: #1d4ed8 !important;
+                            border-color: #244fae !important;
                         }
                         html.theme-light button[class*="bg-blue-6"]:hover,
                         html.theme-light button[class*="bg-blue-7"]:hover {
-                            background-color: #1d4ed8 !important;
+                            background-color: #244fae !important;
                         }
                         
                         /* 4. Destructive red buttons — keep red */
                         html.theme-light button[class*="bg-red-6"],
                         html.theme-light button[class*="bg-red-7"] {
-                            background-color: #dc2626 !important;
+                            background-color: #b42318 !important;
                             color: #ffffff !important;
-                            border-color: #b91c1c !important;
+                            border-color: #912018 !important;
                         }
                         html.theme-light button[class*="bg-red-6"]:hover,
                         html.theme-light button[class*="bg-red-7"]:hover {
-                            background-color: #b91c1c !important;
+                            background-color: #912018 !important;
                         }
                         
                         /* 5. Settings active tab chips — keep accent color, override bg */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-blue-6"] {
-                            background-color: #2563eb !important;
+                            background-color: #2f63d6 !important;
                             color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-purple-6"] {
-                            background-color: #7c3aed !important; color: #ffffff !important;
+                            background-color: #5b46b0 !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-emerald-"] {
-                            background-color: #059669 !important; color: #ffffff !important;
+                            background-color: #1f7a58 !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-cyan-"] {
-                            background-color: #0891b2 !important; color: #ffffff !important;
+                            background-color: #3f726d !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-amber-"] {
-                            background-color: #d97706 !important; color: #ffffff !important;
+                            background-color: #b06a26 !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]) {
                             background-color: transparent !important;
-                            color: #374151 !important;
+                            color: #334155 !important;
                             border-color: transparent !important;
                         }
                         
                         /* 6. Small accent-colored action chips (Canvas controls) */
                         html.theme-light button[class*="bg-emerald-9"],
                         html.theme-light button[class*="bg-blue-9"] {
-                            background-color: #f3f4f6 !important;
-                            color: #111827 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
+                            border-color: #cdd5e1 !important;
                         }
-                        html.theme-light button[class*="text-emerald-4"][class*="bg-emerald-9"]:hover { color: #059669 !important; }
-                        html.theme-light button[class*="text-blue-4"][class*="bg-blue-9"]:hover { color: #2563eb !important; }
+                        html.theme-light button[class*="text-emerald-4"][class*="bg-emerald-9"]:hover { color: #1f7a58 !important; }
+                        html.theme-light button[class*="text-blue-4"][class*="bg-blue-9"]:hover { color: #2f63d6 !important; }
                         
                         /* 7. 完整備份 / 還原備份 / calendar action buttons */
                         html.theme-light button[onclick*="exportSettings"],
                         html.theme-light label[for="import-settings-file"] {
-                            background-color: #f3f4f6 !important;
-                            border: 1px solid #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border: 1px solid #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="calRefreshPreview"],
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #f3f4f6 !important;
-                            border: 1px solid #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border: 1px solid #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         
                         /* 8. 在 Canvas 執行 big gradient button — keep as-is (it's iconic/functional) */
                         html.theme-light button[class*="bg-gradient-to-r"][class*="from-blue"] {
-                            background: linear-gradient(to right, #2563eb, #0891b2) !important;
+                            background: linear-gradient(to right, #2f63d6, #3f726d) !important;
                             color: #ffffff !important;
                             border-color: transparent !important;
                         }
@@ -3014,38 +3028,38 @@ return html;
                         /* 9. 選擇 folder button */
                         html.theme-light button[onclick*="pickRecording"],
                         html.theme-light button[onclick*="pickDirectory"] {
-                            background-color: #f3f4f6 !important;
-                            border: 1px solid #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border: 1px solid #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         
                         /* 10. Modal cancel/secondary */
                         html.theme-light button[class*="bg-slate-7"]:not([class*="bg-blue-"]),
                         html.theme-light button[class*="bg-slate-8"]:not([class*="bg-blue-"]),
                         html.theme-light button[class*="bg-slate-9"]:not([class*="bg-blue-"]) {
-                            background-color: #f3f4f6 !important;
-                            color: #111827 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
+                            border-color: #cdd5e1 !important;
                         }
                         html.theme-light button[class*="bg-slate-7"]:hover:not([class*="bg-blue-"]),
                         html.theme-light button[class*="bg-slate-8"]:hover:not([class*="bg-blue-"]),
                         html.theme-light button[class*="bg-slate-9"]:hover:not([class*="bg-blue-"]) {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         
                         /* 11. Theme selection cards in appearance tab */
                         html.theme-light #settings-modal [id^="theme-btn-"] {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
                         html.theme-light #settings-modal #theme-btn-light[class*="border-yellow"] {
-                            border-color: #f59e0b !important;
-                            background-color: #fffbeb !important;
+                            border-color: #c9822e !important;
+                            background-color: #fbf2e0 !important;
                         }
                         html.theme-light #settings-modal #theme-btn-dark[class*="border-blue"] {
-                            border-color: #3b82f6 !important;
-                            background-color: #eff6ff !important;
+                            border-color: #2f63d6 !important;
+                            background-color: #e8effc !important;
                         }
                         
                         /* 12. Pill chips (連網搜尋, 清空對話 top bar) */
@@ -3053,16 +3067,16 @@ return html;
                         html.theme-light button[onclick*="clearChat"],
                         html.theme-light button[onclick*="clearConv"],
                         html.theme-light button[onclick*="清空"] {
-                            background-color: #f3f4f6 !important;
-                            border: 1px solid #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border: 1px solid #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         
                         /* 13. Rounded record/mic/voice big button */
                         html.theme-light button[class*="rounded-full"][class*="bg-slate"] {
-                            background-color: #f3f4f6 !important;
-                            border-color: #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         
                         /* 14. All accent-colored non-blue/red buttons → gray */
@@ -3077,30 +3091,30 @@ return html;
                         html.theme-light button[class*="bg-cyan-6"],
                         html.theme-light button[class*="bg-rose-6"],
                         html.theme-light button[class*="bg-pink-6"] {
-                            background-color: #f3f4f6 !important;
-                            color: #111827 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
+                            border-color: #cdd5e1 !important;
                         }
                         
                         /* But keep settings active tabs correct (already handled above) */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-purple-6"] {
-                            background-color: #7c3aed !important; color: #ffffff !important;
+                            background-color: #5b46b0 !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-emerald-"] {
-                            background-color: #059669 !important; color: #ffffff !important;
+                            background-color: #1f7a58 !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-cyan-"] {
-                            background-color: #0891b2 !important; color: #ffffff !important;
+                            background-color: #3f726d !important; color: #ffffff !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-amber-"] {
-                            background-color: #d97706 !important; color: #ffffff !important;
+                            background-color: #b06a26 !important; color: #ffffff !important;
                         }
                         
                         /* 15. Text links that look like buttons */
                         html.theme-light a[class*="bg-slate"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
+                            border-color: #cdd5e1 !important;
                         }
                         
                         /* ================================================================
@@ -3116,103 +3130,103 @@ return html;
                         /* ── Typography: body text & labels ── */
                         html.theme-light body,
                         html.theme-light .text-slate-200,
-                        html.theme-light .text-slate-300 { color: #374151 !important; }
-                        html.theme-light .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light .text-slate-500 { color: #9ca3af !important; }
-                        html.theme-light .text-white     { color: #111827 !important; }
+                        html.theme-light .text-slate-300 { color: #334155 !important; }
+                        html.theme-light .text-slate-400 { color: #526077 !important; }
+                        html.theme-light .text-slate-500 { color: #526077 !important; }
+                        html.theme-light .text-white     { color: #0f172a !important; }
                         
                         /* Settings modal header */
-                        html.theme-light #settings-modal h3 { color: #111827 !important; }
-                        html.theme-light #settings-modal .text-white  { color: #111827 !important; }
+                        html.theme-light #settings-modal h3 { color: #0f172a !important; }
+                        html.theme-light #settings-modal .text-white  { color: #0f172a !important; }
                         html.theme-light #settings-modal .text-slate-200,
-                        html.theme-light #settings-modal .text-slate-300 { color: #374151 !important; }
+                        html.theme-light #settings-modal .text-slate-300 { color: #334155 !important; }
                         html.theme-light #settings-modal .text-slate-400,
-                        html.theme-light #settings-modal .text-slate-500 { color: #6b7280 !important; }
+                        html.theme-light #settings-modal .text-slate-500 { color: #526077 !important; }
                         
                         /* ── Toggle switches: track + knob ── */
                         /* Unchecked track: light gray */
-                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #d1d5db !important; }
+                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #cdd5e1 !important; }
                         /* Checked track: keep accent color (via peer-checked:bg-*) */
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #8b5cf6 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #10b981 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #06b6d4 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #22c55e !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #3b82f6 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #6d5bc4 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #4f8b85 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #2f63d6 !important; }
                         /* Toggle knob: always white with shadow */
                         html.theme-light [class*="peer"][class*="rounded-full"]::after,
                         html.theme-light div[class*="after:bg-white"][class*="rounded-full"]::after {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+                            border-color: #cdd5e1 !important;
+                            box-shadow: 0 1px 3px rgba(15,23,42,0.2) !important;
                         }
                         
                         /* ── Top toolbar chips ── */
                         /* 連網搜尋 badge */
                         html.theme-light #web-search-badge {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         /* 清空對話 button */
                         html.theme-light button[onclick*="clearChatHistory"] {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #6b7280 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #526077 !important;
                         }
                         /* Top bar container */
                         html.theme-light [class*="bg-slate-900\\/50"][class*="border-b"][class*="border-slate-800"] {
                             background-color: rgba(255,255,255,0.9) !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                             backdrop-filter: blur(8px) !important;
                         }
                         
                         /* ── Model selector dropdowns ── */
                         html.theme-light #gemini-sub-model-select {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         html.theme-light #grok-sub-model-select,
                         html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #1f2937 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #1e293b !important;
                         }
                         
                         /* ── Settings tab bar ── */
                         html.theme-light #settings-modal [class*="flex"][class*="gap-1"][class*="bg-slate-800"],
                         html.theme-light #settings-modal div.flex.gap-1 {
-                            background-color: #f1f5f9 !important;
+                            background-color: #f1f4f8 !important;
                             border-radius: 0.75rem !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]) {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]):hover {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         
                         /* ── Backup/restore buttons at bottom of settings ── */
                         html.theme-light button[onclick*="exportSettings"],
                         html.theme-light label[for="import-settings-input"] {
-                            background-color: #f1f5f9 !important;
-                            border-color: #cbd5e1 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="exportSettings"] i,
-                        html.theme-light label[for="import-settings-input"] i { color: #4b5563 !important; }
+                        html.theme-light label[for="import-settings-input"] i { color: #46536a !important; }
                         
                         /* ── Calendar settings: 重新整理 / 立即排程通知 buttons ── */
                         html.theme-light button[onclick*="calRefreshPreview"] {
-                            background-color: #f0fdf4 !important;
-                            border: 1px solid #86efac !important;
-                            color: #166534 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #ecfdf5 !important;
-                            border: 1px solid #6ee7b7 !important;
-                            color: #065f46 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         
                         /* ── Settings input fields ── */
@@ -3220,64 +3234,64 @@ return html;
                         html.theme-light #settings-modal select,
                         html.theme-light #settings-modal textarea {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light #settings-modal input::placeholder { color: #9ca3af !important; }
+                        html.theme-light #settings-modal input::placeholder { color: #526077 !important; }
                         
                         /* ── Settings section cards ── */
                         html.theme-light #settings-modal .bg-slate-800\/60,
                         html.theme-light #settings-modal [class*="bg-slate-800"],
                         html.theme-light #settings-modal [class*="bg-slate-700"] {
-                            background-color: #f9fafb !important;
-                            border-color: #e5e7eb !important;
+                            background-color: #fafbfd !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="bg-slate-900"],
                         html.theme-light #settings-modal [class*="bg-slate-950"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="from-blue-900"],
                         html.theme-light #settings-modal [class*="from-indigo-900"] {
-                            background: linear-gradient(to right, #eff6ff, #eef2ff) !important;
-                            border-color: #c7d2fe !important;
+                            background: linear-gradient(to right, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         
                         /* ── Recording tab: yellow 選擇 button stays yellow ── */
                         html.theme-light button[onclick*="pickRecordingDirectory"] {
-                            background-color: #d97706 !important;
+                            background-color: #b06a26 !important;
                             color: #ffffff !important;
                         }
                         
                         /* ── Canvas code block card (inline style, target by data-enc attr) ── */
                         html.theme-light [data-enc] {
-                            background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-                            border-color: #bfdbfe !important;
+                            background: linear-gradient(135deg, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         html.theme-light [data-enc] p:first-child { color: #1e293b !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #2563eb !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #2f63d6 !important; }
                         html.theme-light [data-enc] > div:last-child {
                             background: rgba(37,99,235,0.12) !important;
-                            border-color: rgba(37,99,235,0.3) !important;
-                            color: #1d4ed8 !important;
+                            border-color: rgba(47,99,214,0.3) !important;
+                            color: #244fae !important;
                         }
                         
                         /* ── Inline code spans ── */
-                        html.theme-light code { background-color: #f1f5f9 !important; color: #374151 !important; }
+                        html.theme-light code { background-color: #f1f4f8 !important; color: #334155 !important; }
                         
                         /* ── User message bubble ── */
                         html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] {
-                            background-color: #e9eef6 !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         
                         /* ── Note cards ── */
                         html.theme-light .bg-slate-900.rounded-2xl,
                         html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
-                        html.theme-light .note-html-content { color: #374151 !important; }
+                        html.theme-light .note-html-content { color: #334155 !important; }
                         html.theme-light .note-html-content::after {
                             background-image: linear-gradient(to top, #ffffff, transparent) !important;
                         }
@@ -3287,37 +3301,37 @@ return html;
                             background: rgba(248,250,252,0.98) !important;
                             backdrop-filter: blur(12px) !important;
                         }
-                        html.theme-light #mobile-menu .text-white   { color: #111827 !important; }
-                        html.theme-light #mobile-menu .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f3f4f6 !important; }
-                        html.theme-light #mobile-menu button { color: #374151 !important; }
-                        html.theme-light #mobile-menu .text-blue-400 { color: #2563eb !important; }
-                        html.theme-light #mobile-menu border-b { border-color: #e5e7eb !important; }
+                        html.theme-light #mobile-menu .text-white   { color: #0f172a !important; }
+                        html.theme-light #mobile-menu .text-slate-400 { color: #526077 !important; }
+                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
+                        html.theme-light #mobile-menu button { color: #334155 !important; }
+                        html.theme-light #mobile-menu .text-blue-400 { color: #2f63d6 !important; }
+                        html.theme-light #mobile-menu border-b { border-color: #e1e6ee !important; }
                         
                         /* ── Input bar & plus menu ── */
                         html.theme-light #plus-menu,
                         html.theme-light [id^="plus-menu"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light [class*="bg-slate-800"][class*="rounded-full"] {
-                            background-color: #f3f4f6 !important;
+                            background-color: #f1f4f8 !important;
                         }
-                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #374151 !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #334155 !important; }
                         
                         /* ── System / AI message text ── */
-                        html.theme-light .text-slate-200 { color: #1f2937 !important; }
-                        html.theme-light [class*="text-slate-300"] { color: #374151 !important; }
+                        html.theme-light .text-slate-200 { color: #1e293b !important; }
+                        html.theme-light [class*="text-slate-300"] { color: #334155 !important; }
                         
                         /* ── Page root background ── */
-                        html.theme-light body { background-color: #f9fafb !important; }
-                        html.theme-light .flex.h-\[100dvh\] { background-color: #f9fafb !important; }
+                        html.theme-light body { background-color: #fafbfd !important; }
+                        html.theme-light .flex.h-\[100dvh\] { background-color: #fafbfd !important; }
                         
                         /* ── Change 1: Gemini circle icon → light gray ── */
                         html.theme-light #status-icon.ph-globe,
                         html.theme-light [id*="model-icon"],
                         html.theme-light .bg-blue-600 > i[class*="ph-globe"],
-                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #6b7280 !important; }
+                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #526077 !important; }
                         /* AI avatar circles in chat */
                         html.theme-light .rounded-full.bg-blue-600,
                         html.theme-light .rounded-full[class*="bg-blue-6"],
@@ -3325,32 +3339,32 @@ return html;
                         html.theme-light div.w-8.h-8.rounded-full[class*="bg-"],
                         html.theme-light div[class*="w-9"][class*="h-9"][class*="rounded-full"][class*="bg-blue"],
                         html.theme-light div[class*="w-8"][class*="h-8"][class*="rounded-full"][class*="bg-blue"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #374151 !important; }
+                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #334155 !important; }
                         
                         /* ── Change 2: Folder icons → gray (not green/emerald) ── */
                         html.theme-light i.ph-fill.ph-folder,
                         html.theme-light i.ph-fill.ph-folder-open,
                         html.theme-light i[class*="ph-folder"].text-emerald-400,
                         html.theme-light i[class*="ph-folder"].text-green-400 {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
                         /* folder-plus button in sidebar */
                         html.theme-light button[onclick*="addChatFolder"],
                         html.theme-light button[onclick*="openChatFolder"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
+                            border-color: #cdd5e1 !important;
                         }
-                        html.theme-light button[onclick*="addChatFolder"] i { color: #6b7280 !important; }
+                        html.theme-light button[onclick*="addChatFolder"] i { color: #526077 !important; }
                         
                         /* folder move button inline style override */
                         html.theme-light button[onclick*="openMoveFolderModal"] {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
-                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #9ca3af !important; }
+                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #526077 !important; }
                         
                         /* ── Change 5: Settings - all text dark gray/black, no highlight colors ── */
                         html.theme-light #settings-modal [class*="text-blue-3"],
@@ -3381,7 +3395,7 @@ return html;
                         html.theme-light #settings-modal [class*="text-red-4"],
                         html.theme-light #settings-modal [class*="text-rose-3"],
                         html.theme-light #settings-modal [class*="text-rose-4"] {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         /* Keep active tab label color (inside the active tab chip it should remain white) */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-blue-6"] span,
@@ -3392,15 +3406,15 @@ return html;
                         /* Icons in settings labels */
                         html.theme-light #settings-modal label i,
                         html.theme-light #settings-modal p i,
-                        html.theme-light #settings-modal span i { color: #6b7280 !important; }
-                        html.theme-light #settings-modal h3 i { color: #374151 !important; }
+                        html.theme-light #settings-modal span i { color: #526077 !important; }
+                        html.theme-light #settings-modal h3 i { color: #334155 !important; }
                         
                         /* ── Change 7 light mode: top/bottom bars also borderless ── */
-                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #f9fafb !important; }
+                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #fafbfd !important; }
                         html.theme-light [class*="bg-slate-900"][class*="shrink-0"][class*="z-20"] { border-top: none !important; }
                         
                         /* ── Plus menu also borderless ── */
-                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(0,0,0,0.08) !important; }
+                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(15,23,42,0.08) !important; }
                         
                         /* ================================================================
                            NOVA Light Mode Supplemental — v2 contrast & component fixes
@@ -3415,103 +3429,103 @@ return html;
                         /* ── Typography: body text & labels ── */
                         html.theme-light body,
                         html.theme-light .text-slate-200,
-                        html.theme-light .text-slate-300 { color: #374151 !important; }
-                        html.theme-light .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light .text-slate-500 { color: #9ca3af !important; }
-                        html.theme-light .text-white     { color: #111827 !important; }
+                        html.theme-light .text-slate-300 { color: #334155 !important; }
+                        html.theme-light .text-slate-400 { color: #526077 !important; }
+                        html.theme-light .text-slate-500 { color: #526077 !important; }
+                        html.theme-light .text-white     { color: #0f172a !important; }
                         
                         /* Settings modal header */
-                        html.theme-light #settings-modal h3 { color: #111827 !important; }
-                        html.theme-light #settings-modal .text-white  { color: #111827 !important; }
+                        html.theme-light #settings-modal h3 { color: #0f172a !important; }
+                        html.theme-light #settings-modal .text-white  { color: #0f172a !important; }
                         html.theme-light #settings-modal .text-slate-200,
-                        html.theme-light #settings-modal .text-slate-300 { color: #374151 !important; }
+                        html.theme-light #settings-modal .text-slate-300 { color: #334155 !important; }
                         html.theme-light #settings-modal .text-slate-400,
-                        html.theme-light #settings-modal .text-slate-500 { color: #6b7280 !important; }
+                        html.theme-light #settings-modal .text-slate-500 { color: #526077 !important; }
                         
                         /* ── Toggle switches: track + knob ── */
                         /* Unchecked track: light gray */
-                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #d1d5db !important; }
+                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #cdd5e1 !important; }
                         /* Checked track: keep accent color (via peer-checked:bg-*) */
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #8b5cf6 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #10b981 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #06b6d4 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #22c55e !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #3b82f6 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #6d5bc4 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #4f8b85 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #2f63d6 !important; }
                         /* Toggle knob: always white with shadow */
                         html.theme-light [class*="peer"][class*="rounded-full"]::after,
                         html.theme-light div[class*="after:bg-white"][class*="rounded-full"]::after {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+                            border-color: #cdd5e1 !important;
+                            box-shadow: 0 1px 3px rgba(15,23,42,0.2) !important;
                         }
                         
                         /* ── Top toolbar chips ── */
                         /* 連網搜尋 badge */
                         html.theme-light #web-search-badge {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         /* 清空對話 button */
                         html.theme-light button[onclick*="clearChatHistory"] {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #6b7280 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #526077 !important;
                         }
                         /* Top bar container */
                         html.theme-light [class*="bg-slate-900\\/50"][class*="border-b"][class*="border-slate-800"] {
                             background-color: rgba(255,255,255,0.9) !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                             backdrop-filter: blur(8px) !important;
                         }
                         
                         /* ── Model selector dropdowns ── */
                         html.theme-light #gemini-sub-model-select {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         html.theme-light #grok-sub-model-select,
                         html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #1f2937 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #1e293b !important;
                         }
                         
                         /* ── Settings tab bar ── */
                         html.theme-light #settings-modal [class*="flex"][class*="gap-1"][class*="bg-slate-800"],
                         html.theme-light #settings-modal div.flex.gap-1 {
-                            background-color: #f1f5f9 !important;
+                            background-color: #f1f4f8 !important;
                             border-radius: 0.75rem !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]) {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]):hover {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         
                         /* ── Backup/restore buttons at bottom of settings ── */
                         html.theme-light button[onclick*="exportSettings"],
                         html.theme-light label[for="import-settings-input"] {
-                            background-color: #f1f5f9 !important;
-                            border-color: #cbd5e1 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="exportSettings"] i,
-                        html.theme-light label[for="import-settings-input"] i { color: #4b5563 !important; }
+                        html.theme-light label[for="import-settings-input"] i { color: #46536a !important; }
                         
                         /* ── Calendar settings: 重新整理 / 立即排程通知 buttons ── */
                         html.theme-light button[onclick*="calRefreshPreview"] {
-                            background-color: #f0fdf4 !important;
-                            border: 1px solid #86efac !important;
-                            color: #166534 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #ecfdf5 !important;
-                            border: 1px solid #6ee7b7 !important;
-                            color: #065f46 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         
                         /* ── Settings input fields ── */
@@ -3519,64 +3533,64 @@ return html;
                         html.theme-light #settings-modal select,
                         html.theme-light #settings-modal textarea {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light #settings-modal input::placeholder { color: #9ca3af !important; }
+                        html.theme-light #settings-modal input::placeholder { color: #526077 !important; }
                         
                         /* ── Settings section cards ── */
                         html.theme-light #settings-modal .bg-slate-800\/60,
                         html.theme-light #settings-modal [class*="bg-slate-800"],
                         html.theme-light #settings-modal [class*="bg-slate-700"] {
-                            background-color: #f9fafb !important;
-                            border-color: #e5e7eb !important;
+                            background-color: #fafbfd !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="bg-slate-900"],
                         html.theme-light #settings-modal [class*="bg-slate-950"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="from-blue-900"],
                         html.theme-light #settings-modal [class*="from-indigo-900"] {
-                            background: linear-gradient(to right, #eff6ff, #eef2ff) !important;
-                            border-color: #c7d2fe !important;
+                            background: linear-gradient(to right, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         
                         /* ── Recording tab: yellow 選擇 button stays yellow ── */
                         html.theme-light button[onclick*="pickRecordingDirectory"] {
-                            background-color: #d97706 !important;
+                            background-color: #b06a26 !important;
                             color: #ffffff !important;
                         }
                         
                         /* ── Canvas code block card (inline style, target by data-enc attr) ── */
                         html.theme-light [data-enc] {
-                            background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-                            border-color: #bfdbfe !important;
+                            background: linear-gradient(135deg, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         html.theme-light [data-enc] p:first-child { color: #1e293b !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #2563eb !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #2f63d6 !important; }
                         html.theme-light [data-enc] > div:last-child {
                             background: rgba(37,99,235,0.12) !important;
-                            border-color: rgba(37,99,235,0.3) !important;
-                            color: #1d4ed8 !important;
+                            border-color: rgba(47,99,214,0.3) !important;
+                            color: #244fae !important;
                         }
                         
                         /* ── Inline code spans ── */
-                        html.theme-light code { background-color: #f1f5f9 !important; color: #374151 !important; }
+                        html.theme-light code { background-color: #f1f4f8 !important; color: #334155 !important; }
                         
                         /* ── User message bubble ── */
                         html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] {
-                            background-color: #e9eef6 !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         
                         /* ── Note cards ── */
                         html.theme-light .bg-slate-900.rounded-2xl,
                         html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
-                        html.theme-light .note-html-content { color: #374151 !important; }
+                        html.theme-light .note-html-content { color: #334155 !important; }
                         html.theme-light .note-html-content::after {
                             background-image: linear-gradient(to top, #ffffff, transparent) !important;
                         }
@@ -3586,37 +3600,37 @@ return html;
                             background: rgba(248,250,252,0.98) !important;
                             backdrop-filter: blur(12px) !important;
                         }
-                        html.theme-light #mobile-menu .text-white   { color: #111827 !important; }
-                        html.theme-light #mobile-menu .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f3f4f6 !important; }
-                        html.theme-light #mobile-menu button { color: #374151 !important; }
-                        html.theme-light #mobile-menu .text-blue-400 { color: #2563eb !important; }
-                        html.theme-light #mobile-menu border-b { border-color: #e5e7eb !important; }
+                        html.theme-light #mobile-menu .text-white   { color: #0f172a !important; }
+                        html.theme-light #mobile-menu .text-slate-400 { color: #526077 !important; }
+                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
+                        html.theme-light #mobile-menu button { color: #334155 !important; }
+                        html.theme-light #mobile-menu .text-blue-400 { color: #2f63d6 !important; }
+                        html.theme-light #mobile-menu border-b { border-color: #e1e6ee !important; }
                         
                         /* ── Input bar & plus menu ── */
                         html.theme-light #plus-menu,
                         html.theme-light [id^="plus-menu"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light [class*="bg-slate-800"][class*="rounded-full"] {
-                            background-color: #f3f4f6 !important;
+                            background-color: #f1f4f8 !important;
                         }
-                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #374151 !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #334155 !important; }
                         
                         /* ── System / AI message text ── */
-                        html.theme-light .text-slate-200 { color: #1f2937 !important; }
-                        html.theme-light [class*="text-slate-300"] { color: #374151 !important; }
+                        html.theme-light .text-slate-200 { color: #1e293b !important; }
+                        html.theme-light [class*="text-slate-300"] { color: #334155 !important; }
                         
                         /* ── Page root background ── */
-                        html.theme-light body { background-color: #f9fafb !important; }
-                        html.theme-light .flex.h-\[100dvh\] { background-color: #f9fafb !important; }
+                        html.theme-light body { background-color: #fafbfd !important; }
+                        html.theme-light .flex.h-\[100dvh\] { background-color: #fafbfd !important; }
                         
                         /* ── Change 1: Gemini circle icon → light gray ── */
                         html.theme-light #status-icon.ph-globe,
                         html.theme-light [id*="model-icon"],
                         html.theme-light .bg-blue-600 > i[class*="ph-globe"],
-                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #6b7280 !important; }
+                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #526077 !important; }
                         /* AI avatar circles in chat */
                         html.theme-light .rounded-full.bg-blue-600,
                         html.theme-light .rounded-full[class*="bg-blue-6"],
@@ -3624,32 +3638,32 @@ return html;
                         html.theme-light div.w-8.h-8.rounded-full[class*="bg-"],
                         html.theme-light div[class*="w-9"][class*="h-9"][class*="rounded-full"][class*="bg-blue"],
                         html.theme-light div[class*="w-8"][class*="h-8"][class*="rounded-full"][class*="bg-blue"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #374151 !important; }
+                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #334155 !important; }
                         
                         /* ── Change 2: Folder icons → gray (not green/emerald) ── */
                         html.theme-light i.ph-fill.ph-folder,
                         html.theme-light i.ph-fill.ph-folder-open,
                         html.theme-light i[class*="ph-folder"].text-emerald-400,
                         html.theme-light i[class*="ph-folder"].text-green-400 {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
                         /* folder-plus button in sidebar */
                         html.theme-light button[onclick*="addChatFolder"],
                         html.theme-light button[onclick*="openChatFolder"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
+                            border-color: #cdd5e1 !important;
                         }
-                        html.theme-light button[onclick*="addChatFolder"] i { color: #6b7280 !important; }
+                        html.theme-light button[onclick*="addChatFolder"] i { color: #526077 !important; }
                         
                         /* folder move button inline style override */
                         html.theme-light button[onclick*="openMoveFolderModal"] {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
-                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #9ca3af !important; }
+                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #526077 !important; }
                         
                         /* ── Change 5: Settings - all text dark gray/black, no highlight colors ── */
                         html.theme-light #settings-modal [class*="text-blue-3"],
@@ -3680,7 +3694,7 @@ return html;
                         html.theme-light #settings-modal [class*="text-red-4"],
                         html.theme-light #settings-modal [class*="text-rose-3"],
                         html.theme-light #settings-modal [class*="text-rose-4"] {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         /* Keep active tab label color (inside the active tab chip it should remain white) */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-blue-6"] span,
@@ -3691,15 +3705,15 @@ return html;
                         /* Icons in settings labels */
                         html.theme-light #settings-modal label i,
                         html.theme-light #settings-modal p i,
-                        html.theme-light #settings-modal span i { color: #6b7280 !important; }
-                        html.theme-light #settings-modal h3 i { color: #374151 !important; }
+                        html.theme-light #settings-modal span i { color: #526077 !important; }
+                        html.theme-light #settings-modal h3 i { color: #334155 !important; }
                         
                         /* ── Change 7 light mode: top/bottom bars also borderless ── */
-                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #f9fafb !important; }
+                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #fafbfd !important; }
                         html.theme-light [class*="bg-slate-900"][class*="shrink-0"][class*="z-20"] { border-top: none !important; }
                         
                         /* ── Plus menu also borderless ── */
-                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(0,0,0,0.08) !important; }
+                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(15,23,42,0.08) !important; }
                         
                         /* ── Change 1: Top-left infinity icon → standalone blue symbol (no box) ── */
                         html.theme-light #nova-top-icon-wrap,
@@ -3714,7 +3728,7 @@ return html;
                             box-shadow: none !important;
                         }
                         html.theme-light .md\:hidden[class*="bg-transparent"] [class*="w-8"][class*="h-8"] i.ph-infinity {
-                            color: #06b6d4 !important;
+                            color: #4f8b85 !important;
                             font-size: 1.75rem !important;
                         }
                         
@@ -3724,27 +3738,27 @@ return html;
                         
                         /* ── Change 3: Canvas card inline styles override (CSS only) ── */
                         html.theme-light [data-enc] {
-                            background: #f9fafb !important;
-                            border: 1px solid #e5e7eb !important;
+                            background: #fafbfd !important;
+                            border: 1px solid #e1e6ee !important;
                         }
                         html.theme-light [data-enc] > div:first-child {
-                            background: #f3f4f6 !important;
-                            border: 1px solid #e5e7eb !important;
+                            background: #f1f4f8 !important;
+                            border: 1px solid #e1e6ee !important;
                         }
-                        html.theme-light [data-enc] > div:first-child i { color: #374151 !important; }
-                        html.theme-light [data-enc] p:first-child { color: #111827 !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #6b7280 !important; }
+                        html.theme-light [data-enc] > div:first-child i { color: #334155 !important; }
+                        html.theme-light [data-enc] p:first-child { color: #0f172a !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #526077 !important; }
                         html.theme-light [data-enc] > div:last-child {
-                            background: #f3f4f6 !important;
-                            border: 1px solid #e5e7eb !important;
-                            color: #374151 !important;
+                            background: #f1f4f8 !important;
+                            border: 1px solid #e1e6ee !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light [data-enc] > div:last-child i { color: #374151 !important; }
+                        html.theme-light [data-enc] > div:last-child i { color: #334155 !important; }
                         
                         /* inline code background */
                         html.theme-light code[style*="background:#1e293b"] {
-                            background: #f1f5f9 !important;
-                            color: #374151 !important;
+                            background: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
                         
                         /* ── Icon & toolbar background unification ── */
@@ -3752,15 +3766,15 @@ return html;
                            are transparent, so they inherit from the page root (#f9fafb).
                            Lock the entire chat column to the same white/off-white. */
                         html.theme-light #view-dashboard > div:first-child {
-                            background-color: #f9fafb !important;
+                            background-color: #fafbfd !important;
                         }
                         /* Top nav row (infinity icon) */
                         html.theme-light .md\:hidden.flex.items-center.justify-between[class*="bg-transparent"] {
-                            background-color: #f9fafb !important;
+                            background-color: #fafbfd !important;
                         }
                         /* Toolbar row */
                         html.theme-light #view-dashboard .bg-transparent.flex.justify-between {
-                            background-color: #f9fafb !important;
+                            background-color: #fafbfd !important;
                         }
                         
                         /* ================================================================
@@ -3776,103 +3790,103 @@ return html;
                         /* ── Typography: body text & labels ── */
                         html.theme-light body,
                         html.theme-light .text-slate-200,
-                        html.theme-light .text-slate-300 { color: #374151 !important; }
-                        html.theme-light .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light .text-slate-500 { color: #9ca3af !important; }
-                        html.theme-light .text-white     { color: #111827 !important; }
+                        html.theme-light .text-slate-300 { color: #334155 !important; }
+                        html.theme-light .text-slate-400 { color: #526077 !important; }
+                        html.theme-light .text-slate-500 { color: #526077 !important; }
+                        html.theme-light .text-white     { color: #0f172a !important; }
                         
                         /* Settings modal header */
-                        html.theme-light #settings-modal h3 { color: #111827 !important; }
-                        html.theme-light #settings-modal .text-white  { color: #111827 !important; }
+                        html.theme-light #settings-modal h3 { color: #0f172a !important; }
+                        html.theme-light #settings-modal .text-white  { color: #0f172a !important; }
                         html.theme-light #settings-modal .text-slate-200,
-                        html.theme-light #settings-modal .text-slate-300 { color: #374151 !important; }
+                        html.theme-light #settings-modal .text-slate-300 { color: #334155 !important; }
                         html.theme-light #settings-modal .text-slate-400,
-                        html.theme-light #settings-modal .text-slate-500 { color: #6b7280 !important; }
+                        html.theme-light #settings-modal .text-slate-500 { color: #526077 !important; }
                         
                         /* ── Toggle switches: track + knob ── */
                         /* Unchecked track: light gray */
-                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #d1d5db !important; }
+                        html.theme-light .peer ~ div[class*="bg-slate-700"][class*="rounded-full"] { background-color: #cdd5e1 !important; }
                         /* Checked track: keep accent color (via peer-checked:bg-*) */
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #8b5cf6 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #10b981 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #06b6d4 !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #22c55e !important; }
-                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #3b82f6 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-purple-500"]  { background-color: #6d5bc4 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-emerald-5"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-cyan-500"]    { background-color: #4f8b85 !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-green-500"]   { background-color: #2f8a5f !important; }
+                        html.theme-light .peer:checked ~ div[class*="peer-checked:bg-blue-500"]    { background-color: #2f63d6 !important; }
                         /* Toggle knob: always white with shadow */
                         html.theme-light [class*="peer"][class*="rounded-full"]::after,
                         html.theme-light div[class*="after:bg-white"][class*="rounded-full"]::after {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+                            border-color: #cdd5e1 !important;
+                            box-shadow: 0 1px 3px rgba(15,23,42,0.2) !important;
                         }
                         
                         /* ── Top toolbar chips ── */
                         /* 連網搜尋 badge */
                         html.theme-light #web-search-badge {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         /* 清空對話 button */
                         html.theme-light button[onclick*="clearChatHistory"] {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #6b7280 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #526077 !important;
                         }
                         /* Top bar container */
                         html.theme-light [class*="bg-slate-900\\/50"][class*="border-b"][class*="border-slate-800"] {
                             background-color: rgba(255,255,255,0.9) !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                             backdrop-filter: blur(8px) !important;
                         }
                         
                         /* ── Model selector dropdowns ── */
                         html.theme-light #gemini-sub-model-select {
-                            background-color: #eff6ff !important;
-                            border-color: #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border-color: #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         html.theme-light #grok-sub-model-select,
                         html.theme-light #gpt-sub-model-select,
                         html.theme-light #main-model-select {
-                            background-color: #f9fafb !important;
-                            border-color: #d1d5db !important;
-                            color: #1f2937 !important;
+                            background-color: #fafbfd !important;
+                            border-color: #cdd5e1 !important;
+                            color: #1e293b !important;
                         }
                         
                         /* ── Settings tab bar ── */
                         html.theme-light #settings-modal [class*="flex"][class*="gap-1"][class*="bg-slate-800"],
                         html.theme-light #settings-modal div.flex.gap-1 {
-                            background-color: #f1f5f9 !important;
+                            background-color: #f1f4f8 !important;
                             border-radius: 0.75rem !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]) {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light #settings-modal [id^="stab-"]:not([class*="bg-blue-6"]):not([class*="bg-purple-"]):not([class*="bg-emerald-"]):not([class*="bg-cyan-"]):not([class*="bg-amber-"]):hover {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         
                         /* ── Backup/restore buttons at bottom of settings ── */
                         html.theme-light button[onclick*="exportSettings"],
                         html.theme-light label[for="import-settings-input"] {
-                            background-color: #f1f5f9 !important;
-                            border-color: #cbd5e1 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="exportSettings"] i,
-                        html.theme-light label[for="import-settings-input"] i { color: #4b5563 !important; }
+                        html.theme-light label[for="import-settings-input"] i { color: #46536a !important; }
                         
                         /* ── Calendar settings: 重新整理 / 立即排程通知 buttons ── */
                         html.theme-light button[onclick*="calRefreshPreview"] {
-                            background-color: #f0fdf4 !important;
-                            border: 1px solid #86efac !important;
-                            color: #166534 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #ecfdf5 !important;
-                            border: 1px solid #6ee7b7 !important;
-                            color: #065f46 !important;
+                            background-color: #e7f5ee !important;
+                            border: 1px solid #8fd0b0 !important;
+                            color: #14532d !important;
                         }
                         
                         /* ── Settings input fields ── */
@@ -3880,64 +3894,64 @@ return html;
                         html.theme-light #settings-modal select,
                         html.theme-light #settings-modal textarea {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light #settings-modal input::placeholder { color: #9ca3af !important; }
+                        html.theme-light #settings-modal input::placeholder { color: #526077 !important; }
                         
                         /* ── Settings section cards ── */
                         html.theme-light #settings-modal .bg-slate-800\/60,
                         html.theme-light #settings-modal [class*="bg-slate-800"],
                         html.theme-light #settings-modal [class*="bg-slate-700"] {
-                            background-color: #f9fafb !important;
-                            border-color: #e5e7eb !important;
+                            background-color: #fafbfd !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="bg-slate-900"],
                         html.theme-light #settings-modal [class*="bg-slate-950"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light #settings-modal [class*="from-blue-900"],
                         html.theme-light #settings-modal [class*="from-indigo-900"] {
-                            background: linear-gradient(to right, #eff6ff, #eef2ff) !important;
-                            border-color: #c7d2fe !important;
+                            background: linear-gradient(to right, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         
                         /* ── Recording tab: yellow 選擇 button stays yellow ── */
                         html.theme-light button[onclick*="pickRecordingDirectory"] {
-                            background-color: #d97706 !important;
+                            background-color: #b06a26 !important;
                             color: #ffffff !important;
                         }
                         
                         /* ── Canvas code block card (inline style, target by data-enc attr) ── */
                         html.theme-light [data-enc] {
-                            background: linear-gradient(135deg, #eff6ff, #f0f9ff) !important;
-                            border-color: #bfdbfe !important;
+                            background: linear-gradient(135deg, #e8effc, #e8effc) !important;
+                            border-color: #bcd0f5 !important;
                         }
                         html.theme-light [data-enc] p:first-child { color: #1e293b !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #2563eb !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #2f63d6 !important; }
                         html.theme-light [data-enc] > div:last-child {
                             background: rgba(37,99,235,0.12) !important;
-                            border-color: rgba(37,99,235,0.3) !important;
-                            color: #1d4ed8 !important;
+                            border-color: rgba(47,99,214,0.3) !important;
+                            color: #244fae !important;
                         }
                         
                         /* ── Inline code spans ── */
-                        html.theme-light code { background-color: #f1f5f9 !important; color: #374151 !important; }
+                        html.theme-light code { background-color: #f1f4f8 !important; color: #334155 !important; }
                         
                         /* ── User message bubble ── */
                         html.theme-light [class*="bg-slate-800"][class*="rounded-2xl"] {
-                            background-color: #e9eef6 !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         
                         /* ── Note cards ── */
                         html.theme-light .bg-slate-900.rounded-2xl,
                         html.theme-light [class*="bg-slate-900"][class*="rounded-2xl"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
-                        html.theme-light .note-html-content { color: #374151 !important; }
+                        html.theme-light .note-html-content { color: #334155 !important; }
                         html.theme-light .note-html-content::after {
                             background-image: linear-gradient(to top, #ffffff, transparent) !important;
                         }
@@ -3947,37 +3961,37 @@ return html;
                             background: rgba(248,250,252,0.98) !important;
                             backdrop-filter: blur(12px) !important;
                         }
-                        html.theme-light #mobile-menu .text-white   { color: #111827 !important; }
-                        html.theme-light #mobile-menu .text-slate-400 { color: #6b7280 !important; }
-                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f3f4f6 !important; }
-                        html.theme-light #mobile-menu button { color: #374151 !important; }
-                        html.theme-light #mobile-menu .text-blue-400 { color: #2563eb !important; }
-                        html.theme-light #mobile-menu border-b { border-color: #e5e7eb !important; }
+                        html.theme-light #mobile-menu .text-white   { color: #0f172a !important; }
+                        html.theme-light #mobile-menu .text-slate-400 { color: #526077 !important; }
+                        html.theme-light #mobile-menu [class*="bg-slate-800"] { background-color: #f1f4f8 !important; }
+                        html.theme-light #mobile-menu button { color: #334155 !important; }
+                        html.theme-light #mobile-menu .text-blue-400 { color: #2f63d6 !important; }
+                        html.theme-light #mobile-menu border-b { border-color: #e1e6ee !important; }
                         
                         /* ── Input bar & plus menu ── */
                         html.theme-light #plus-menu,
                         html.theme-light [id^="plus-menu"] {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
+                            border-color: #e1e6ee !important;
                         }
                         html.theme-light [class*="bg-slate-800"][class*="rounded-full"] {
-                            background-color: #f3f4f6 !important;
+                            background-color: #f1f4f8 !important;
                         }
-                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #374151 !important; }
+                        html.theme-light [class*="bg-slate-800"][class*="text-slate-3"] { color: #334155 !important; }
                         
                         /* ── System / AI message text ── */
-                        html.theme-light .text-slate-200 { color: #1f2937 !important; }
-                        html.theme-light [class*="text-slate-300"] { color: #374151 !important; }
+                        html.theme-light .text-slate-200 { color: #1e293b !important; }
+                        html.theme-light [class*="text-slate-300"] { color: #334155 !important; }
                         
                         /* ── Page root background ── */
-                        html.theme-light body { background-color: #f9fafb !important; }
-                        html.theme-light .flex.h-\[100dvh\] { background-color: #f9fafb !important; }
+                        html.theme-light body { background-color: #fafbfd !important; }
+                        html.theme-light .flex.h-\[100dvh\] { background-color: #fafbfd !important; }
                         
                         /* ── Change 1: Gemini circle icon → light gray ── */
                         html.theme-light #status-icon.ph-globe,
                         html.theme-light [id*="model-icon"],
                         html.theme-light .bg-blue-600 > i[class*="ph-globe"],
-                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #6b7280 !important; }
+                        html.theme-light i[class*="ph-globe"].text-blue-400 { color: #526077 !important; }
                         /* AI avatar circles in chat */
                         html.theme-light .rounded-full.bg-blue-600,
                         html.theme-light .rounded-full[class*="bg-blue-6"],
@@ -3985,32 +3999,32 @@ return html;
                         html.theme-light div.w-8.h-8.rounded-full[class*="bg-"],
                         html.theme-light div[class*="w-9"][class*="h-9"][class*="rounded-full"][class*="bg-blue"],
                         html.theme-light div[class*="w-8"][class*="h-8"][class*="rounded-full"][class*="bg-blue"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #374151 !important; }
+                        html.theme-light div[class*="rounded-full"][class*="bg-blue"] i { color: #334155 !important; }
                         
                         /* ── Change 2: Folder icons → gray (not green/emerald) ── */
                         html.theme-light i.ph-fill.ph-folder,
                         html.theme-light i.ph-fill.ph-folder-open,
                         html.theme-light i[class*="ph-folder"].text-emerald-400,
                         html.theme-light i[class*="ph-folder"].text-green-400 {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
                         /* folder-plus button in sidebar */
                         html.theme-light button[onclick*="addChatFolder"],
                         html.theme-light button[onclick*="openChatFolder"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
-                            border-color: #d1d5db !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
+                            border-color: #cdd5e1 !important;
                         }
-                        html.theme-light button[onclick*="addChatFolder"] i { color: #6b7280 !important; }
+                        html.theme-light button[onclick*="addChatFolder"] i { color: #526077 !important; }
                         
                         /* folder move button inline style override */
                         html.theme-light button[onclick*="openMoveFolderModal"] {
-                            color: #9ca3af !important;
+                            color: #526077 !important;
                         }
-                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #9ca3af !important; }
+                        html.theme-light button[onclick*="openMoveFolderModal"] i { color: #526077 !important; }
                         
                         /* ── Change 5: Settings - all text dark gray/black, no highlight colors ── */
                         html.theme-light #settings-modal [class*="text-blue-3"],
@@ -4041,7 +4055,7 @@ return html;
                         html.theme-light #settings-modal [class*="text-red-4"],
                         html.theme-light #settings-modal [class*="text-rose-3"],
                         html.theme-light #settings-modal [class*="text-rose-4"] {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         /* Keep active tab label color (inside the active tab chip it should remain white) */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-blue-6"] span,
@@ -4052,15 +4066,15 @@ return html;
                         /* Icons in settings labels */
                         html.theme-light #settings-modal label i,
                         html.theme-light #settings-modal p i,
-                        html.theme-light #settings-modal span i { color: #6b7280 !important; }
-                        html.theme-light #settings-modal h3 i { color: #374151 !important; }
+                        html.theme-light #settings-modal span i { color: #526077 !important; }
+                        html.theme-light #settings-modal h3 i { color: #334155 !important; }
                         
                         /* ── Change 7 light mode: top/bottom bars also borderless ── */
-                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #f9fafb !important; }
+                        html.theme-light .md\:hidden[class*="bg-transparent"] { background-color: #fafbfd !important; }
                         html.theme-light [class*="bg-slate-900"][class*="shrink-0"][class*="z-20"] { border-top: none !important; }
                         
                         /* ── Plus menu also borderless ── */
-                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(0,0,0,0.08) !important; }
+                        html.theme-light #plus-menu { border-top: none !important; box-shadow: 0 -4px 20px rgba(15,23,42,0.08) !important; }
                         
                         /* ── Change 1: Top-left infinity icon → standalone blue symbol (no box) ── */
                         html.theme-light #nova-top-icon-wrap,
@@ -4075,7 +4089,7 @@ return html;
                             box-shadow: none !important;
                         }
                         html.theme-light .md\:hidden[class*="bg-transparent"] [class*="w-8"][class*="h-8"] i.ph-infinity {
-                            color: #06b6d4 !important;
+                            color: #4f8b85 !important;
                             font-size: 1.75rem !important;
                         }
                         
@@ -4085,27 +4099,27 @@ return html;
                         
                         /* ── Change 3: Canvas card inline styles override (CSS only) ── */
                         html.theme-light [data-enc] {
-                            background: #f9fafb !important;
-                            border: 1px solid #e5e7eb !important;
+                            background: #fafbfd !important;
+                            border: 1px solid #e1e6ee !important;
                         }
                         html.theme-light [data-enc] > div:first-child {
-                            background: #f3f4f6 !important;
-                            border: 1px solid #e5e7eb !important;
+                            background: #f1f4f8 !important;
+                            border: 1px solid #e1e6ee !important;
                         }
-                        html.theme-light [data-enc] > div:first-child i { color: #374151 !important; }
-                        html.theme-light [data-enc] p:first-child { color: #111827 !important; }
-                        html.theme-light [data-enc] p:last-child  { color: #6b7280 !important; }
+                        html.theme-light [data-enc] > div:first-child i { color: #334155 !important; }
+                        html.theme-light [data-enc] p:first-child { color: #0f172a !important; }
+                        html.theme-light [data-enc] p:last-child  { color: #526077 !important; }
                         html.theme-light [data-enc] > div:last-child {
-                            background: #f3f4f6 !important;
-                            border: 1px solid #e5e7eb !important;
-                            color: #374151 !important;
+                            background: #f1f4f8 !important;
+                            border: 1px solid #e1e6ee !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light [data-enc] > div:last-child i { color: #374151 !important; }
+                        html.theme-light [data-enc] > div:last-child i { color: #334155 !important; }
                         
                         /* inline code background */
                         html.theme-light code[style*="background:#1e293b"] {
-                            background: #f1f5f9 !important;
-                            color: #374151 !important;
+                            background: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
                         
                         /* ── 1. Chat item selected state ── */
@@ -4116,13 +4130,13 @@ return html;
                         
                         /* Light mode overrides */
                         html.theme-light .nova-chat-item { background-color: transparent; }
-                        html.theme-light .nova-chat-item:hover { background-color: #f3f4f6 !important; }
-                        html.theme-light .nova-chat-item:active { background-color: #e5e7eb !important; }
-                        html.theme-light .nova-chat-item-active { background-color: #e9ecef !important; }
-                        html.theme-light .nova-chat-item span { color: #374151 !important; }
-                        html.theme-light .nova-chat-item-active span { color: #111827 !important; font-weight: 600 !important; }
-                        html.theme-light .nova-chat-item i { color: #9ca3af !important; }
-                        html.theme-light .nova-chat-item-active i { color: #6b7280 !important; }
+                        html.theme-light .nova-chat-item:hover { background-color: #f1f4f8 !important; }
+                        html.theme-light .nova-chat-item:active { background-color: #e1e6ee !important; }
+                        html.theme-light .nova-chat-item-active { background-color: #f1f4f8 !important; }
+                        html.theme-light .nova-chat-item span { color: #334155 !important; }
+                        html.theme-light .nova-chat-item-active span { color: #0f172a !important; font-weight: 600 !important; }
+                        html.theme-light .nova-chat-item i { color: #526077 !important; }
+                        html.theme-light .nova-chat-item-active i { color: #526077 !important; }
                         
                         /* ── 2. Chat page top-left icon: no box in light mode ── */
                         html.theme-light .md\:hidden.flex.items-center.justify-between > div.flex.items-center > div.w-8.h-8 {
@@ -4134,60 +4148,60 @@ return html;
                             display: inline !important;
                         }
                         html.theme-light .md\:hidden.flex.items-center.justify-between > div.flex.items-center > div.w-8.h-8 i {
-                            color: #06b6d4 !important;
+                            color: #4f8b85 !important;
                             font-size: 1.6rem !important;
                         }
                         
                         /* ── 3. Primary blue buttons → lighter blue (#3b82f6 → #60a5fa or light bg) ── */
                         /* 儲存 (bg-blue-600) */
                         html.theme-light button[class*="bg-blue-6"] {
-                            background-color: #60a5fa !important;
+                            background-color: #5b8def !important;
                             color: #ffffff !important;
-                            border-color: #3b82f6 !important;
+                            border-color: #2f63d6 !important;
                         }
                         html.theme-light button[class*="bg-blue-6"]:hover {
-                            background-color: #3b82f6 !important;
+                            background-color: #2f63d6 !important;
                         }
                         html.theme-light button[class*="bg-blue-7"] {
-                            background-color: #60a5fa !important;
+                            background-color: #5b8def !important;
                             color: #ffffff !important;
-                            border-color: #3b82f6 !important;
+                            border-color: #2f63d6 !important;
                         }
                         
                         /* Settings active tabs - keep their accent color but lighter */
                         html.theme-light #settings-modal [id^="stab-"][class*="bg-blue-6"] {
-                            background-color: #3b82f6 !important;
+                            background-color: #2f63d6 !important;
                             color: #ffffff !important;
                         }
                         
                         /* ── 3b. Action buttons that were dark-colored ── */
                         html.theme-light button[onclick*="calRefreshPreview"],
                         html.theme-light button[onclick*="calRescheduleNow"] {
-                            background-color: #eff6ff !important;
-                            border: 1px solid #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border: 1px solid #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         html.theme-light button[onclick*="pickRecording"] {
-                            background-color: #eff6ff !important;
-                            border: 1px solid #bfdbfe !important;
-                            color: #1d4ed8 !important;
+                            background-color: #e8effc !important;
+                            border: 1px solid #bcd0f5 !important;
+                            color: #244fae !important;
                         }
                         
                         /* ── 4. Folder-move button icon stays gray ── */
-                        html.theme-light [onclick*="openMoveFolderModal"] i { color: #9ca3af !important; }
+                        html.theme-light [onclick*="openMoveFolderModal"] i { color: #526077 !important; }
                         
                         /* ── Fix 1: Chat top-left icon — no box in dark mode either (already bare HTML now) ── */
-                        .md\:hidden i.ph-infinity { font-size: 1.75rem; color: #06b6d4; }
+                        .md\:hidden i.ph-infinity { font-size: 1.75rem; color: #4f8b85; }
                         
                         /* ── Fix 2: Unified row highlight — override inline bg for light mode ── */
                         html.theme-light .nova-chat-item {
                             background-color: transparent !important;
                         }
                         html.theme-light .nova-chat-item:hover {
-                            background-color: #f0f0f0 !important;
+                            background-color: #f1f4f8 !important;
                         }
                         html.theme-light .nova-chat-item-active {
-                            background-color: #e5e7eb !important;
+                            background-color: #e1e6ee !important;
                         }
                         /* All children inherit transparent so row bg shows uniformly */
                         html.theme-light .nova-chat-item > div,
@@ -4197,12 +4211,12 @@ return html;
                             background-color: transparent !important;
                         }
                         /* Text colors in light mode */
-                        html.theme-light .nova-chat-item span { color: #374151 !important; font-weight: 400 !important; }
-                        html.theme-light .nova-chat-item-active span { color: #111827 !important; font-weight: 600 !important; }
+                        html.theme-light .nova-chat-item span { color: #334155 !important; font-weight: 400 !important; }
+                        html.theme-light .nova-chat-item-active span { color: #0f172a !important; font-weight: 600 !important; }
                         html.theme-light .nova-chat-item i,
-                        html.theme-light .nova-chat-item button { color: #9ca3af !important; }
+                        html.theme-light .nova-chat-item button { color: #526077 !important; }
                         html.theme-light .nova-chat-item-active i,
-                        html.theme-light .nova-chat-item-active button { color: #6b7280 !important; }
+                        html.theme-light .nova-chat-item-active button { color: #526077 !important; }
                         
                         /* ══════════════════════════════════════════════════════
                            Fix 1: 多AI深度協同研究 modal — light-mode overrides
@@ -4212,57 +4226,57 @@ return html;
                         }
                         html.theme-light #agent-modal > div {
                             background-color: #ffffff !important;
-                            border-color: #e5e7eb !important;
-                            box-shadow: 0 8px 40px rgba(0,0,0,0.12) !important;
+                            border-color: #e1e6ee !important;
+                            box-shadow: 0 8px 40px rgba(15,23,42,0.12) !important;
                         }
                         /* Title */
-                        html.theme-light #agent-modal h3 { color: #111827 !important; }
-                        html.theme-light #agent-modal h3 i { color: #7c3aed !important; }
+                        html.theme-light #agent-modal h3 { color: #0f172a !important; }
+                        html.theme-light #agent-modal h3 i { color: #5b46b0 !important; }
                         /* Workflow banner (purple-900/20) */
                         html.theme-light #agent-modal .bg-purple-900\/20 {
-                            background-color: #f5f3ff !important;
-                            border-color: #ddd6fe !important;
+                            background-color: #eeeafb !important;
+                            border-color: #cfc6f0 !important;
                         }
-                        html.theme-light #agent-modal .text-purple-300 { color: #6d28d9 !important; }
+                        html.theme-light #agent-modal .text-purple-300 { color: #4c3a99 !important; }
                         /* Inner cards (bg-slate-950) */
                         html.theme-light #agent-modal .bg-slate-950 {
-                            background-color: #f9fafb !important;
-                            border-color: #e5e7eb !important;
+                            background-color: #fafbfd !important;
+                            border-color: #e1e6ee !important;
                         }
                         /* Labels */
-                        html.theme-light #agent-modal .text-slate-300 { color: #374151 !important; }
-                        html.theme-light #agent-modal .text-slate-500 { color: #6b7280 !important; }
+                        html.theme-light #agent-modal .text-slate-300 { color: #334155 !important; }
+                        html.theme-light #agent-modal .text-slate-500 { color: #526077 !important; }
                         /* Textarea & select */
                         html.theme-light #agent-modal textarea,
                         html.theme-light #agent-modal select {
                             background-color: #ffffff !important;
-                            border-color: #d1d5db !important;
-                            color: #111827 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light #agent-modal textarea::placeholder { color: #9ca3af !important; }
+                        html.theme-light #agent-modal textarea::placeholder { color: #526077 !important; }
                         /* 上傳參考檔案 label-button */
                         html.theme-light #agent-modal label[for="agent-file-input"] {
-                            background-color: #f3f4f6 !important;
-                            border-color: #d1d5db !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            border-color: #cdd5e1 !important;
+                            color: #334155 !important;
                         }
-                        html.theme-light #agent-modal label[for="agent-file-input"] i { color: #6b7280 !important; }
+                        html.theme-light #agent-modal label[for="agent-file-input"] i { color: #526077 !important; }
                         /* Divider inside card */
-                        html.theme-light #agent-modal .border-slate-800 { border-color: #e5e7eb !important; }
+                        html.theme-light #agent-modal .border-slate-800 { border-color: #e1e6ee !important; }
                         /* Target length input */
-                        html.theme-light #agent-modal input { background-color: #ffffff !important; border-color: #d1d5db !important; color: #111827 !important; }
+                        html.theme-light #agent-modal input { background-color: #ffffff !important; border-color: #cdd5e1 !important; color: #0f172a !important; }
                         /* X close button */
                         html.theme-light #agent-modal button[onclick="closeAgentModal()"] {
-                            background-color: #f3f4f6 !important;
-                            color: #374151 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #334155 !important;
                         }
                         /* 開始分析作業 button — keep it distinct but light-blue */
                         html.theme-light #agent-modal button[onclick*="startAgent"],
                         html.theme-light #agent-modal button[onclick*="runAgent"],
                         html.theme-light #agent-modal button[id*="agent-start"] {
-                            background-color: #60a5fa !important;
+                            background-color: #5b8def !important;
                             color: #ffffff !important;
-                            border-color: #3b82f6 !important;
+                            border-color: #2f63d6 !important;
                         }
                         
                         /* ══════════════════════════════════════════════════════
@@ -4274,45 +4288,149 @@ return html;
                         html.theme-light #nav-schedule,
                         html.theme-light #nav-notes,
                         html.theme-light #nav-audio {
-                            color: #374151 !important;
+                            color: #334155 !important;
                             background-color: transparent !important;
                         }
                         html.theme-light #nav-dashboard.bg-slate-800,
                         html.theme-light #nav-schedule.bg-slate-800,
                         html.theme-light #nav-notes.bg-slate-800,
                         html.theme-light #nav-audio.bg-slate-800 {
-                            background-color: #e9ecef !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         html.theme-light #nav-dashboard i,
                         html.theme-light #nav-schedule i,
                         html.theme-light #nav-notes i,
                         html.theme-light #nav-audio i {
-                            color: #6b7280 !important;
+                            color: #526077 !important;
                         }
                         html.theme-light #nav-dashboard:hover,
                         html.theme-light #nav-schedule:hover,
                         html.theme-light #nav-notes:hover,
                         html.theme-light #nav-audio:hover {
-                            background-color: #f3f4f6 !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
                         /* Mobile menu nav buttons (same IDs not used; target by onclick) */
                         html.theme-light button[onclick*="switchTab('dashboard')"],
                         html.theme-light button[onclick*="switchTab('schedule')"],
                         html.theme-light button[onclick*="switchTab('notes')"],
                         html.theme-light button[onclick*="switchTab('audio')"] {
-                            color: #374151 !important;
+                            color: #334155 !important;
                         }
                         html.theme-light button[onclick*="switchTab('dashboard')"].bg-slate-800,
                         html.theme-light button[onclick*="switchTab('schedule')"].bg-slate-800,
                         html.theme-light button[onclick*="switchTab('notes')"].bg-slate-800,
                         html.theme-light button[onclick*="switchTab('audio')"].bg-slate-800 {
-                            background-color: #e9ecef !important;
-                            color: #111827 !important;
+                            background-color: #f1f4f8 !important;
+                            color: #0f172a !important;
                         }
-                        html.theme-light button[onclick*="switchTab"] i { color: #6b7280 !important; }
-                        html.theme-light button[onclick*="switchTab"]:hover { background-color: #f3f4f6 !important; }
+                        html.theme-light button[onclick*="switchTab"] i { color: #526077 !important; }
+                        html.theme-light button[onclick*="switchTab"]:hover { background-color: #f1f4f8 !important; }
+
+                        /* v1.4.0（B 案，移植桌面 nova-app-main.js v1.13.0 ②）放在最後、選擇器多一層 :root，才蓋得過前面「紫／靛／綠實心鈕改成淺色鈕」的舊規則：白晝只用一個強調色——黑夜模式各種顏色的實心按鈕（紫、綠、青、琥珀…）在白晝一律改成鈷藍實心鈕；紅色系另外改成紅色實心鈕 */
+                        html.theme-light:root button[class~="bg-sky-500"],
+                        html.theme-light:root button[class~="bg-sky-600"],
+                        html.theme-light:root button[class~="bg-sky-700"],
+                        html.theme-light:root button[class~="bg-blue-500"],
+                        html.theme-light:root button[class~="bg-blue-600"],
+                        html.theme-light:root button[class~="bg-blue-700"],
+                        html.theme-light:root button[class~="bg-indigo-500"],
+                        html.theme-light:root button[class~="bg-indigo-600"],
+                        html.theme-light:root button[class~="bg-indigo-700"],
+                        html.theme-light:root button[class~="bg-violet-500"],
+                        html.theme-light:root button[class~="bg-violet-600"],
+                        html.theme-light:root button[class~="bg-violet-700"],
+                        html.theme-light:root button[class~="bg-purple-500"],
+                        html.theme-light:root button[class~="bg-purple-600"],
+                        html.theme-light:root button[class~="bg-purple-700"],
+                        html.theme-light:root button[class~="bg-fuchsia-500"],
+                        html.theme-light:root button[class~="bg-fuchsia-600"],
+                        html.theme-light:root button[class~="bg-fuchsia-700"],
+                        html.theme-light:root button[class~="bg-pink-500"],
+                        html.theme-light:root button[class~="bg-pink-600"],
+                        html.theme-light:root button[class~="bg-pink-700"],
+                        html.theme-light:root button[class~="bg-emerald-500"],
+                        html.theme-light:root button[class~="bg-emerald-600"],
+                        html.theme-light:root button[class~="bg-emerald-700"],
+                        html.theme-light:root button[class~="bg-green-500"],
+                        html.theme-light:root button[class~="bg-green-600"],
+                        html.theme-light:root button[class~="bg-green-700"],
+                        html.theme-light:root button[class~="bg-teal-500"],
+                        html.theme-light:root button[class~="bg-teal-600"],
+                        html.theme-light:root button[class~="bg-teal-700"],
+                        html.theme-light:root button[class~="bg-cyan-500"],
+                        html.theme-light:root button[class~="bg-cyan-600"],
+                        html.theme-light:root button[class~="bg-cyan-700"],
+                        html.theme-light:root button[class~="bg-lime-500"],
+                        html.theme-light:root button[class~="bg-lime-600"],
+                        html.theme-light:root button[class~="bg-lime-700"],
+                        html.theme-light:root button[class~="bg-amber-500"],
+                        html.theme-light:root button[class~="bg-amber-600"],
+                        html.theme-light:root button[class~="bg-amber-700"],
+                        html.theme-light:root button[class~="bg-orange-500"],
+                        html.theme-light:root button[class~="bg-orange-600"],
+                        html.theme-light:root button[class~="bg-orange-700"],
+                        html.theme-light:root button[class~="bg-yellow-500"],
+                        html.theme-light:root button[class~="bg-yellow-600"],
+                        html.theme-light:root button[class~="bg-yellow-700"] {
+                            background-color: #2f63d6 !important; color: #ffffff !important; border-color: #2f63d6 !important; box-shadow: none !important;
+                        }
+                        html.theme-light:root button[class~="bg-sky-500"]:hover,
+                        html.theme-light:root button[class~="bg-sky-600"]:hover,
+                        html.theme-light:root button[class~="bg-sky-700"]:hover,
+                        html.theme-light:root button[class~="bg-blue-500"]:hover,
+                        html.theme-light:root button[class~="bg-blue-600"]:hover,
+                        html.theme-light:root button[class~="bg-blue-700"]:hover,
+                        html.theme-light:root button[class~="bg-indigo-500"]:hover,
+                        html.theme-light:root button[class~="bg-indigo-600"]:hover,
+                        html.theme-light:root button[class~="bg-indigo-700"]:hover,
+                        html.theme-light:root button[class~="bg-violet-500"]:hover,
+                        html.theme-light:root button[class~="bg-violet-600"]:hover,
+                        html.theme-light:root button[class~="bg-violet-700"]:hover,
+                        html.theme-light:root button[class~="bg-purple-500"]:hover,
+                        html.theme-light:root button[class~="bg-purple-600"]:hover,
+                        html.theme-light:root button[class~="bg-purple-700"]:hover,
+                        html.theme-light:root button[class~="bg-fuchsia-500"]:hover,
+                        html.theme-light:root button[class~="bg-fuchsia-600"]:hover,
+                        html.theme-light:root button[class~="bg-fuchsia-700"]:hover,
+                        html.theme-light:root button[class~="bg-pink-500"]:hover,
+                        html.theme-light:root button[class~="bg-pink-600"]:hover,
+                        html.theme-light:root button[class~="bg-pink-700"]:hover,
+                        html.theme-light:root button[class~="bg-emerald-500"]:hover,
+                        html.theme-light:root button[class~="bg-emerald-600"]:hover,
+                        html.theme-light:root button[class~="bg-emerald-700"]:hover,
+                        html.theme-light:root button[class~="bg-green-500"]:hover,
+                        html.theme-light:root button[class~="bg-green-600"]:hover,
+                        html.theme-light:root button[class~="bg-green-700"]:hover,
+                        html.theme-light:root button[class~="bg-teal-500"]:hover,
+                        html.theme-light:root button[class~="bg-teal-600"]:hover,
+                        html.theme-light:root button[class~="bg-teal-700"]:hover,
+                        html.theme-light:root button[class~="bg-cyan-500"]:hover,
+                        html.theme-light:root button[class~="bg-cyan-600"]:hover,
+                        html.theme-light:root button[class~="bg-cyan-700"]:hover,
+                        html.theme-light:root button[class~="bg-lime-500"]:hover,
+                        html.theme-light:root button[class~="bg-lime-600"]:hover,
+                        html.theme-light:root button[class~="bg-lime-700"]:hover,
+                        html.theme-light:root button[class~="bg-amber-500"]:hover,
+                        html.theme-light:root button[class~="bg-amber-600"]:hover,
+                        html.theme-light:root button[class~="bg-amber-700"]:hover,
+                        html.theme-light:root button[class~="bg-orange-500"]:hover,
+                        html.theme-light:root button[class~="bg-orange-600"]:hover,
+                        html.theme-light:root button[class~="bg-orange-700"]:hover,
+                        html.theme-light:root button[class~="bg-yellow-500"]:hover,
+                        html.theme-light:root button[class~="bg-yellow-600"]:hover,
+                        html.theme-light:root button[class~="bg-yellow-700"]:hover {
+                            background-color: #2a58c0 !important; color: #ffffff !important;
+                        }
+                        html.theme-light:root button[class~="bg-red-500"],
+                        html.theme-light:root button[class~="bg-red-600"],
+                        html.theme-light:root button[class~="bg-red-700"],
+                        html.theme-light:root button[class~="bg-rose-500"],
+                        html.theme-light:root button[class~="bg-rose-600"],
+                        html.theme-light:root button[class~="bg-rose-700"] {
+                            background-color: #c03333 !important; color: #ffffff !important; border-color: #c03333 !important; box-shadow: none !important;
+                        }
                 `;
                 document.head.appendChild(style);
             }

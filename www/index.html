@@ -12,7 +12,7 @@
     //   novaAttr(s)：放進 HTML 屬性值用的跳脫（含引號）。novaJsStr(s)：放進行內事件 JS 字串用的跳脫（再包一層 novaAttr）。
     //   novaSanitizeHtml(html)：外部或同步來的 HTML 進畫面前清掉 <script>、on* 事件、javascript: 網址；iframe 只留 YouTube／Vimeo 內嵌。
     //   優先用 vendor/purify.min.js（DOMPurify 3.4.17），沒載入時退回內建的簡易清理。緊急關閉：localStorage nova_sanitize = '0'。
-    window.NOVA_INDEX_VERSION = '2.6.130';   // v2.6.130（v2.6.127 起：index.html 本身的版本；主程式與更新紀錄已搬到 nova-app-main.js，兩者應相同）。v2.6.130：Gemini 子模型與筆記辨識選單加入 4 Hydrogen／4 Carbon；13 個腳本的 ?v= 版本號更新（快速判斷、Insight、模型呼叫）
+    window.NOVA_INDEX_VERSION = '2.6.131';   // v2.6.131：B 案配色，只換版本號與 nova-ui.css（?v=1.20.0）、nova-app-main.js（?v=1.4.0）的快取參數，其他沒有改動。v2.6.130（v2.6.127 起：index.html 本身的版本；主程式與更新紀錄已搬到 nova-app-main.js，兩者應相同）。v2.6.130：Gemini 子模型與筆記辨識選單加入 4 Hydrogen／4 Carbon；13 個腳本的 ?v= 版本號更新（快速判斷、Insight、模型呼叫）
     (function () {
         var SAFE = /^(https?:|mailto:|tel:|sms:|blob:|data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml);)/i;
         window.novaSafeUrl = function (u) {
@@ -551,7 +551,7 @@
     <!-- 引入外部庫：Tailwind CSS (樣式框架) 與 Phosphor Icons (圖示庫) -->
     <!-- ✅ 本地化函式庫（不依賴 CDN，離線也能用）-->
     <link rel="stylesheet" href="./vendor/tailwind.css">
-    <link rel="stylesheet" href="./nova-ui.css?v=1.19.0">
+    <link rel="stylesheet" href="./nova-ui.css?v=1.20.0">
     <link rel="stylesheet" href="./vendor/katex/katex.min.css">
     <script src="./vendor/katex/katex.min.js"></script>
     <script src="./nova-mcp-remote.js"></script><script src="./nova-fc.js?v=1.0.1"></script><!-- v2.6.22：遠端 MCP 客戶端與 Function Calling 迴圈 -->
@@ -2316,7 +2316,7 @@
     <div id="toast">✅ 訊息提示</div>
 
   <!-- ================= JavaScript 邏輯與功能實作 ================= -->
-    <script charset="utf-8" src="./nova-app-main.js?v=1.3.0" onerror="window._novaMainLoadFail=true"></script>
+    <script charset="utf-8" src="./nova-app-main.js?v=1.4.0" onerror="window._novaMainLoadFail=true"></script>
     <script>
     // v2.6.127：主程式（原本這裡的內嵌腳本）已搬到 nova-app-main.js；載入失敗時直接在畫面上說明，不會只剩空白畫面
     if (window._novaMainLoadFail) { (function () { var d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fca5a5;padding:24px;font:15px/1.6 sans-serif;'; d.textContent = '⚠️ NOVA 主程式（nova-app-main.js）載入失敗：檔案不存在或讀不到。請確認 www 資料夾裡有 nova-app-main.js 並重新安裝／更新 App。'; (document.body || document.documentElement).appendChild(d); })(); }

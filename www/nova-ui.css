@@ -1,7 +1,17 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.19.0
+   版本：v1.20.0
    版本紀錄：
+   v1.20.0 - App v2.6.131：B 案配色（冷色藍灰＋鈷藍），對標桌面 nova-ui.css v1.1.0／v1.2.0、nova-app-main.js v1.13.0～v1.14.0；黑夜＋白晝都改：
+            ① 設計 token 換成桌面 B 案（黑夜 #0f141c／#131a24／#1a2230、強調 #5b8def＋深色字 #0b1220；白晝 #f1f4f8／#fafbfd／#ffffff、強調 #2f63d6＋白字），
+               原本白晝是米白暖灰＋陶土橘、跟主程式白晝樣式表（冷灰＋藍）混在一起，設定頁、按鈕、選中狀態顏色不一致；新增 --nv-ok／warn／switch-off／bg／border／input 等變數。
+            ② 新第 25 節：黑夜 slate 底色／邊框換 B 案藍灰（#020617→#131a24），頂列／抽屜／＋選單用 chrome、輸入卡片用 card；text-slate-500／600 提亮到 ≥ 4.5:1；
+               emerald-600／sky-600／indigo-500／blue-500 實心鈕底色加深一階（白字 ≥ 5:1）；Insight／研發／專案的強調色鈕改深色字。
+            ③ 白晝：Tailwind 亮色字（*-200～500，白底 1.4～2.8:1）換同色相深色版；實心彩色鈕一律白字（設定頁 ID 權重的規則原本把白字蓋成深色）；
+               ＋選單功能方塊白底＋中性外框＋強調色圖示（移植桌面 v1.2.0 ⑧）；筆記標籤膠囊、排程空白狀態、深度研究說明橫幅、確認框圖示可讀；
+               h1～h3 無襯線；主題選擇卡選中改強調色；AI 大腦圖譜白晝改淺色面板（取代 §24 的固定深色）；專案／工作資料夾／Google 整合主要鈕用強調色；
+               模組寫在行內 style 的淺色字（給深底用的）在白晝換成深色。
+            ④ 其他白晝規則裡寫死的暖色（開關軌道 #d6d2c4／#cdc8b9、設定頁遮罩）換成冷色。
    v1.19.0 - v2.6.67：聯網搜尋作用中拿掉漸層光環與呼吸動畫，只留圖示顏色。
    v1.18.0 - v2.6.66：第 24 節——AI 大腦圖譜（#nbg-root）面板在白晝模式維持深色，按鈕不被全域規則蓋成透明。
    v1.17.0 - v2.6.65：白晝模式多專家快捷鈕啟動後圖示改深紫（原本淺紫字疊在淺紫底而消失）；聯網搜尋作用中拿掉底色，只留漸層呼吸光環。
@@ -40,46 +50,72 @@
   --nv-font: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
   --nv-radius: 10px;
   --nv-radius-lg: 14px;
-  --nv-chrome: #0f172a;
-  --nv-canvas: #020617;
-  --nv-card: #0f172a;
-  --nv-card-2: #1e293b;
-  --nv-line: #1e293b;
-  --nv-line-strong: #334155;
-  --nv-text: #f1f5f9;
-  --nv-text-2: #cbd5e1;
-  --nv-muted: #94a3b8;
-  --nv-faint: #7c8aa0;
-  --nv-hover: rgba(148,163,184,.10);
-  --nv-active: rgba(148,163,184,.17);
-  --nv-accent: #3b82f6;
-  --nv-accent-text: #60a5fa;
-  --nv-accent-soft: rgba(59,130,246,.14);
-  --nv-on-accent: #ffffff;
-  --nv-danger: #ef4444;
-  --nv-shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
-  --nv-shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  /* v1.20.0 B 案（移植桌面 nova-ui.css v1.1.0／v1.2.0）（冷色藍灰＋鈷藍）黑夜 */
+  --nv-chrome: #0f141c;        /* 標題列／側邊欄底色（同色，視覺上連成一體） */
+  --nv-canvas: #131a24;        /* 主對話區底色 */
+  --nv-card: #1a2230;
+  --nv-card-2: #222c3b;
+  --nv-line: #253043;
+  --nv-line-strong: #334058;
+  --nv-text: #eef2f7;
+  --nv-text-2: #cdd5e1;
+  --nv-muted: #a3afc2;
+  --nv-faint: #8b98ad;
+  --nv-hover: rgba(238,242,247,.06);
+  --nv-active: rgba(238,242,247,.10);
+  --nv-accent: #5b8def;
+  --nv-accent-text: #7ea6f5;
+  --nv-accent-soft: rgba(91,141,239,.16);
+  --nv-on-accent: #0b1220;
+  --nv-danger: #f07a7a;
+  --nv-danger-soft: rgba(240,122,122,.12);
+  --nv-ok: #5cc8a0;
+  --nv-ok-soft: rgba(92,200,160,.14);
+  --nv-warn: #e3b14f;
+  --nv-warn-soft: rgba(227,177,79,.12);
+  --nv-input-bg: #0f141c;
+  --nv-switch-off: #334058;
+  --nv-knob: #eef2f7;
+  --nv-divider: #2e3a50;
+  --nv-bg: #131a24;            /* 舊模組用的別名（NovaOffice 等）＝ --nv-canvas */
+  --nv-border: #334058;        /* 舊模組用的別名（系統健康、記憶面板）＝ --nv-line-strong */
+  --nv-input: #0f141c;         /* ＝ --nv-input-bg */
+  --nv-shadow: 0 1px 2px rgba(0,0,0,.45), 0 12px 32px rgba(0,0,0,.4);
+  --nv-shadow-sm: 0 1px 2px rgba(0,0,0,.35);
 }
 html.theme-light {
-  --nv-chrome: #faf9f5;
-  --nv-canvas: #faf9f5;
-  --nv-card: #fdfcfa;
-  --nv-card-2: #f3f1ea;
-  --nv-line: #e8e5dc;
-  --nv-line-strong: #d9d5c9;
-  --nv-text: #141413;
-  --nv-text-2: #3d3929;
-  --nv-muted: #6b6860;
-  --nv-faint: #8a8679;
-  --nv-hover: rgba(20,20,19,.055);
-  --nv-active: rgba(20,20,19,.085);
-  --nv-accent: #c15f3c;
-  --nv-accent-text: #b5502d;
-  --nv-accent-soft: rgba(193,95,60,.12);
+  /* v1.20.0 B 案（移植桌面 nova-ui.css v1.1.0／v1.2.0）（冷色藍灰＋鈷藍）白晝 */
+  --nv-chrome: #f1f4f8;
+  --nv-canvas: #fafbfd;
+  --nv-card: #ffffff;
+  --nv-card-2: #f4f6fa;
+  --nv-line: #e1e6ee;
+  --nv-line-strong: #cdd5e1;
+  --nv-text: #0f172a;
+  --nv-text-2: #334155;
+  --nv-muted: #526077;
+  --nv-faint: #5f6c80;
+  --nv-hover: rgba(15,23,42,.05);
+  --nv-active: rgba(15,23,42,.08);
+  --nv-accent: #2f63d6;
+  --nv-accent-text: #2a58c0;
+  --nv-accent-soft: rgba(47,99,214,.10);
   --nv-on-accent: #ffffff;
-  --nv-danger: #c0392b;
-  --nv-shadow: 0 1px 2px rgba(60,50,30,.08), 0 8px 24px rgba(60,50,30,.10);
-  --nv-shadow-sm: 0 1px 2px rgba(60,50,30,.08);
+  --nv-danger: #c03333;
+  --nv-danger-soft: rgba(192,51,51,.07);
+  --nv-ok: #1f7a58;
+  --nv-ok-soft: rgba(31,122,88,.10);
+  --nv-warn: #93620f;
+  --nv-warn-soft: rgba(196,138,20,.10);
+  --nv-input-bg: #ffffff;
+  --nv-switch-off: #cdd5e1;
+  --nv-knob: #ffffff;
+  --nv-divider: #e6ebf2;
+  --nv-bg: #fafbfd;
+  --nv-border: #cdd5e1;
+  --nv-input: #ffffff;
+  --nv-shadow: 0 1px 2px rgba(15,23,42,.06), 0 12px 32px rgba(15,23,42,.08);
+  --nv-shadow-sm: 0 1px 2px rgba(15,23,42,.06);
 }
 
 /* ───────────── 2. 通用元件（後續批次共用） ───────────── */
@@ -207,7 +243,7 @@ html:root body #view-dashboard > div > div.shrink-0.relative.z-10 { padding: 4px
 
 /* ───────────── 10. 設定頁（對標桌面版：搜尋＋分類膠囊＋卡片區塊） ───────────── */
 html:root body #settings-modal { background: rgba(2,6,23,.62) !important; backdrop-filter: blur(6px); }
-html.theme-light body #settings-modal { background: rgba(60,50,30,.28) !important; }
+html.theme-light body #settings-modal { background: rgba(15,23,42,.28) !important; }
 html:root body #settings-modal > div { background: var(--nv-card) !important; border: 0 !important; box-shadow: none; }
 html:root body #settings-modal > div > .flex.justify-between.items-center h3 { font-size: 19px; font-weight: 650; color: var(--nv-text) !important; }
 html:root body #settings-modal > div > .flex.justify-between.items-center button { color: var(--nv-muted); border-radius: 8px; padding: 4px; }
@@ -263,7 +299,7 @@ html:root body #settings-modal > div > .mt-4.pt-2.flex { border-top: 1px solid v
 html:root body #settings-modal > div > .mt-4 button[onclick="saveKeys()"] { background: var(--nv-accent) !important; color: var(--nv-on-accent) !important; border-radius: 9px; font-weight: 650; box-shadow: none; }
 html:root body #settings-modal > div > .mt-4 button[onclick="closeSettings()"] { color: var(--nv-muted) !important; border-radius: 9px; }
 html:root body #settings-modal > div > .mt-4 button[onclick="exportSettings()"], html:root body #settings-modal > div > .mt-4 label[for="import-settings-input"] { background: transparent !important; color: var(--nv-text-2) !important; border: 1px solid var(--nv-line-strong) !important; border-radius: 9px; }
-html.theme-light:root body #settings-modal .peer:not(:checked) ~ div.rounded-full { background-color: #cdc8b9 !important; }
+html.theme-light:root body #settings-modal .peer:not(:checked) ~ div.rounded-full { background-color: var(--nv-switch-off) !important; }
 html:not(.theme-light):root body #settings-modal .peer:not(:checked) ~ div.rounded-full { background-color: #3b4658 !important; }
 
 /* ───────────── 11. 主畫面頂列＋抽屜選單（批次 9，對標桌面版手機殼） ───────────── */
@@ -466,9 +502,9 @@ html:root body #tab-audio button[onclick^="deleteAudioRecord"] { background: tra
 /* ───────────── 19. v2.6.58：白晝開關對比（桌面版 v3.70.3 ②）＋專案資料夾列 Claude 風格（桌面版 v3.64.1 ④） ───────────── */
 /* 開關：關閉＝灰米色軌道；開啟＝強調色軌道；滑塊一律白色＋淡陰影。選擇器加倍 [class] 才壓得過上面各處的 !important 屬性選擇器 */
 html.theme-light:root body label > input.peer + div[class][class],
-html.theme-light:root body #settings-modal label > input.peer + div[class][class] { background-color: #d6d2c4 !important; transition: background-color .18s; }
+html.theme-light:root body #settings-modal label > input.peer + div[class][class] { background-color: var(--nv-switch-off) !important; transition: background-color .18s; }
 html.theme-light:root body label > input.peer:checked + div[class][class],
-html.theme-light:root body #settings-modal label > input.peer:checked + div[class][class] { background-color: var(--nv-accent, #c15f3c) !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+html.theme-light:root body #settings-modal label > input.peer:checked + div[class][class] { background-color: var(--nv-accent, #2f63d6) !important; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
 html.theme-light:root body label > input.peer + div[class][class]::after,
 html.theme-light:root body #settings-modal label > input.peer + div[class][class]::after { background-color: #ffffff !important; border-color: #ffffff !important; box-shadow: 0 1px 3px rgba(0,0,0,.28); }
 
@@ -529,3 +565,166 @@ html.theme-light:root body #nbg-root #nbg-issues { color: #fca5a5 !important; }
 html.theme-light:root body #nbg-root #nbg-detail button { background: #0ea5e9 !important; color: #fff !important; }
 html.theme-light:root body #nbg-root #nbg-detail #nbg-dclose { background: #1e293b !important; color: #cbd5e1 !important; }
 html.theme-light:root body #nbg-root #nbg-head, html.theme-light:root body #nbg-root #nbg-layers, html.theme-light:root body #nbg-root #nbg-ctl { background: #0f172a !important; }
+
+/* ═══ §25（v1.20.0）B 案配色一致性（對標桌面 nova-ui.css v1.1.0／v1.2.0、nova-app-main.js v1.13.0～v1.14.0；黑夜＋白晝） ═══ */
+
+/* ── 25-1 黑夜：Tailwind slate 底色／邊框換成 B 案藍灰（#020617 近黑 → #131a24），跟桌面黑夜同一組 ── */
+html:not(.theme-light) body.bg-slate-950, html:not(.theme-light) body .bg-slate-950 { background-color: #131a24 !important; }
+html:not(.theme-light) body .bg-slate-950\/90 { background-color: rgba(19,26,36,.92) !important; }
+html:not(.theme-light) body .bg-slate-950\/80 { background-color: rgba(19,26,36,.82) !important; }
+html:not(.theme-light) body .bg-slate-950\/50 { background-color: rgba(19,26,36,.55) !important; }
+html:not(.theme-light) body .bg-slate-900 { background-color: #1a2230 !important; }
+html:not(.theme-light) body .bg-slate-900\/95 { background-color: rgba(15,20,28,.97) !important; }
+html:not(.theme-light) body .bg-slate-900\/80 { background-color: rgba(26,34,48,.85) !important; }
+html:not(.theme-light) body .bg-slate-900\/60 { background-color: rgba(26,34,48,.65) !important; }
+html:not(.theme-light) body .bg-slate-900\/50 { background-color: rgba(26,34,48,.55) !important; }
+html:not(.theme-light) body .bg-slate-800 { background-color: #222c3b !important; }
+html:not(.theme-light) body .bg-slate-800\/80 { background-color: rgba(34,44,59,.85) !important; }
+html:not(.theme-light) body .bg-slate-800\/60 { background-color: rgba(34,44,59,.65) !important; }
+html:not(.theme-light) body .bg-slate-800\/50 { background-color: rgba(34,44,59,.55) !important; }
+html:not(.theme-light) body .bg-slate-700 { background-color: #334058 !important; }
+html:not(.theme-light) body .border-slate-800 { border-color: #253043 !important; }
+html:not(.theme-light) body .border-slate-700 { border-color: #334058 !important; }
+html:not(.theme-light) body .border-slate-600 { border-color: #3d4b63 !important; }
+/* 頂列、抽屜、輸入卡片：頂列／抽屜用 chrome、對話區用 canvas、輸入卡片用 card（同桌面：標題列＝側欄色、主區較亮一階） */
+html:not(.theme-light) body #mobile-menu { background-color: var(--nv-chrome) !important; }
+html:not(.theme-light) body #nova-composer { background-color: var(--nv-card) !important; border-color: var(--nv-line-strong) !important; }
+html:not(.theme-light) body #plus-menu { background-color: var(--nv-chrome) !important; border-top-color: var(--nv-line) !important; }
+/* 模組寫死在行內的深色底（#020617／#0f172a／#1e293b）一併換 */
+html:not(.theme-light) body [style*="background:#020617"], html:not(.theme-light) body [style*="background: #020617"] { background-color: #131a24 !important; }
+html:not(.theme-light) body [style*="background:#0f172a"], html:not(.theme-light) body [style*="background: #0f172a"] { background-color: #1a2230 !important; }
+html:not(.theme-light) body [style*="background:#1e293b"], html:not(.theme-light) body [style*="background: #1e293b"] { background-color: #222c3b !important; }
+
+/* ── 25-2 黑夜：灰字提亮（slate-500／600 在深底上只有 2.4～4.2:1；改成 ≥ 4.5:1，對標桌面第 2 節） ── */
+html:not(.theme-light) body .text-slate-500 { color: #93a0b4 !important; }
+html:not(.theme-light) body .text-slate-600 { color: #8b98ad !important; }
+html:not(.theme-light) body .placeholder-slate-500::placeholder, html:not(.theme-light) body .placeholder-slate-600::placeholder,
+html:not(.theme-light) body input::placeholder, html:not(.theme-light) body textarea::placeholder { color: #6b7a90 !important; opacity: 1; }
+html:not(.theme-light) body .line-through.text-slate-600, html:not(.theme-light) body .line-through .text-slate-600 { color: #8b98ad !important; }
+html:not(.theme-light) body #chat-container .opacity-60.text-slate-500 { opacity: .9 !important; }
+
+/* ── 25-3 黑夜：實心按鈕白字對比（emerald-600／sky-600／indigo-500／blue-500 只有 3.7～4.5:1，底色加深一階到 ≥ 5:1；色相不變） ── */
+html:not(.theme-light) body button.bg-emerald-600, html:not(.theme-light) body .bg-emerald-600.text-white { background-color: #047857 !important; }
+html:not(.theme-light) body button.bg-emerald-600:hover { background-color: #065f46 !important; }
+html:not(.theme-light) body button.bg-blue-500 { background-color: #2563eb !important; }
+html:not(.theme-light) body button.bg-sky-600 { background-color: #0369a1 !important; }
+html:not(.theme-light) body button.bg-indigo-500 { background-color: #4f46e5 !important; }
+html:not(.theme-light) body #folder-tabs-container button.bg-emerald-600 { background-color: #047857 !important; }
+/* 模組裡「強調色底＋白字」的分頁／主要鈕：黑夜強調色 #5b8def 配白字只有 3.2:1，改用桌面 B 案的深色字（--nv-on-accent #0b1220，5.8:1） */
+html:not(.theme-light) body :is(#nin-win .tab.on, #nin-win .btn.pri, #nin-sheet .btn.pri, #nrs-win .tab.on, #nrs-win .btn.pri, #nrs-win .chip.on, #nrs-sheet .btn.pri,
+  #npj-win .npj-b.pri, #npj-notepick .npj-b.pri, #npj-win .npj-cite) { color: var(--nv-on-accent) !important; }
+html:not(.theme-light) body #npj-win .npj-msg.u .bub { color: var(--nv-on-accent) !important; }
+/* Google 整合／工作資料夾／電腦遙控的主要鈕（sky／indigo）白字對比不足 */
+html:not(.theme-light) body #nova-google-modal :is(.ng-tab.on, .ng-btn.ng-sky) { background-color: #0369a1 !important; border-color: #0369a1 !important; }
+html:not(.theme-light) body #nova-ws-modal :is(.nw-tab.on, .nw-btn.pri) { background-color: #4f46e5 !important; border-color: #4f46e5 !important; }
+html:not(.theme-light) body #custom-confirm-modal button.text-slate-400 { color: #cdd5e1 !important; }
+
+/* ── 25-4 白晝：Tailwind 亮色字（*-200～500）在白底只有 1.4～2.8:1，換成同色相的深色版（≥ 4.5:1；sky 依桌面 v1.14.0 併入鈷藍） ── */
+html.theme-light:root body .text-blue-200, html.theme-light:root body .text-blue-300, html.theme-light:root body .text-blue-400, html.theme-light:root body .text-blue-500 { color: #2a58c0 !important; }
+html.theme-light:root body .text-sky-200, html.theme-light:root body .text-sky-300, html.theme-light:root body .text-sky-400, html.theme-light:root body .text-sky-500 { color: #2a58c0 !important; }
+html.theme-light:root body .text-emerald-200, html.theme-light:root body .text-emerald-300, html.theme-light:root body .text-emerald-400, html.theme-light:root body .text-emerald-500 { color: #1f7a58 !important; }
+html.theme-light:root body .text-green-200, html.theme-light:root body .text-green-300, html.theme-light:root body .text-green-400, html.theme-light:root body .text-green-500 { color: #1f7a58 !important; }
+html.theme-light:root body .text-purple-200, html.theme-light:root body .text-purple-300, html.theme-light:root body .text-purple-400, html.theme-light:root body .text-purple-500 { color: #5b46b0 !important; }
+html.theme-light:root body .text-violet-200, html.theme-light:root body .text-violet-300, html.theme-light:root body .text-violet-400, html.theme-light:root body .text-violet-500 { color: #5b46b0 !important; }
+html.theme-light:root body .text-amber-200, html.theme-light:root body .text-amber-300, html.theme-light:root body .text-amber-400, html.theme-light:root body .text-amber-500 { color: #93620f !important; }
+html.theme-light:root body .text-yellow-200, html.theme-light:root body .text-yellow-300, html.theme-light:root body .text-yellow-400, html.theme-light:root body .text-yellow-500 { color: #8a5a00 !important; }
+html.theme-light:root body .text-cyan-200, html.theme-light:root body .text-cyan-300, html.theme-light:root body .text-cyan-400, html.theme-light:root body .text-cyan-500 { color: #1d6b7a !important; }
+html.theme-light:root body .text-teal-200, html.theme-light:root body .text-teal-300, html.theme-light:root body .text-teal-400, html.theme-light:root body .text-teal-500 { color: #1f6f66 !important; }
+html.theme-light:root body .text-red-200, html.theme-light:root body .text-red-300, html.theme-light:root body .text-red-400, html.theme-light:root body .text-red-500 { color: #b42318 !important; }
+html.theme-light:root body .text-rose-200, html.theme-light:root body .text-rose-300, html.theme-light:root body .text-rose-400, html.theme-light:root body .text-rose-500 { color: #b4234a !important; }
+html.theme-light:root body .text-pink-200, html.theme-light:root body .text-pink-300, html.theme-light:root body .text-pink-400, html.theme-light:root body .text-pink-500 { color: #a8327a !important; }
+html.theme-light:root body .text-orange-200, html.theme-light:root body .text-orange-300, html.theme-light:root body .text-orange-400, html.theme-light:root body .text-orange-500 { color: #a24a12 !important; }
+html.theme-light:root body .text-indigo-200, html.theme-light:root body .text-indigo-300, html.theme-light:root body .text-indigo-400, html.theme-light:root body .text-indigo-500 { color: #4338ca !important; }
+html.theme-light:root body .text-lime-200, html.theme-light:root body .text-lime-300, html.theme-light:root body .text-lime-400, html.theme-light:root body .text-lime-500 { color: #3f6212 !important; }
+html.theme-light:root body .text-fuchsia-200, html.theme-light:root body .text-fuchsia-300, html.theme-light:root body .text-fuchsia-400, html.theme-light:root body .text-fuchsia-500 { color: #9b2c9b !important; }
+html.theme-light:root body .text-green-500, html.theme-light:root body .text-green-600 { color: #1f7a58 !important; }
+html.theme-light:root body .text-yellow-400, html.theme-light:root body .text-yellow-500 { color: #8a5a00 !important; }
+/* 實心按鈕裡的字與圖示一律跟著按鈕字色（避免上面的規則把白字改深） */
+html.theme-light:root body button:is([class~="bg-sky-500"], [class~="bg-sky-600"], [class~="bg-sky-700"], [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"], [class~="bg-indigo-500"], [class~="bg-indigo-600"], [class~="bg-indigo-700"], [class~="bg-violet-500"], [class~="bg-violet-600"], [class~="bg-violet-700"], [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"], [class~="bg-fuchsia-500"], [class~="bg-fuchsia-600"], [class~="bg-fuchsia-700"], [class~="bg-pink-500"], [class~="bg-pink-600"], [class~="bg-pink-700"], [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-emerald-700"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-green-700"], [class~="bg-teal-500"], [class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-cyan-500"], [class~="bg-cyan-600"], [class~="bg-cyan-700"], [class~="bg-lime-500"], [class~="bg-lime-600"], [class~="bg-lime-700"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"], [class~="bg-orange-500"], [class~="bg-orange-600"], [class~="bg-orange-700"], [class~="bg-yellow-500"], [class~="bg-yellow-600"], [class~="bg-yellow-700"], [class~="bg-red-500"], [class~="bg-red-600"], [class~="bg-red-700"], [class~="bg-rose-500"], [class~="bg-rose-600"], [class~="bg-rose-700"]) :is(i, span, svg) { color: inherit !important; }
+html.theme-light:root body button:is([class~="bg-sky-500"], [class~="bg-sky-600"], [class~="bg-sky-700"], [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"], [class~="bg-indigo-500"], [class~="bg-indigo-600"], [class~="bg-indigo-700"], [class~="bg-violet-500"], [class~="bg-violet-600"], [class~="bg-violet-700"], [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"], [class~="bg-fuchsia-500"], [class~="bg-fuchsia-600"], [class~="bg-fuchsia-700"], [class~="bg-pink-500"], [class~="bg-pink-600"], [class~="bg-pink-700"], [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-emerald-700"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-green-700"], [class~="bg-teal-500"], [class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-cyan-500"], [class~="bg-cyan-600"], [class~="bg-cyan-700"], [class~="bg-lime-500"], [class~="bg-lime-600"], [class~="bg-lime-700"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"], [class~="bg-orange-500"], [class~="bg-orange-600"], [class~="bg-orange-700"], [class~="bg-yellow-500"], [class~="bg-yellow-600"], [class~="bg-yellow-700"]) { color: #ffffff !important; }
+
+/* ── 25-5 白晝：頂列 logo／標題、聊天模型名稱 ── */
+html.theme-light:root body #nova-mobile-topbar .ph-infinity { color: var(--nv-accent) !important; }
+html.theme-light:root body #nova-top-title, html.theme-light:root body .nv-top-title { color: var(--nv-muted) !important; }
+html.theme-light:root body #chat-container .text-blue-400.opacity-80 { opacity: 1 !important; }
+html.theme-light:root body #search-hint { color: var(--nv-accent-text) !important; }
+
+/* ── 25-6 白晝：「＋」選單功能方塊（移植桌面 v1.2.0 ⑧：白底、中性外框、圖示用強調色；LIVE 啟用的紅色保留；黑夜維持各自顏色） ── */
+html.theme-light:root body #plus-menu { background: var(--nv-chrome) !important; border-top-color: var(--nv-line) !important; box-shadow: 0 -8px 20px rgba(15,23,42,.08) !important; }
+html.theme-light:root body #plus-menu > :is(button, a, label).nv-pm, html.theme-light:root body #plus-menu > :is(button, a, label)[class~="bg-slate-800"] {
+  background: #ffffff !important; border: 1px solid var(--nv-line-strong) !important; box-shadow: none !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #plus-menu > :is(button, a, label).nv-pm:active { border-color: var(--nv-accent) !important; background: var(--nv-accent-soft) !important; }
+html.theme-light:root body #plus-menu > :is(button, a, label).nv-pm:not([class*="text-red"]) > i,
+html.theme-light:root body #plus-menu > :is(button, a, label).nv-pm:not([class*="text-red"]) i { color: var(--nv-accent-text) !important; }
+html.theme-light:root body #plus-menu > :is(button, a, label) > span { color: var(--nv-text) !important; }
+
+/* ── 25-7 白晝：筆記標籤膠囊（原本淺紫字疊淺底幾乎看不見）、排程空白狀態、已完成項目 ── */
+html.theme-light:root body .nova-tag-chip { background: #eeeafb !important; color: #5b46b0 !important; border-color: #cfc6f0 !important; }
+html.theme-light:root body .nova-tag-chip i, html.theme-light:root body .nova-tag-chip button { color: #5b46b0 !important; }
+html.theme-light:root body #full-todo-list .text-slate-600, html.theme-light:root body #full-todo-list .line-through { color: var(--nv-faint) !important; }
+html.theme-light:root body #full-todo-list .ph-bell-slash { color: var(--nv-faint) !important; }
+html.theme-light:root body [data-todo-card] { background: #ffffff !important; border-color: #cdd5e1 !important; box-shadow: none !important; }
+
+/* ── 25-8 白晝標題一律無襯線（桌面 v1.2.0 ⑦） ── */
+html.theme-light:root body h1:not(.font-serif), html.theme-light:root body h2:not(.font-serif), html.theme-light:root body h3:not(.font-serif) { font-family: var(--nv-font) !important; letter-spacing: normal; }
+
+/* ── 25-9 設定頁主題選擇卡：選中改強調色（原本白晝是黃框米黃底；桌面 v1.2.0 ⑥） ── */
+html:root body #settings-modal :is(#theme-btn-light, #theme-btn-dark)[class~="ring-2"] {
+  background: var(--nv-accent-soft) !important; border-color: var(--nv-accent) !important; box-shadow: 0 0 0 3px var(--nv-accent-soft) !important; --tw-ring-color: transparent !important; }
+html:root body #settings-modal :is(#theme-btn-light, #theme-btn-dark):not([class~="ring-2"]) { background: var(--nv-card-2) !important; border-color: var(--nv-line) !important; }
+html.theme-light:root body #settings-modal [class*="bg-yellow-"]:not(button):not(span), html.theme-light:root body #settings-modal [class*="bg-amber-"][class*="rounded"]:not(button):not(span) {
+  background: var(--nv-card-2) !important; border-color: var(--nv-line) !important; }
+/* 設定頁內的實心按鈕（快照、匯出圖片、Drive 上傳…）：設定頁的通用按鈕規則有 ID 權重，這裡同權重補回白字 */
+html.theme-light:root body #settings-modal button:is([class~="bg-sky-500"], [class~="bg-sky-600"], [class~="bg-sky-700"], [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"], [class~="bg-indigo-500"], [class~="bg-indigo-600"], [class~="bg-indigo-700"], [class~="bg-violet-500"], [class~="bg-violet-600"], [class~="bg-violet-700"], [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"], [class~="bg-fuchsia-500"], [class~="bg-fuchsia-600"], [class~="bg-fuchsia-700"], [class~="bg-pink-500"], [class~="bg-pink-600"], [class~="bg-pink-700"], [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-emerald-700"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-green-700"], [class~="bg-teal-500"], [class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-cyan-500"], [class~="bg-cyan-600"], [class~="bg-cyan-700"], [class~="bg-lime-500"], [class~="bg-lime-600"], [class~="bg-lime-700"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"], [class~="bg-orange-500"], [class~="bg-orange-600"], [class~="bg-orange-700"], [class~="bg-yellow-500"], [class~="bg-yellow-600"], [class~="bg-yellow-700"]) { background-color: #2f63d6 !important; border-color: #2f63d6 !important; color: #ffffff !important; }
+
+/* ── 25-10 深度研究／多 AI 控制台的說明橫幅（紫字疊紫底）、確認框圖示 ── */
+html.theme-light:root body :is(#nova-dr-modal, #agent-modal) [class*="bg-purple-9"], html.theme-light:root body :is(#nova-dr-modal, #agent-modal) [class*="bg-violet-9"] {
+  background: #eeeafb !important; border-color: #cfc6f0 !important; color: #3b2f86 !important; }
+html.theme-light:root body :is(#nova-dr-modal, #agent-modal) [class*="bg-purple-9"] *, html.theme-light:root body :is(#nova-dr-modal, #agent-modal) [class*="bg-violet-9"] * { color: inherit !important; }
+html.theme-light:root body #custom-confirm-modal .text-yellow-400 { color: #b06a26 !important; }
+
+/* ── 25-11 AI 大腦圖譜：白晝改淺色標題列與面板（取代 §24 的「固定深色」，對標桌面 v1.2.0 ⑤；圖譜本身由 nova-brain-graph.js 依主題換色） ── */
+html.theme-light:root body #nbg-root { background: var(--nv-canvas) !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #nbg-root #nbg-head, html.theme-light:root body #nbg-root #nbg-layers, html.theme-light:root body #nbg-root #nbg-ctl { background: var(--nv-chrome) !important; border-bottom-color: var(--nv-line) !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #nbg-root #nbg-head > div:first-child { color: var(--nv-text) !important; }
+html.theme-light:root body #nbg-root label { color: var(--nv-muted) !important; }
+html.theme-light:root body #nbg-root button { background: var(--nv-card) !important; background-color: var(--nv-card) !important; border: 1px solid var(--nv-line-strong) !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #nbg-root #nbg-issues { color: var(--nv-danger) !important; }
+html.theme-light:root body #nbg-root :is(#nbg-legend, #nbg-detail, #nbg-issuelist) { background: rgba(255,255,255,.95) !important; border-color: var(--nv-line-strong) !important; color: var(--nv-text-2) !important; }
+html.theme-light:root body #nbg-root #nbg-detail button { background: var(--nv-accent) !important; color: #fff !important; border-color: var(--nv-accent) !important; }
+html.theme-light:root body #nbg-root #nbg-detail #nbg-dclose { background: var(--nv-card) !important; color: var(--nv-text-2) !important; }
+
+/* ── 25-12 專案視窗／生圖：強調色統一（桌面 v1.2.0 ④） ── */
+html:root body #npj-win, html:root body #npj-notepick { --ac: var(--nv-accent); --ac2: var(--nv-accent-text); }
+html.theme-light:root body #npj-win, html.theme-light:root body #npj-notepick { --b: var(--nv-canvas); --c: #ffffff; --c2: var(--nv-card-2); --bd: var(--nv-line-strong); --t: var(--nv-text); --t2: var(--nv-muted); }
+html:root body #nova-ws-modal { --nv-ws-acc: var(--nv-accent); }
+html.theme-light:root body #nova-ws-modal :is(.nw-tab.on, .nw-btn.pri) { background-color: var(--nv-accent) !important; border-color: var(--nv-accent) !important; color: #fff !important; }
+html.theme-light:root body #nova-ws-modal .nw-msg.err { color: #b42318 !important; }
+html.theme-light:root body #nova-google-modal :is(.ng-tab.on, .ng-btn.ng-sky) { background-color: var(--nv-accent) !important; border-color: var(--nv-accent) !important; color: #fff !important; }
+html.theme-light:root body #nova-google-modal .ph-google-logo { color: var(--nv-accent-text) !important; }
+html:not(.theme-light) body #nova-remote-overlay button:is([style*="#6366f1"], [style*="99, 102, 241"]) { background: #4f46e5 !important; }
+html.theme-light:root body #nova-remote-overlay button:is([style*="#6366f1"], [style*="99, 102, 241"]) { background: var(--nv-accent) !important; color: #fff !important; }
+
+/* ── 25-13 白晝：模組寫在行內 style 的淺色字（原本給深底用）換成深色；綠色標籤膠囊 ── */
+html.theme-light:root body [style*="color: rgb(196, 181, 253)"], html.theme-light:root body [style*="color:#c4b5fd"], html.theme-light:root body [style*="color: rgb(216, 180, 254)"], html.theme-light:root body [style*="color:#d8b4fe"], html.theme-light:root body [style*="color: rgb(192, 132, 252)"], html.theme-light:root body [style*="color:#c084fc"] { color: #5b46b0 !important; }
+html.theme-light:root body [style*="color: rgb(148, 163, 184)"], html.theme-light:root body [style*="color:#94a3b8"], html.theme-light:root body [style*="color: rgb(203, 213, 225)"], html.theme-light:root body [style*="color:#cbd5e1"] { color: var(--nv-muted) !important; }
+html.theme-light:root body [style*="color: rgb(147, 197, 253)"], html.theme-light:root body [style*="color:#93c5fd"], html.theme-light:root body [style*="color: rgb(125, 211, 252)"], html.theme-light:root body [style*="color:#7dd3fc"] { color: var(--nv-accent-text) !important; }
+html.theme-light:root body [style*="color: rgb(110, 231, 183)"], html.theme-light:root body [style*="color:#6ee7b7"], html.theme-light:root body [style*="color: rgb(134, 239, 172)"], html.theme-light:root body [style*="color:#86efac"] { color: #1f7a58 !important; }
+html.theme-light:root body [style*="color: rgb(252, 211, 77)"], html.theme-light:root body [style*="color:#fcd34d"], html.theme-light:root body [style*="color: rgb(251, 191, 36)"], html.theme-light:root body [style*="color:#fbbf24"] { color: #93620f !important; }
+html.theme-light:root body [style*="color: rgb(252, 165, 165)"], html.theme-light:root body [style*="color:#fca5a5"], html.theme-light:root body [style*="color: rgb(248, 113, 113)"], html.theme-light:root body [style*="color:#f87171"] { color: #b42318 !important; }
+html.theme-light:root body #nova-dr-modal [style*="rgba(147, 51, 234"] { background: #eeeafb !important; border-color: #cfc6f0 !important; color: #3b2f86 !important; }
+html.theme-light:root body .bg-emerald-900\/30.text-emerald-300 { background-color: #e7f5ee !important; border-color: #bfe5d2 !important; color: #1f7a58 !important; }
+
+/* ── 25-14 補充（v1.20.0）：黑夜卡片底部淡出漸層跟著新卡片色（原本 from-slate-900 舊色在 B 案卡片上形成一條深色帶）；
+        白晝：label 做的實心鈕（錄音頁上傳／開啟資料夾）、模組用行內 style 寫的彩色實心鈕（深度研究「開始分析作業」等）、多專家分頁、專案主要鈕，一律鈷藍實心白字；勾選框用強調色 ── */
+html:not(.theme-light) body .after\:from-slate-900::after { --tw-gradient-from: #1a2230 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgba(26,34,48,0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+html:not(.theme-light) body .from-slate-900 { --tw-gradient-from: #1a2230 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgba(26,34,48,0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+html:not(.theme-light) body .from-slate-950 { --tw-gradient-from: #131a24 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgba(19,26,36,0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+html.theme-light:root body label:is([class~="bg-teal-500"], [class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-emerald-700"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-green-700"], [class~="bg-sky-500"], [class~="bg-sky-600"], [class~="bg-sky-700"], [class~="bg-cyan-500"], [class~="bg-cyan-600"], [class~="bg-cyan-700"], [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"], [class~="bg-indigo-500"], [class~="bg-indigo-600"], [class~="bg-indigo-700"], [class~="bg-violet-500"], [class~="bg-violet-600"], [class~="bg-violet-700"], [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"], [class~="bg-orange-500"], [class~="bg-orange-600"], [class~="bg-orange-700"]) { background-color: #2f63d6 !important; border-color: #2f63d6 !important; color: #ffffff !important; }
+html.theme-light:root body label:is([class~="bg-teal-500"], [class~="bg-teal-600"], [class~="bg-teal-700"], [class~="bg-emerald-500"], [class~="bg-emerald-600"], [class~="bg-emerald-700"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-green-700"], [class~="bg-sky-500"], [class~="bg-sky-600"], [class~="bg-sky-700"], [class~="bg-cyan-500"], [class~="bg-cyan-600"], [class~="bg-cyan-700"], [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"], [class~="bg-indigo-500"], [class~="bg-indigo-600"], [class~="bg-indigo-700"], [class~="bg-violet-500"], [class~="bg-violet-600"], [class~="bg-violet-700"], [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"], [class~="bg-amber-500"], [class~="bg-amber-600"], [class~="bg-amber-700"], [class~="bg-orange-500"], [class~="bg-orange-600"], [class~="bg-orange-700"]) :is(i, span) { color: #ffffff !important; }
+html.theme-light:root body button:is([style*="background: rgb(147, 51, 234)"], [style*="background: rgb(124, 58, 237)"], [style*="background: rgb(109, 40, 217)"], [style*="background: rgb(37, 99, 235)"], [style*="background: rgb(29, 78, 216)"], [style*="background: rgb(5, 150, 105)"], [style*="background: rgb(4, 120, 87)"], [style*="background: rgb(99, 102, 241)"], [style*="background: rgb(79, 70, 229)"], [style*="background: rgb(2, 132, 199)"], [style*="background: rgb(13, 148, 136)"], [style*="background: rgb(22, 163, 74)"], [style*="background: rgb(8, 145, 178)"], [style*="background:#9333ea"], [style*="background:#7c3aed"], [style*="background:#6d28d9"], [style*="background:#2563eb"], [style*="background:#1d4ed8"], [style*="background:#059669"], [style*="background:#047857"], [style*="background:#6366f1"], [style*="background:#4f46e5"], [style*="background:#0284c7"], [style*="background:#0d9488"], [style*="background:#16a34a"], [style*="background:#0891b2"]) { background: #2f63d6 !important; border-color: #2f63d6 !important; color: #ffffff !important; }
+html.theme-light:root body #nova-experts-modal .nova-exp-tabs button.nova-exp-tab-on.nova-exp-tab-on { background: var(--nv-accent) !important; border-color: var(--nv-accent) !important; color: #ffffff !important; }
+html.theme-light:root body #npj-win .npj-b.pri.npj-b, html.theme-light:root body #npj-notepick .npj-b.pri.npj-b { background: var(--nv-accent) !important; border-color: var(--nv-accent) !important; color: #ffffff !important; }
+html.theme-light:root body input[type="checkbox"], html.theme-light:root body input[type="radio"] { accent-color: var(--nv-accent); }
+/* 圖譜左下角的說明膠囊（行內寫死深色半透明底＋淺灰字）：白晝改淺色膠囊，不然上面的行內字色規則會變成深字疊深底 */
+html.theme-light:root body [style*="color:#94a3b8;background:rgba(2,6,23"] { background: rgba(255,255,255,.92) !important; color: var(--nv-muted) !important; box-shadow: 0 0 0 1px var(--nv-line-strong); }
