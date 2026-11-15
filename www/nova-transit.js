@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-transit.js — NOVA Android「大眾運輸查詢」（TDX 運輸資料流通服務）— 高鐵／台鐵／各捷運／公車（市區＋公路客運）
-   版本：v1.0.0（2026-11-08，App v2.6.124）
+   版本：v1.0.1（2026-11-15，App v2.6.138）
    移植自桌面版 python-engine/nova_transit.py v1.1.0（邏輯與欄位解析一致，只換成 JS＋fetch；手機沒有 sidecar，直接在 WebView 呼叫 TDX）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.1 - App v2.6.138：_tdxGet 可以直接給 https://tdx.transportdata.tw/ 開頭的完整網址（不加 /api/basic、不加 $format），給 TravelAgent（nova-travel-core.js）
+            呼叫 MaaS 路徑規劃 /api/maas/routing 用；token、401 重取、429 重試沿用同一套。其他行為不變。
    v1.0.0 - 首版。
      【定位】多 Bot 的「大眾運輸專家」與一般（非多 Bot）聊天的工具呼叫共用的資料來源。只呼叫交通部 TDX 官方 API（唯讀 GET），不呼叫任何 LLM，
             不寫入任何東西（金鑰除外）。
@@ -19,7 +21,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.0.0' };
+  var API = { VERSION: '1.0.1' };
   var BASE = 'https://tdx.transportdata.tw/api/basic';
   var TOKEN_URL = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
   var KEY_LS = 'nova_tdx_keys_v1';
@@ -93,9 +95,10 @@
 
   /** GET BASE+path；ttl>0（秒）時記憶體快取（靜態資料用）。回傳解析後的 JSON。 */
   async function tdxGet(path, params, ttl) {
-    if (path.charAt(0) !== '/') path = '/' + path;
-    var q = Object.assign({}, params || {}); if (!q.$format) q.$format = 'JSON';
-    var url = BASE + path + '?' + qs(q);
+    var abs = /^https:\/\/tdx\.transportdata\.tw\//.test(path);   // v1.0.1：完整網址（例如 MaaS 路徑規劃 /api/maas/routing）不加 BASE、不加 $format
+    if (!abs && path.charAt(0) !== '/') path = '/' + path;
+    var q = Object.assign({}, params || {}); if (!abs && !q.$format) q.$format = 'JSON';
+    var url = (abs ? path : BASE + path) + '?' + qs(q);
     if (ttl) { var hit = cache[url]; if (hit && hit.exp > Date.now()) return hit.val; }
     var lastStatus = 0;
     for (var attempt = 0; attempt < 3; attempt++) {

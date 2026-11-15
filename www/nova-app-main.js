@@ -1,9 +1,15 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.6
+   目前版本：v1.4.7
    最後更新：2026-11-15
 
    版本紀錄：
+   v1.4.7 - App v2.6.138。接上 TravelAgent（nova-travel-core.js v1.0.0＋nova-travel.js v1.0.0）：
+            ① 內建工具：travel_where_am_i（所在位置＋天氣）、travel_nearby（2 公里內 7 類設施）、travel_route（路線＋Google 地圖導航連結）。
+               句子提到「附近／周邊／我在哪／離我最近／怎麼去／帶我去／導航／停車位…」（NovaTravelCore.looksLikeTravel）或工具迴圈被強制時才帶，平常不佔 token。
+            ② novaFcShouldAuto：問上述問題時，即使「自動使用工具」沒開也走工具迴圈（Gemini／Grok），讓 AI 自己呼叫 TravelAgent。
+            ③ fetchAIResponse：沒走工具迴圈的模型（OpenAI、DeepSeek 等）問「附近有什麼／我在哪」（looksNearby，較嚴格）時，先用手機定位查好資料放進提示（最多等 45 秒）。
+            ④ 設定 → 工具 的內建清單多三個 TravelAgent 開關；關掉 travel_nearby 也會停用②③。
    v1.4.6 - App v2.6.137。修「開 App 後右上方定位不正常、抓不到定位」（對標桌面 nova-app-main.js v1.20.0 的同一個問題，手機版做法不同）：
             ① 根因一：剛開 App 時系統定位常還沒準備好，第一次低精度取位 8 秒逾時就退回手動城市（台北），之後再也不重試。
                改成失敗時先用上次成功的真實位置（6 小時內，存 localStorage nova_last_loc_v1）頂著，沒有才用台北；並在背景用高精度再取一次
@@ -74,10 +80,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.137';
+        const NOVA_APP_VERSION = '2.6.138';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.138', date: '2026-11-15', notes: [
+                '新功能：TravelAgent（＋選單，和 Insight 一樣是獨立頁）。打開就重新定位，顯示所在地址、天氣（現在＋接下來 6 小時）與 2 公里內的加油站（含充電站）、停車場、醫療、餐飲、休閒（室內／室外）、購物、大眾運輸，地圖與清單依距離排序。',
+                '停車場有設定 TDX 金鑰時顯示即時剩餘車位（汽車／機車分開，頁面開著每 2 分鐘更新），YouBike 顯示可借／可還。上方搜尋想去的地點即可規劃路線（開車／步行／單車／大眾運輸），按「開始導航」交給 Google 地圖。',
+                'AI 會自己呼叫 TravelAgent：問「這附近有什麼／附近有加油站嗎／我在哪／帶我去○○」時，Gemini／Grok 會用工具查；OpenAI、DeepSeek 等會先查好附近資料再回答。設定 → 工具 可個別關閉。'
+            ] },
             { v: '2.6.137', date: '2026-11-15', notes: [
                 '修正：開 App 後右上角定位抓不到、停在台北或一直顯示「定位中...」。第一次定位失敗時改用上次的真實位置頂著，並在背景再定位（切回 App 時也會再試）；地名查詢加逾時，天氣先載入不再被卡住。',
                 '修正：Project Insight 城市天氣一失敗就一直顯示「無法取得」不會恢復（對標桌面 Insight v1.19.0）：失敗後 20 秒自動重試、再點城市或按「重試」立即重抓，訊息附失敗原因；天氣逾時放寬到 15 秒。'
@@ -8452,6 +8463,16 @@ msg.files : (msg.file ? [msg.file] : []);
                     });
                 }
             } catch (e) { console.warn('[NOVA][交通] 工具載入略過', e); }
+            // v1.4.7（App v2.6.138）：TravelAgent（nova-travel-core.js）——問「附近／我在哪／怎麼去」或工具迴圈被強制啟動時才帶，不需要金鑰
+            try {
+                const TV = window.NovaTravelCore;
+                if (TV && (window._novaFcForce || TV.looksLikeTravel(window._novaFcCurText))) {
+                    TV.declarations().forEach(function (d) {
+                        out.push({ name: d.name, label: d.label, description: d.description, parameters: d.parameters, readOnly: true,
+                            run: async function (a) { const r = await TV.run(d.name, a || {}); return { success: !(r && r.ok === false), text: TV.format(r) }; } });
+                    });
+                }
+            } catch (e) { console.warn('[NOVA][TravelAgent] 工具載入略過', e); }
             return out.filter(function (t) { return !window.novaFcCfg.isOff('builtin:' + t.name); });
         } });
         // v2.6.70：給自主模式等其他功能直接呼叫的搜尋入口（走上面的 web_search 內建工具）
@@ -8613,7 +8634,9 @@ msg.files : (msg.file ? [msg.file] : []);
         window.novaFcShouldAuto = async function (text, hasFile) {
             if (await _fcShouldAutoBase(text, hasFile)) return true;
             try {
-                if (hasFile || !window.NovaTransit || !window.NovaTransit.hasKeys() || !window.NovaTransit.looksLikeTransit(text)) return false;
+                const _tvHit = !!(window.NovaTravelCore && window.NovaTravelCore.looksLikeTravel(text) && !window.novaFcCfg.isOff('builtin:travel_nearby'));   // v1.4.7：TravelAgent
+                const _trHit = !!(window.NovaTransit && window.NovaTransit.hasKeys() && window.NovaTransit.looksLikeTransit(text));
+                if (hasFile || (!_tvHit && !_trHit)) return false;
                 if (appState.currentModel !== 'gemini' && appState.currentModel !== 'grok') return false;
                 if (appState.translateMode !== 'off' || appState.isLiveMode) return false;
                 return true;
@@ -8637,7 +8660,7 @@ msg.files : (msg.file ? [msg.file] : []);
             const cr = document.getElementById('fc-cache-round'); if (cr) cr.value = window.novaFcCfg.cacheRound();
             // 內建
             const bl = document.getElementById('fc-builtin-list');
-            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）'], ['transit_thsr', '高鐵時刻票價（TDX）'], ['transit_tra', '台鐵時刻票價（TDX）'], ['transit_metro', '捷運票價首末班（TDX）'], ['transit_bus', '公車動態班表（TDX）']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
+            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）'], ['transit_thsr', '高鐵時刻票價（TDX）'], ['transit_tra', '台鐵時刻票價（TDX）'], ['transit_metro', '捷運票價首末班（TDX）'], ['transit_bus', '公車動態班表（TDX）'], ['travel_where_am_i', 'TravelAgent 我的位置與天氣'], ['travel_nearby', 'TravelAgent 附近設施（2 公里）'], ['travel_route', 'TravelAgent 路線規劃']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
             // 技能
             const sl = document.getElementById('fc-skill-list');
             if (sl) {
@@ -17161,6 +17184,15 @@ if (appState.pendingAnalyzeContextId) {
                     const _mnote2 = window._novaMemExplicitHook ? window._novaMemExplicitHook(userText) : '';   // v1.2.0（App v2.6.129）：明講「記住，…」直接寫進長期記憶
                     try { const _mc = await _novaMemStore().retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
                     if (_mnote2) userText = _mnote2 + '\n\n' + userText;
+                }
+
+                // v1.4.7（App v2.6.138）：TravelAgent——沒走工具迴圈的模型（OpenAI、DeepSeek，或 Gemini／Grok 沒開工具）問「附近有什麼／我在哪」時，
+                //   先用手機定位查好周邊資料放進提示，回答才會根據真實位置。路線類問題（怎麼去）不在這裡處理，交給 + 選單 TravelAgent。
+                if (!options.isAnalysis && !options.customHistory && !options.isCollab && appState.translateMode === 'off' && window.NovaTravelCore && window.NovaTravelCore.looksNearby(userText) && !window.novaFcCfg.isOff('builtin:travel_nearby')) {
+                    try {
+                        const _tvCtx = await Promise.race([window.NovaTravelCore.contextFor(userText), new Promise(function (_, rej) { setTimeout(function () { rej(new Error('逾時')); }, 45000); })]);
+                        if (_tvCtx) userText = _tvCtx + '\n\n【使用者的問題】' + userText;
+                    } catch (e) { console.warn('[NOVA][TravelAgent] 周邊資料略過', e); }
                 }
 
                 let finalPrompt = userText;
