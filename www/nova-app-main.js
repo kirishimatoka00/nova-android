@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.4
+   目前版本：v1.4.5
    最後更新：2026-11-14
 
    版本紀錄：
+   v1.4.5 - App v2.6.136。兩項修正：
+            ① DeepSeek 跟 AI 記憶脫鉤：fetchAIResponse 帶入記憶的條件寫死 model === 'gemini'／'grok'／'gpt'，v1.4.4 接入 DeepSeek 時漏加，DeepSeek 問答拿不到
+               長期事實與過去對話摘要（記憶的寫入不分模型，DeepSeek 的對話本來就會被整理進記憶）。條件加上 'deepseek'。驗證：以假的記憶模組送一則 DeepSeek 提問，
+               改前送出的內容不含記憶、改後含。
+            ② 設定頁已停用的模型仍出現在對話的模型選單：在模擬環境（含 Android 模式、照實際操作「取消勾選→儲存→關閉→打開選單」）都重現不出來，找不到把整份清單
+               放回去的程式，所以在選單層把關：四個子模型選單（Gemini／Grok／OpenAI／DeepSeek）在按下／取得焦點時再過濾一次，並用 MutationObserver 監看內容，
+               只要停用的模型又出現就立刻移除；每次攔到記在 window._novaEmGuardLog（最多 20 筆，含呼叫堆疊）供真機遠端偵錯找出來源。重新啟用的模型不受影響。
+            NOVA_APP_VERSION 2.6.136、NOVA_CHANGELOG 加一筆。
    v1.4.4 - App v2.6.135：接入 DeepSeek（官方 OpenAI 相容 API；對標桌面 nova-app-main.js v1.18.0／desktop-patch v3.135.0）。
             appState.keys.deepseek（nova_key_deepseek）、appState.deepseekModel（nova_deepseek_model，預設 deepseek-v4-pro）、MODEL_CONFIG.deepseek（ph-fish、bg-cyan-700：
             手機的預編 Tailwind 沒有 bg-sky-*）、window.setDeepseekModel、子模型選單顯示切換、輸入框外框色、「啟用的模型」多一組 DeepSeek（novaModelGroup 認得 deepseek-*）、
@@ -58,10 +66,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.135';
+        const NOVA_APP_VERSION = '2.6.136';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.136', date: '2026-11-15', notes: [
+                '修正：用 DeepSeek 問答時沒有帶入 AI 記憶（長期事實與過去對話摘要）——記憶只對 Gemini／Grok／OpenAI 生效，接入 DeepSeek 時漏加；現在 DeepSeek 也會帶入。',
+                '修正：設定 →「啟用的模型」已取消勾選的模型仍出現在對話的模型選單。現在選單打開的那一刻會再過濾一次，選單內容只要又出現停用的模型就立刻移除。（模擬環境重現不出原本的情況，這是在選單層的保護；若仍看到，請告訴我當時的操作步驟。）【未在真機驗證】'
+            ] },
             { v: '2.6.135', date: '2026-11-15', notes: [
                 '接入 DeepSeek（對標桌面 desktop-patch v3.135.0；僅 www，不需重新打包）：設定 → API 金鑰填 DeepSeek API Key（platform.deepseek.com）後，主模型選單選「DeepSeek」，子選單可選 DeepSeek V4 Pro（較強、不收圖片）或 V4.1 Flash（便宜、可看圖）；也可以輸入 /ds、/dsf 切換。思考模式預設開。雙 AI、AI 協作、多 AI 控制台都能選 DeepSeek；設定 →「啟用的模型」多一組 DeepSeek。型號依 DeepSeek 官方定價頁（2026-11）：deepseek-v4-pro、deepseek-flash；舊的 deepseek-v4-flash 等名稱會自動轉成 deepseek-flash。在模擬環境以假回應測過 9 項（金鑰、選單、思考開關、JSON、附圖、斜線指令、實際送出、啟用的模型、多 AI 選單），未用真的金鑰在真機測試。'
             ] },
@@ -8050,6 +8062,29 @@ msg.files : (msg.file ? [msg.file] : []);
             if (hint) hint.textContent = dis.length ? ('目前停用 ' + dis.length + ' 個模型') : '目前全部啟用';
         };
         try { window.novaApplyModelFilter(); } catch (e) { console.warn('novaApplyModelFilter', e); }
+        // v1.4.5：對話的子模型選單「打開的那一刻」再過濾一次，並監看選單內容——只要停用的模型又出現（不論是哪段程式把整份清單放回去）就立刻移除。
+        //   起因：使用者回報設定頁已取消勾選的模型仍出現在對話的模型選單；在模擬環境（含 Android 模式、照實際操作步驟）重現不出來，找不到放回清單的程式，
+        //   所以改成在選單層把關。每次攔到都記在 window._novaEmGuardLog（最多 20 筆，含呼叫堆疊），方便之後在真機用遠端偵錯找出來源。
+        (function () {
+            const ids = function () { return window._NOVA_EM_SELECTS || []; };
+            const hasDisabled = function (sel) { return Array.prototype.some.call(sel.options, function (o) { return !window.novaModelEnabled(o.value); }); };
+            const refilter = function (sel, why) {
+                if (!sel || !window.novaFilterSelect || !hasDisabled(sel)) return;
+                try { (window._novaEmGuardLog = window._novaEmGuardLog || []).push({ at: Date.now(), id: sel.id, why: why, stack: String(new Error().stack || '').split('\n').slice(2, 8).join(' | ') }); if (window._novaEmGuardLog.length > 20) window._novaEmGuardLog.shift(); } catch (e) {}
+                console.warn('[NOVA][啟用的模型] 「' + sel.id + '」出現已停用的模型，重新過濾（' + why + '）');
+                sel._novaEmBusy = true; try { window.novaFilterSelect(sel); } finally { sel._novaEmBusy = false; }
+            };
+            const onOpen = function (e) { const t = e.target; if (t && t.tagName === 'SELECT' && ids().indexOf(t.id) >= 0) refilter(t, e.type); };
+            ['pointerdown', 'touchstart', 'mousedown', 'focusin', 'keydown'].forEach(function (ev) { document.addEventListener(ev, onOpen, true); });
+            const watch = function () {
+                ids().forEach(function (id) {
+                    const sel = document.getElementById(id); if (!sel || sel._novaEmWatch || typeof MutationObserver === 'undefined') return;
+                    sel._novaEmWatch = new MutationObserver(function () { if (!sel._novaEmBusy) refilter(sel, '選單內容被改寫'); });
+                    sel._novaEmWatch.observe(sel, { childList: true, subtree: true });
+                });
+            };
+            watch(); if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
+        })();
 
         // ════════════════════════════════════════════════════════════
         // ★ v2.6.20（批次 1）：快速切換模型指令表（與桌面版 NOVA_MODEL_SWITCH_COMMANDS 對齊）＋斜線指令選單＋對話分支
@@ -17056,7 +17091,7 @@ if (appState.pendingAnalyzeContextId) {
                 }
 
                 // v2.6.25（批次 6b）：AI 記憶——自動帶入相關的長期事實與過去對話摘要（NovaMemory，IndexedDB）
-                if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window._novaMemStore() && _novaMemStore().isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt')) {
+                if (!options.isAnalysis && !options.customHistory && appState.translateMode === 'off' && window._novaMemStore() && _novaMemStore().isOn() && (model === 'gemini' || model === 'grok' || model === 'gpt' || model === 'deepseek')) {   // v1.4.5：DeepSeek 也帶入 AI 記憶（v1.4.4 接入時漏加，DeepSeek 問答拿不到長期事實與過去對話摘要）
                     const _mnote2 = window._novaMemExplicitHook ? window._novaMemExplicitHook(userText) : '';   // v1.2.0（App v2.6.129）：明講「記住，…」直接寫進長期記憶
                     try { const _mc = await _novaMemStore().retrieveContext(String(userText).slice(0, 500)); if (_mc && _mc.found) userText = _mc.context + '\n\n' + userText; } catch (e) { console.warn('[NOVA][記憶] 注入略過', e); }
                     if (_mnote2) userText = _mnote2 + '\n\n' + userText;
