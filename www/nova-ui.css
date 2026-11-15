@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-ui.css — NOVA Android 介面樣式層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.20.0
+   版本：v1.20.1
    版本紀錄：
+   v1.20.1 - App v2.6.144：黑夜模式右上角天氣溫度區（#nv-top-weather，index.html 新加的 id）拿掉底色與外框（使用者要求），白晝模式不變。
    v1.20.0 - App v2.6.131：B 案配色（冷色藍灰＋鈷藍），對標桌面 nova-ui.css v1.1.0／v1.2.0、nova-app-main.js v1.13.0～v1.14.0；黑夜＋白晝都改：
             ① 設計 token 換成桌面 B 案（黑夜 #0f141c／#131a24／#1a2230、強調 #5b8def＋深色字 #0b1220；白晝 #f1f4f8／#fafbfd／#ffffff、強調 #2f63d6＋白字），
                原本白晝是米白暖灰＋陶土橘、跟主程式白晝樣式表（冷灰＋藍）混在一起，設定頁、按鈕、選中狀態顏色不一致；新增 --nv-ok／warn／switch-off／bg／border／input 等變數。
@@ -728,3 +729,6 @@ html.theme-light:root body #npj-win .npj-b.pri.npj-b, html.theme-light:root body
 html.theme-light:root body input[type="checkbox"], html.theme-light:root body input[type="radio"] { accent-color: var(--nv-accent); }
 /* 圖譜左下角的說明膠囊（行內寫死深色半透明底＋淺灰字）：白晝改淺色膠囊，不然上面的行內字色規則會變成深字疊深底 */
 html.theme-light:root body [style*="color:#94a3b8;background:rgba(2,6,23"] { background: rgba(255,255,255,.92) !important; color: var(--nv-muted) !important; box-shadow: 0 0 0 1px var(--nv-line-strong); }
+
+/* v1.20.1：黑夜模式右上角天氣溫度區不要框（只拿掉底色與邊框，點擊與按壓縮放照舊） */
+html:not(.theme-light) body #nv-top-weather { background: transparent !important; background-color: transparent !important; border-color: transparent !important; box-shadow: none !important; }

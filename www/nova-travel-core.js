@@ -1,9 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.1.1（2026-11-15，App v2.6.143）
+   版本：v1.1.2（2026-11-15，App v2.6.144）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.2 - App v2.6.144：子分類（使用者要求）。grpOf() 給每個設施 grp：醫療＝醫院／診所／中醫／牙醫／藥局（中醫靠名稱「中醫／國醫／漢醫」或 OSM
+            healthcare:speciality，Google 和 OSM 都沒有中醫專屬類別）；購物＝便利商店／購物中心（含百貨）／超市（含量販）／其他；
+            運輸＝捷運（OSM station=subway／light_rail 或名稱含捷運、捷運出入口、輕軌）／公車（公車站、轉運站）／YouBike／其他（火車、計程車）。
+            API.SUBS 給介面做第二層篩選。Google 模式診所與牙醫拆成兩次查詢（各最多 20 筆），每次打開由 14 次變 15 次附近搜尋。
+            AI 工具 travel_nearby 新增 subcategory（例：中醫、捷運、便利商店）。
    v1.1.1 - App v2.6.143：
      ① 使用者決定要不要用 Google：providerPref 改為 'ask'（預設，每次打開詢問）／'google'／'osm'；sessionProvider 記這次的選擇；needsChoice() 給介面判斷要不要問。
         AI 工具在「每次詢問」且這次沒選時用 OpenStreetMap（AI 無法跳出來問）；設成「一律 Google」才用 Google。
@@ -69,7 +74,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.1.1' };
+  var API = { VERSION: '1.1.2' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -260,6 +265,9 @@
       if (c[0] === 'parking') { if (t.capacity) it.total = +t.capacity || undefined; if (t.fee) it.fee = t.fee === 'no' ? '免費' : t.fee === 'yes' ? '收費' : t.fee; if (t.parking) it.ptype = t.parking; }
       if (c[0] === 'fuel' && t.brand) it.brand = t.brand;
       if (c[1] === '捷運出入口') { it.sub = '捷運出入口'; }
+      // v1.1.2：捷運／輕軌車站、中醫
+      if (c[0] === 'transit' && it.sub === '車站' && (t.station === 'subway' || t.subway === 'yes' || t.station === 'light_rail' || t.light_rail === 'yes' || /捷運|MRT|Metro|輕軌/i.test(it.name))) it.sub = t.station === 'light_rail' || t.light_rail === 'yes' ? '輕軌站' : '捷運站';
+      if (c[0] === 'medical' && /traditional_chinese|chinese/i.test(t['healthcare:speciality'] || '')) it.tcm = 1;
       out.push(it);
     });
     // 去重：公車站同名 80m 內合併；捷運出入口若 250m 內有同名車站就併入；同名同類 30m 內合併（建築 way+node 重複）
@@ -270,7 +278,7 @@
         if (k.cat !== it.cat) return false;
         var near = dist(k.lat, k.lon, it.lat, it.lon);
         if (it.sub === '公車站' && k.sub === '公車站' && k.name === it.name && near < 80) return true;
-        if (it.sub === '捷運出入口' && (k.sub === '車站' || k.sub === '捷運出入口') && near < 250 && (it.name.indexOf(k.name.replace(/站$/, '')) >= 0 || k.name.indexOf(it.name.replace(/\s*\d+號?出口.*$/, '').replace(/站$/, '')) >= 0)) return true;
+        if (it.sub === '捷運出入口' && (k.sub === '車站' || k.sub === '捷運站' || k.sub === '輕軌站' || k.sub === '捷運出入口') && near < 250 && (it.name.indexOf(k.name.replace(/站$/, '')) >= 0 || k.name.indexOf(it.name.replace(/\s*\d+號?出口.*$/, '').replace(/站$/, '')) >= 0)) return true;
         return k.name === it.name && near < 30;
       });
       if (!dup) keep.push(it);
@@ -586,7 +594,7 @@
   var G_GROUPS = [
     { cat: 'fuel', types: ['gas_station'] }, { cat: 'fuel', types: ['electric_vehicle_charging_station'] },
     { cat: 'parking', types: ['parking'] },
-    { cat: 'medical', types: ['hospital'] }, { cat: 'medical', types: ['doctor', 'dental_clinic'] }, { cat: 'medical', types: ['pharmacy', 'drugstore'] },
+    { cat: 'medical', types: ['hospital'] }, { cat: 'medical', types: ['doctor'] }, { cat: 'medical', types: ['dental_clinic'] },   // v1.1.2：診所、牙醫分開查，各自最多 20 筆 { cat: 'medical', types: ['pharmacy', 'drugstore'] },
     { cat: 'food', types: ['restaurant'] }, { cat: 'food', types: ['cafe', 'fast_food_restaurant', 'bakery'] },
     { cat: 'fun', indoor: 1, types: ['movie_theater', 'museum', 'art_gallery', 'bowling_alley', 'gym', 'library', 'aquarium'] },
     { cat: 'fun', indoor: 0, types: ['park', 'tourist_attraction', 'amusement_park', 'zoo'] },
@@ -690,6 +698,34 @@
     return (d.places || []).map(function (p) { return p.location ? { name: (p.displayName && p.displayName.text) || q, lat: p.location.latitude, lon: p.location.longitude, addr: String(p.formattedAddress || '').replace(/^\d{3,6}\s*/, '').replace(/^台灣/, ''), src: 'google' } : null; }).filter(Boolean);
   }
 
+  // v1.1.2：子分類（使用者要求：運輸→捷運／公車／YouBike；購物→便利商店／購物中心／超市；醫療→診所／中醫／牙醫／藥局，另保留醫院）
+  var TCM_RX = /中醫|國醫|漢醫|中醫診所|針灸|推拿.*中醫/;
+  function grpOf(it) {
+    var sb = it.sub || '', nm = it.name || '';
+    if (it.cat === 'medical') {
+      if (it.tcm || TCM_RX.test(nm)) return '中醫';
+      if (sb === '醫院') return '醫院'; if (sb === '牙醫' || /牙醫|齒科|牙科/.test(nm)) return '牙醫';
+      if (sb === '藥局' || sb === '藥妝') return '藥局';
+      return '診所';
+    }
+    if (it.cat === 'shop') {
+      if (sb === '便利商店') return '便利商店'; if (sb === '百貨公司' || sb === '購物中心') return '購物中心';
+      if (sb === '超市' || sb === '量販店') return '超市'; return '其他';
+    }
+    if (it.cat === 'transit') {
+      if (sb === 'YouBike' || sb === '自行車租借') return 'YouBike'; if (sb === '公車站' || sb === '轉運站') return '公車';
+      if (sb === '捷運站' || sb === '捷運出入口' || sb === '輕軌站') return '捷運'; return '其他';
+    }
+    return '';
+  }
+  API.grpOf = grpOf;
+  API.SUBS = {
+    medical: [['醫院', '🏥 醫院'], ['診所', '🩺 診所'], ['中醫', '🌿 中醫'], ['牙醫', '🦷 牙醫'], ['藥局', '💊 藥局']],
+    shop: [['便利商店', '🏪 便利商店'], ['購物中心', '🛍️ 購物中心'], ['超市', '🛒 超市'], ['其他', '其他']],
+    transit: [['捷運', '🚇 捷運'], ['公車', '🚌 公車'], ['YouBike', '🚲 YouBike'], ['其他', '🚆 其他']],
+    fun: [['in', '🏠 室內'], ['out', '🌳 室外']]
+  };
+
   // ───────────────────────── 周邊總查詢 ─────────────────────────
   /** 一次抓全部：{pos, addr, wx, items[], notes[], at}。onPart(part) 可漸進更新畫面 */
   API.scan = async function (opts) {
@@ -720,6 +756,7 @@
       var list = osm.slice();
       if (tdxPark.length) list = list.filter(function (it) { return !(it.cat === 'parking' && tdxPark.some(function (p) { return dist(p.lat, p.lon, it.lat, it.lon) < 60; })); }).concat(tdxPark);   // 官方（TDX／新北市）有即時車位，優先
       if (bikes && bikes.length) list = list.filter(function (it) { return it.sub !== '自行車租借' || !/youbike|微笑/i.test(it.name); }).concat(bikes);
+      list.forEach(function (it) { var g = grpOf(it); if (g) it.grp = g; });   // v1.1.2
       list.sort(function (a, b) { return a.d - b.d; });
       res.items = list;
     }
@@ -863,7 +900,7 @@
     fun: 'fun', leisure: 'fun', '休閒': 'fun', '遊樂': 'fun', '娛樂': 'fun', '景點': 'fun', '公園': 'fun', shop: 'shop', shopping: 'shop', '購物': 'shop', '賣場': 'shop', '超市': 'shop', '便利商店': 'shop',
     transit: 'transit', '大眾運輸': 'transit', '捷運': 'transit', '公車': 'transit', '車站': 'transit', youbike: 'transit', weather: 'weather', '天氣': 'weather' };
   function itemForAi(it) {
-    var o = { name: it.name, type: it.sub, distance: fmtDist(it.d) };
+    var o = { name: it.name, type: it.sub + (it.grp && it.grp !== '其他' && String(it.sub).indexOf(it.grp) < 0 ? '（' + it.grp + '）' : ''), distance: fmtDist(it.d) };
     if (it.cat === 'fun') o.indoor = it.indoor ? '室內' : '室外';
     if (it.addr) o.address = it.addr;
     if (it.hours) o.opening_hours = it.hours;
@@ -912,10 +949,13 @@
         var cat = CAT_ALIAS[String(a.category || 'all').toLowerCase()] || CAT_ALIAS[String(a.category || '')] || 'all';
         var r1 = await scanFor(a, cat !== 'weather');
         var lim = Math.max(1, Math.min(+a.limit || (cat === 'all' ? 4 : 10), 25)), kw = String(a.keyword || '').trim().toLowerCase();
+        var subc = String(a.subcategory || '').trim(); if (subc === '超商') subc = '便利商店'; if (subc === '百貨' || subc === '商場') subc = '購物中心'; if (/^(ubike|u-bike|youbike)$/i.test(subc)) subc = 'YouBike';
+        if (subc && cat === 'all') { Object.keys(API.SUBS).some(function (k) { if (API.SUBS[k].some(function (x) { return x[0] === subc; })) { cat = k; return true; } return false; }); }
         var out = { ok: true, location: locForAi(r1), radius: fmtDist(r1.radius), weather: wxForAi(r1.wx) };
         if (cat !== 'weather') {
           var pool = r1.items.filter(function (it) {
             if (kw && (it.name + ' ' + it.sub + ' ' + (it.brand || '') + ' ' + (it.cuisine || '')).toLowerCase().indexOf(kw) < 0) return false;
+            if (subc && it.grp !== subc) return false;
             if (a.indoor === true && it.cat === 'fun' && !it.indoor) return false;
             if (a.indoor === false && it.cat === 'fun' && it.indoor) return false;
             return true;
@@ -960,6 +1000,7 @@
       { name: 'travel_nearby', label: 'TravelAgent 附近設施', description: 'TravelAgent：查使用者目前位置附近（預設 2 公里內）的設施，依距離排序：加油站（含充電站）、停車場（有 TDX 時含即時剩餘車位）、醫療（醫院、診所、牙醫、藥局）、餐飲美食、休閒娛樂（分室內／室外）、購物賣場、大眾運輸（車站、公車站、YouBike 可借可還）＋天氣。使用者問「這附近有什麼／附近有沒有○○／離我最近的○○／附近哪裡可以停車」時一定先呼叫，不要用網路搜尋代替。',
         parameters: { type: 'object', properties: {
           category: S('all（預設，全部各取幾個）、fuel、parking、medical、food、fun、shop、transit、weather'),
+          subcategory: S('子分類（可省略）：醫療＝醫院／診所／中醫／牙醫／藥局；購物＝便利商店／購物中心／超市；運輸＝捷運／公車／YouBike'),
           keyword: S('名稱／品牌／料理關鍵字過濾（例如 全家、拉麵、中油、牙醫），可省略'),
           indoor: { type: 'boolean', description: '只看室內（true）或室外（false）的休閒地點；省略＝都要' },
           radius_m: { type: 'number', description: '半徑公尺，預設 2000，最大 5000' },

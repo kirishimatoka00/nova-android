@@ -1,10 +1,13 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.1.1（2026-11-15，App v2.6.143）
+   版本：v1.1.2（2026-11-15，App v2.6.144）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.2 - App v2.6.144：醫療、購物、運輸、休閒點進去後多一列子分類（醫療：醫院／診所／中醫／牙醫／藥局；購物：便利商店／購物中心／超市／其他；
+            運輸：捷運／公車／YouBike／其他；休閒：室內／室外），各附數量、沒有的不列；選子分類後地圖與清單只顯示該類。原本休閒的室內／室外
+            篩選併入同一機制（S.sub）。選擇畫面的 Google 用量說明改為每次 15 次附近搜尋。
    v1.1.1 - App v2.6.143（使用者要求「任我決定每次開啟要不要用 Maps JavaScript API」）：
      ① 有 Google 金鑰且設定是「每次詢問」（預設）時，打開先問「這次要用哪種地圖？」：Google 地圖／OpenStreetMap（免費），可勾「記住我的選擇」；
         附本月 Google 用量與免費額度。選好才載入地圖、開始查詢。頁面最下方「打開時」可改 每次詢問／一律 Google／一律 OpenStreetMap，
@@ -34,7 +37,7 @@
 (function (W) {
   'use strict';
   var D = W.document, C = null, L = null, H = {};
-  var S = { open: false, res: null, scanning: false, cat: 'all', fun: 'all', sel: null, route: null, routeTo: null, mode: 'driving', search: null, err: '', refreshT: null, layers: [] };
+  var S = { open: false, res: null, scanning: false, cat: 'all', fun: 'all', sub: {}, sel: null, route: null, routeTo: null, mode: 'driving', search: null, err: '', refreshT: null, layers: [] };
   function $(id) { return D.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(m, ms) { try { (H.toast || W.showToast)(m, ms || 3000); } catch (e) { /* */ } }
@@ -278,7 +281,8 @@
     if (!S.res) return [];
     return S.res.items.filter(function (it) {
       if (S.cat !== 'all' && it.cat !== S.cat) return false;
-      if (S.cat === 'fun' && S.fun !== 'all' && (S.fun === 'in') !== !!it.indoor) return false;
+      var sel = S.sub[S.cat] || 'all';   // v1.1.2：第二層子分類
+      if (sel !== 'all') { if (S.cat === 'fun') { if ((sel === 'in') !== !!it.indoor) return false; } else if (it.grp !== sel) return false; }
       return true;
     });
   }
@@ -366,6 +370,7 @@
     }
     if (it.sub === 'YouBike') b += '<span class="bdg ' + (it.closed ? 'r' : it.rent > 3 ? 'g' : it.rent > 0 ? 'y' : 'r') + '">' + (it.closed ? '暫停' : '可借 ' + (it.rent == null ? '—' : it.rent) + (it.ebike ? '（電輔 ' + it.ebike + '）' : '') + '／可還 ' + (it.ret == null ? '—' : it.ret)) + '</span>';
     if (it.cat === 'fun') b += '<span class="bdg n">' + (it.indoor ? '室內' : '室外') + '</span>';
+    if (it.grp === '中醫' && it.sub !== '中醫') b += '<span class="bdg n">🌿 中醫</span>';
     if (it.rating) b += '<span class="bdg n">⭐ ' + it.rating + '（' + (it.ratings || 0) + '）</span>';
     if (it.openNow != null) b += '<span class="bdg ' + (it.openNow ? 'g' : 'r') + '">' + (it.openNow ? '營業中' : '休息中') + '</span>';
     if (it.hours) b += '<span class="bdg n">🕒 ' + esc(hoursZh(it.hours).slice(0, 40)) + '</span>';
@@ -382,7 +387,12 @@
     if (S.route || S.search) return;
     if (!S.res) { el.innerHTML = '<div class="empty">' + (S.err ? esc(S.err) : '定位中…') + '</div>'; return; }
     var h = '';
-    if (S.cat === 'fun') h += '<div class="row" style="gap:6px;margin:4px 0">' + [['all', '全部'], ['in', '🏠 室內'], ['out', '🌳 室外']].map(function (x) { return '<button class="chip sm' + (S.fun === x[0] ? ' on' : '') + '" data-act="fun" data-f="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    if (C.SUBS[S.cat]) {   // v1.1.2：子分類列（含各自數量；沒有的不列，但目前選中的保留）
+      var base = S.res.items.filter(function (it) { return it.cat === S.cat; }), cur = S.sub[S.cat] || 'all';
+      var cnt = function (k) { return base.filter(function (it) { return S.cat === 'fun' ? (k === 'in') === !!it.indoor : it.grp === k; }).length; };
+      h += '<div class="row" style="gap:6px;margin:4px 0;flex-wrap:wrap">' + [['all', '全部', base.length]].concat(C.SUBS[S.cat].map(function (x) { return [x[0], x[1], cnt(x[0])]; })).filter(function (x) { return x[0] === 'all' || x[2] > 0 || x[0] === cur; })
+        .map(function (x) { return '<button class="chip sm' + (cur === x[0] ? ' on' : '') + '" data-act="sub" data-f="' + esc(x[0]) + '">' + x[1] + ' <span class="n">' + x[2] + '</span></button>'; }).join('') + '</div>';
+    }
     var list = visibleItems();
     if (S.cat === 'parking') list = list.slice().sort(function (a, b) { return (b.avail != null && !b.full) - (a.avail != null && !a.full) || a.d - b.d; });
     var notes = [];
@@ -514,7 +524,7 @@
       }
       case 'gurl': { var ig = findItem(id); if (ig && ig.gurl) openExt(ig.gurl); return; }
       case 'cat': S.cat = t.getAttribute('data-c'); S.sel = null; if (MP) MP.closePopup(); renderChips(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
-      case 'fun': S.fun = t.getAttribute('data-f'); renderBody(); drawPois(); return;
+      case 'sub': S.sub[S.cat] = t.getAttribute('data-f'); S.sel = null; if (MP) MP.closePopup(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
       case 'pick': if (e.target.closest('button')) return; return select(id, true);
       case 'route': { var it = findItem(id); if (it) { if (MP) MP.closePopup(); planTo({ lat: it.lat, lon: it.lon, name: it.name, addr: it.addr || it.sub }, autoMode(it.d)); } return; }
       case 'nav': { var it2 = findItem(id); if (it2 && S.res) openExt(C.gmapsNav(it2.lat, it2.lon, autoMode(it2.d), S.res.pos.lat, S.res.pos.lon)); return; }
@@ -535,7 +545,7 @@
     var el = $('ntv-body'); $('ntv-chips').style.display = 'none';
     var m = $('ntv-mapmsg'); if (m) { m.style.display = ''; m.textContent = '請在下方選擇這次要用的地圖'; }
     el.innerHTML = '<div class="card" style="margin-top:10px"><b style="font-size:15px">這次要用哪種地圖？</b>' +
-      '<div class="sm mut" style="margin:6px 0 10px">Google 的店家資料較完整（含評分、營業中），每次打開約用 1 次地圖載入＋14 次附近搜尋，超過每月免費額度會計費；OpenStreetMap 免費，但店家可能有缺漏。停車剩餘車位、YouBike、天氣兩種都有。</div>' +
+      '<div class="sm mut" style="margin:6px 0 10px">Google 的店家資料較完整（含評分、營業中），每次打開約用 1 次地圖載入＋15 次附近搜尋，超過每月免費額度會計費；OpenStreetMap 免費，但店家可能有缺漏。停車剩餘車位、YouBike、天氣兩種都有。</div>' +
       '<button class="btn pri big" data-act="choose" data-p="google">Google 地圖</button>' +
       '<button class="btn big" style="margin-top:8px" data-act="choose" data-p="osm">OpenStreetMap（免費）</button>' +
       '<label class="row sm" style="margin-top:10px;gap:8px"><input type="checkbox" id="ntv-remember" style="width:18px;height:18px"> 記住我的選擇，下次不再詢問（頁面最下方可以改回）</label>' +
@@ -585,5 +595,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.1.1', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return MP; } };
+  W.NovaTravel = { version: '1.1.2', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return MP; } };
 })(window);
