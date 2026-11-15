@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.0
+   目前版本：v1.5.1
    最後更新：2026-11-15
 
    版本紀錄：
+   v1.5.1 - App v2.6.142：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent Google 模式：nova-travel-core.js v1.1.0、nova-travel.js v1.1.0）；本檔程式沒有其他改動。
    v1.5.0 - App v2.6.141：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.3、nova-travel.js v1.0.3）；本檔程式沒有其他改動。
    v1.4.9 - App v2.6.140：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.2、nova-travel.js v1.0.2）；本檔程式沒有其他改動。
    v1.4.8 - App v2.6.139：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent 真機修正：nova-travel-core.js v1.0.1、nova-travel.js v1.0.1）；本檔程式沒有其他改動。
@@ -83,10 +84,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.141';
+        const NOVA_APP_VERSION = '2.6.142';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.142', date: '2026-11-15', notes: [
+                'TravelAgent 接上 Google：有設定 Google Maps 金鑰時，地圖改用 Google 地圖，周邊設施改用 Google 地點資料（較完整，含評分、營業中、電話、詳情連結），路線改用 Google（含即時路況，新增機車模式，大眾運輸也用 Google）。',
+                '停車剩餘車位與 YouBike 照舊用政府資料；Google 無法使用（金鑰沒開 Maps JavaScript API 或 Places API (New)）時自動退回 OpenStreetMap 模式，頁尾可手動切換。',
+                'TravelAgent：黑夜模式下地圖也顯示白晝版（不再反色）。'
+            ] },
             { v: '2.6.141', date: '2026-11-15', notes: [
                 'TravelAgent：周邊設施改用較不擁擠的 Overpass 伺服器，12 秒內沒有結果就改用 OSM 類別搜尋（Nominatim）備援，邊查邊顯示；完整資料到了會自動更新。',
                 'TravelAgent：大眾運輸路線修正「出發時間早於現在」錯誤；搜尋目的地改成優先中文結果（例如「台北車站」不再跳到英文的機捷站）。'

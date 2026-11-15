@@ -1,9 +1,18 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.0.3（2026-11-15，App v2.6.141）
+   版本：v1.1.0（2026-11-15，App v2.6.142）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.0 - App v2.6.142：接入 Google（使用者同意的方案）。有 Google Maps 金鑰（appState.keys.gmaps，和聊天「附近地點」同一把）時預設 Google 模式：
+     ・周邊設施：Places API（New）searchNearby，14 組類型各一次（依距離、最多 20 筆、半徑內），多了評分、營業中與否、電話、Google 地圖連結；
+       停業的不列。任一組失敗不影響其他組；全部失敗（金鑰沒開 Places API (New)、額度等）這次改用 OSM 資料並提示原因。
+     ・路線：Routes API computeRoutes（開車／機車用即時路況；步行、自行車、大眾運輸也用 Google），失敗退回 OSRM／TDX MaaS；新增「機車」模式（只有 Google 有）。
+     ・目的地搜尋：Places API（New）searchText（目前位置 50 公里內加權），沒結果再走 Nominatim／Photon。
+     ・依 Google 條款，Places／Routes 內容只能畫在 Google 地圖上：地圖由介面改用 Google Maps JavaScript API；載不起來時介面呼叫
+       API.googleBroken(原因) → API.provider() 變 'osm'，整頁回到 OpenStreetMap 模式。API.providerPref('osm'|'auto') 可手動切換（記在 nova_travel_provider）。
+     ・停車剩餘車位（TDX／新北市）與 YouBike 照舊；Google 的停車場在官方停車場 60 公尺內時以官方資料為準。Google 資料只放記憶體（5 分鐘）。
+     ・AI 工具：附近設施多帶評分、營業中、來源；travel_route 支援 mode=moto。
    v1.0.3 - App v2.6.141，依第三次真機截圖：
      ① 周邊設施仍三個鏡像逾時：overpass-api.de 自 2026-04 起擋預設 UA（已在 v1.0.1 處理），之後主站常超載。鏡像改為
         kumi.systems → z.overpass-api.de → lz4.overpass-api.de → private.coffee → overpass-api.de（錯開 3 秒、單次 25 秒）；
@@ -52,7 +61,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.0.3' };
+  var API = { VERSION: '1.1.0' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -99,7 +108,7 @@
   function fmtDur(s) { s = Math.round(s / 60); if (s < 60) return Math.max(1, s) + ' 分鐘'; return Math.floor(s / 60) + ' 小時' + (s % 60 ? ' ' + (s % 60) + ' 分' : ''); }
   API.fmtDist = fmtDist; API.fmtDur = fmtDur;
   function gmapsNav(lat, lon, mode, oLat, oLon) {
-    var tm = { driving: 'driving', walking: 'walking', cycling: 'bicycling', transit: 'transit' }[mode] || 'driving';
+    var tm = { driving: 'driving', walking: 'walking', cycling: 'bicycling', transit: 'transit', moto: 'two-wheeler' }[mode] || 'driving';
     return 'https://www.google.com/maps/dir/?api=1' + (oLat != null ? '&origin=' + oLat.toFixed(6) + ',' + oLon.toFixed(6) : '') +
       '&destination=' + (+lat).toFixed(6) + ',' + (+lon).toFixed(6) + '&travelmode=' + tm + '&dir_action=navigate';
   }
@@ -526,6 +535,128 @@
     wxCache[k] = { at: Date.now(), v: v }; return v;
   };
 
+  // ───────────────────────── Google（v1.1.0）─────────────────────────
+  // 有 Google Maps 金鑰（appState.keys.gmaps／nova_key_gmaps，和聊天的「附近地點」功能同一把）時預設用 Google：
+  //   周邊設施＝Places API（New）searchNearby（每組類型一次、依距離排序、最多 20 筆）；路線＝Routes API computeRoutes（含即時路況、機車、大眾運輸）；
+  //   目的地搜尋＝Places API（New）searchText。依 Google 條款，Places／Routes 的內容只能畫在 Google 地圖上，所以 Google 模式的地圖也必須是
+  //   Google Maps JavaScript API（介面 nova-travel.js 負責）；地圖載不起來時介面會呼叫 API.googleBroken(原因)，整個退回 OpenStreetMap 模式。
+  //   Google 的地點資料只放記憶體、不寫 localStorage。
+  function gKey() { try { return String((root.appState && root.appState.keys && root.appState.keys.gmaps) || (LS && LS.getItem('nova_key_gmaps')) || '').trim(); } catch (e) { return ''; } }
+  var gBroken = '';
+  API.googleKey = gKey;
+  API.googleBroken = function (why) { if (why != null) { gBroken = String(why || ''); osmCache = null; } return gBroken; };
+  API.providerPref = function (v) { if (v != null) { try { LS.setItem('nova_travel_provider', v); } catch (e) { /* */ } osmCache = null; } try { return (LS && LS.getItem('nova_travel_provider')) || 'auto'; } catch (e) { return 'auto'; } };
+  /** 'google'：有金鑰、沒被停用、地圖沒失敗；否則 'osm' */
+  API.provider = function () { return gKey() && !gBroken && API.providerPref() !== 'osm' ? 'google' : 'osm'; };
+  async function gPost(url, body, mask, what) {
+    return httpJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': gKey(), 'X-Goog-FieldMask': mask }, body: JSON.stringify(body), timeout: 15000, what: what || 'Google' });
+  }
+  function gErr(e) { var m = (e && e.message) || String(e); var j = m.match(/"message":\s*"([^"]+)"/); return j ? j[1] : m.slice(0, 160); }
+  // 類別 → searchNearby 的 includedTypes（每組一次請求；密集類別拆開，免得 20 筆被一種類型佔滿）
+  var G_GROUPS = [
+    { cat: 'fuel', types: ['gas_station'] }, { cat: 'fuel', types: ['electric_vehicle_charging_station'] },
+    { cat: 'parking', types: ['parking'] },
+    { cat: 'medical', types: ['hospital'] }, { cat: 'medical', types: ['doctor', 'dental_clinic'] }, { cat: 'medical', types: ['pharmacy', 'drugstore'] },
+    { cat: 'food', types: ['restaurant'] }, { cat: 'food', types: ['cafe', 'fast_food_restaurant', 'bakery'] },
+    { cat: 'fun', indoor: 1, types: ['movie_theater', 'museum', 'art_gallery', 'bowling_alley', 'gym', 'library', 'aquarium'] },
+    { cat: 'fun', indoor: 0, types: ['park', 'tourist_attraction', 'amusement_park', 'zoo'] },
+    { cat: 'shop', types: ['convenience_store'] }, { cat: 'shop', types: ['supermarket', 'department_store', 'shopping_mall'] },
+    { cat: 'transit', types: ['train_station', 'subway_station', 'light_rail_station', 'bus_station'] }, { cat: 'transit', types: ['bus_stop'] }
+  ];
+  var G_SUB = { gas_station: '加油站', electric_vehicle_charging_station: '充電站', parking: '停車場', hospital: '醫院', doctor: '診所', dental_clinic: '牙醫', dentist: '牙醫',
+    pharmacy: '藥局', drugstore: '藥妝', restaurant: '餐廳', cafe: '咖啡', coffee_shop: '咖啡', fast_food_restaurant: '速食小吃', bakery: '麵包烘焙', movie_theater: '電影院', museum: '博物館',
+    art_gallery: '展覽館', bowling_alley: '保齡球', gym: '健身房', library: '圖書館', aquarium: '水族館', park: '公園', tourist_attraction: '景點', amusement_park: '遊樂園', zoo: '動物園',
+    convenience_store: '便利商店', supermarket: '超市', department_store: '百貨公司', shopping_mall: '購物中心', train_station: '車站', subway_station: '捷運站', light_rail_station: '輕軌站',
+    bus_station: '轉運站', bus_stop: '公車站', transit_station: '車站' };
+  var G_MASK = 'places.id,places.displayName,places.shortFormattedAddress,places.location,places.primaryType,places.types,places.rating,places.userRatingCount,places.currentOpeningHours.openNow,places.nationalPhoneNumber,places.googleMapsUri,places.businessStatus';
+  function gItem(p, g, lat, lon) {
+    var loc = p.location || {}; if (!isFinite(loc.latitude)) return null;
+    if (p.businessStatus && p.businessStatus !== 'OPERATIONAL') return null;
+    var sub = G_SUB[p.primaryType] || ''; if (!sub) (p.types || []).some(function (t) { if (G_SUB[t]) { sub = G_SUB[t]; return true; } return false; });
+    var it = { id: 'g:' + p.id, gid: p.id, cat: g.cat, sub: sub || (CAT_BY_ID[g.cat] || {}).zh || '', name: (p.displayName && p.displayName.text) || sub, lat: loc.latitude, lon: loc.longitude,
+      d: Math.round(dist(lat, lon, loc.latitude, loc.longitude)), src: 'Google' };
+    if (g.indoor != null) it.indoor = g.indoor;
+    if (p.shortFormattedAddress) it.addr = p.shortFormattedAddress;
+    if (p.rating) { it.rating = p.rating; it.ratings = p.userRatingCount || 0; }
+    if (p.currentOpeningHours && typeof p.currentOpeningHours.openNow === 'boolean') it.openNow = p.currentOpeningHours.openNow;
+    if (p.nationalPhoneNumber) it.phone = p.nationalPhoneNumber;
+    if (p.googleMapsUri) it.gurl = p.googleMapsUri;
+    return it;
+  }
+  var gCache = null;
+  async function fetchGoogle(lat, lon, r, force, onItems) {
+    if (!force && gCache && dist(gCache.lat, gCache.lon, lat, lon) < 150 && gCache.r >= r && Date.now() - gCache.at < 300000) {
+      var c = gCache.items.map(function (it) { return Object.assign({}, it, { d: Math.round(dist(lat, lon, it.lat, it.lon)) }); }).filter(function (it) { return it.d <= r; });
+      onItems && onItems(c, 'Google'); return c;
+    }
+    var items = [], seen = {}, errs = [], ok = 0, done = 0;
+    await new Promise(function (resolve) {
+      G_GROUPS.forEach(function (g) {
+        gPost('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: g.types, maxResultCount: 20, rankPreference: 'DISTANCE', languageCode: 'zh-TW', regionCode: 'TW',
+          locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius: r } } }, G_MASK, '附近地點（Google）')
+          .then(function (d) {
+            ok++;
+            (d.places || []).forEach(function (p) { if (seen[p.id]) return; var it = gItem(p, g, lat, lon); if (it && it.d <= r) { seen[p.id] = 1; items.push(it); } });
+            items.sort(function (a, b) { return a.d - b.d; });
+            try { onItems && onItems(items.slice(), 'Google'); } catch (e) { /* */ }
+          }, function (e) { errs.push(g.types.join('/') + '：' + gErr(e)); })
+          .then(function () { if (++done === G_GROUPS.length) resolve(); });
+      });
+    });
+    if (!ok) throw new Error('Google 附近地點查詢失敗（' + (errs[0] || '未知錯誤') + '）');
+    gCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items };
+    if (errs.length) items._warn = '部分類別查詢失敗：' + errs.slice(0, 2).join('；');
+    return items;
+  }
+  function decodePolyline(str) {
+    var pts = [], i = 0, la = 0, lo = 0;
+    while (i < str.length) {
+      var b, sh = 0, res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); la += (res & 1) ? ~(res >> 1) : (res >> 1);
+      sh = 0; res = 0; do { b = str.charCodeAt(i++) - 63; res |= (b & 31) << sh; sh += 5; } while (b >= 32); lo += (res & 1) ? ~(res >> 1) : (res >> 1);
+      pts.push([la / 1e5, lo / 1e5]);
+    }
+    return pts;
+  }
+  API._decodePolyline = decodePolyline;
+  var G_MODE = { driving: 'DRIVE', walking: 'WALK', cycling: 'BICYCLE', moto: 'TWO_WHEELER', transit: 'TRANSIT' };
+  function secs(x) { return parseFloat(String(x || '0').replace('s', '')) || 0; }
+  async function googleRoute(o, d, mode) {
+    var body = { origin: { location: { latLng: { latitude: o.lat, longitude: o.lon } } }, destination: { location: { latLng: { latitude: d.lat, longitude: d.lon } } },
+      travelMode: G_MODE[mode] || 'DRIVE', languageCode: 'zh-TW', regionCode: 'TW', units: 'METRIC', computeAlternativeRoutes: mode === 'transit' };
+    if (mode === 'driving' || mode === 'moto') body.routingPreference = 'TRAFFIC_AWARE';
+    var mask = 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.travelMode,routes.legs.steps.transitDetails';
+    var j = await gPost('https://routes.googleapis.com/directions/v2:computeRoutes', body, mask, '路線規劃（Google）');
+    var rts = j.routes || []; if (!rts.length) throw new Error('Google 找不到這種交通方式的路線');
+    function plan(rt) {
+      var steps = [];
+      (rt.legs || []).forEach(function (lg) {
+        (lg.steps || []).forEach(function (s) {
+          var t = s.transitDetails, ins = (s.navigationInstruction && s.navigationInstruction.instructions) || '';
+          if (t) {
+            var ln = t.transitLine || {}, sd = t.stopDetails || {};
+            var nm = ln.nameShort || ln.name || (ln.vehicle && ln.vehicle.name && ln.vehicle.name.text) || '大眾運輸';
+            var fz = [sd.departureStop && sd.departureStop.name ? sd.departureStop.name + ' 上車' : '', sd.arrivalStop && sd.arrivalStop.name ? sd.arrivalStop.name + ' 下車' : ''].filter(Boolean).join('，');
+            steps.push({ text: '搭 ' + nm + (t.headsign ? '（往' + t.headsign + '）' : '') + (fz ? '：' + fz : '') + (t.stopCount ? '，' + t.stopCount + ' 站' : ''), dist: s.distanceMeters || 0, dur: secs(s.staticDuration), kind: 'ride' });
+          } else {
+            var last = steps[steps.length - 1];
+            if (mode === 'transit' && s.travelMode === 'WALK') { if (last && last.kind === 'walk') { last.dist += s.distanceMeters || 0; last.dur += secs(s.staticDuration); } else steps.push({ text: '步行', dist: s.distanceMeters || 0, dur: secs(s.staticDuration), kind: 'walk' }); }
+            else steps.push({ text: ins || '繼續前進', dist: s.distanceMeters || 0, dur: secs(s.staticDuration) });
+          }
+        });
+      });
+      return { dur: secs(rt.duration), dist: rt.distanceMeters || 0, steps: steps, line: rt.polyline && rt.polyline.encodedPolyline ? decodePolyline(rt.polyline.encodedPolyline) : [] };
+    }
+    var plans = rts.slice(0, 3).map(plan), p0 = plans[0];
+    if (mode !== 'transit' || p0.steps.length) p0.steps.push({ text: '抵達目的地' });
+    return { ok: true, mode: mode, dist: p0.dist, dur: p0.dur, line: p0.line, steps: p0.steps, plans: mode === 'transit' ? plans : undefined, src: 'Google 路線' + (body.routingPreference ? '（含即時路況）' : '') };
+  }
+  async function googleSearch(q, near) {
+    var body = { textQuery: q, languageCode: 'zh-TW', regionCode: 'TW', maxResultCount: 8 };
+    if (near) body.locationBias = { circle: { center: { latitude: near.lat, longitude: near.lon }, radius: 50000 } };
+    var d = await gPost('https://places.googleapis.com/v1/places:searchText', body, 'places.id,places.displayName,places.formattedAddress,places.location', '地點搜尋（Google）');
+    return (d.places || []).map(function (p) { return p.location ? { name: (p.displayName && p.displayName.text) || q, lat: p.location.latitude, lon: p.location.longitude, addr: String(p.formattedAddress || '').replace(/^\d{3,6}\s*/, '').replace(/^台灣/, ''), src: 'google' } : null; }).filter(Boolean);
+  }
+
   // ───────────────────────── 周邊總查詢 ─────────────────────────
   /** 一次抓全部：{pos, addr, wx, items[], notes[], at}。onPart(part) 可漸進更新畫面 */
   API.scan = async function (opts) {
@@ -539,12 +670,20 @@
     var pAddr = API.reverse(pos.lat, pos.lon).then(function (a) { res.addr = a; part('addr'); return a; }, function (e) { res.notes.push('地址查詢失敗：' + e.message); return null; });
     var pWx = API.weather(pos.lat, pos.lon).then(function (w) { res.wx = w; part('wx'); }, function (e) { res.notes.push('天氣查詢失敗：' + e.message); res.wxErr = e.message; part('wx'); });
     var osm = [], tdxPark = [], bikes = null;
-    var pOsm = fetchOsm(pos.lat, pos.lon, r, !!opts.force, function (x, src) { osm = x; res.osmSrc = src; merge(); part('items'); }).then(function (x) { osm = x; merge(); }, function (e) { res.notes.push(e.message); res.osmErr = e.message; part('items'); });
+    res.provider = API.provider();
+    var onPoi = function (x, src) { osm = x; res.osmSrc = src; merge(); part('items'); };
+    var pOsm = (res.provider === 'google'
+      ? fetchGoogle(pos.lat, pos.lon, r, !!opts.force, onPoi).then(function (x) { if (x._warn) res.notes.push(x._warn); return x; }, function (e) {
+          // Google 附近搜尋失敗（金鑰沒開 Places API (New)、額度…）→ 這次改用 OSM 資料（OSM 資料畫在 Google 地圖上沒有條款問題）
+          res.notes.push(e.message + '；這次改用 OpenStreetMap 資料'); res.gErr = e.message; return fetchOsm(pos.lat, pos.lon, r, !!opts.force, onPoi);
+        })
+      : fetchOsm(pos.lat, pos.lon, r, !!opts.force, onPoi)
+    ).then(function (x) { osm = x; merge(); }, function (e) { res.notes.push(e.message); res.osmErr = e.message; part('items'); });
     var pPark = pAddr.then(function (a) { return fetchParking(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { tdxPark = x.items; if (x.note) res.parkNote = x.note; merge(); part('items'); }, function (e) { res.parkNote = '停車剩餘車位查詢失敗：' + e.message; part('items'); });
     var pBike = pAddr.then(function (a) { return fetchBikes(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { bikes = x.items; merge(); part('items'); }, function (e) { res.bikeNote = 'YouBike 查詢失敗：' + e.message; });
     function merge() {
       var list = osm.slice();
-      if (tdxPark.length) list = list.filter(function (it) { return !(it.cat === 'parking' && tdxPark.some(function (p) { return dist(p.lat, p.lon, it.lat, it.lon) < 60; })); }).concat(tdxPark);
+      if (tdxPark.length) list = list.filter(function (it) { return !(it.cat === 'parking' && tdxPark.some(function (p) { return dist(p.lat, p.lon, it.lat, it.lon) < 60; })); }).concat(tdxPark);   // 官方（TDX／新北市）有即時車位，優先
       if (bikes && bikes.length) list = list.filter(function (it) { return it.sub !== '自行車租借' || !/youbike|微笑/i.test(it.name); }).concat(bikes);
       list.sort(function (a, b) { return a.d - b.d; });
       res.items = list;
@@ -567,6 +706,10 @@
     var ql = q.toLowerCase();
     if (lastScan) lastScan.items.forEach(function (it) { if (it.name.toLowerCase().indexOf(ql) >= 0) add({ name: it.name, lat: it.lat, lon: it.lon, addr: (it.sub || '') + (it.addr ? ' · ' + it.addr : ''), src: 'nearby' }); });
     var errs = [];
+    if (API.provider() === 'google') {   // v1.1.0：Google 模式先用 Places 文字搜尋（目前位置 50 公里內加權）
+      try { (await googleSearch(q, near)).forEach(add); } catch (e) { errs.push('Google：' + gErr(e)); }
+      if (out.length) { if (near) out.forEach(function (x) { x.d = Math.round(dist(near.lat, near.lon, x.lat, x.lon)); }); return out.slice(0, 10); }
+    }
     // v1.0.3：先查 Nominatim（中文名稱、zh-TW；以目前位置附近 ±0.5° 加權但不限制），不足 3 筆再查 Photon（Photon 常回英文名稱與地址）
     try {
       var vb = near ? '&viewbox=' + (near.lon - 0.5).toFixed(3) + ',' + (near.lat + 0.5).toFixed(3) + ',' + (near.lon + 0.5).toFixed(3) + ',' + (near.lat - 0.5).toFixed(3) : '';
@@ -664,10 +807,16 @@
   }
   /** 規劃路線：o、d = {lat,lon,name}；mode：driving／walking／cycling／transit */
   API.route = async function (o, d, mode) {
-    mode = ROUTERS[mode] || mode === 'transit' ? mode : 'driving';
+    mode = ROUTERS[mode] || mode === 'transit' || mode === 'moto' ? mode : 'driving';
     var k = mode + ':' + o.lat.toFixed(4) + ',' + o.lon.toFixed(4) + '>' + d.lat.toFixed(4) + ',' + d.lon.toFixed(4);
     if (routeCache[k] && Date.now() - routeCache[k].at < 120000) return routeCache[k].v;
-    var v = mode === 'transit' ? await transitRoute(o, d) : await osrmRoute(o, d, mode);
+    var v = null, gE = '';
+    if (API.provider() === 'google') { try { v = await googleRoute(o, d, mode); } catch (e) { gE = gErr(e); } }
+    if (!v) {
+      if (mode === 'moto') mode = 'driving';   // 機車只有 Google 有；退回開車路線
+      v = mode === 'transit' ? await transitRoute(o, d) : await osrmRoute(o, d, mode);
+      if (gE) v.src = (v.src || '') + '（Google 路線失敗：' + gE + '）';
+    }
     v.from = o; v.to = d; v.gmaps = gmapsNav(d.lat, d.lon, mode, o.lat, o.lon);
     routeCache[k] = { at: Date.now(), v: v };
     return v;
@@ -686,6 +835,9 @@
     if (it.phone) o.phone = it.phone;
     if (it.brand) o.brand = it.brand;
     if (it.cuisine) o.cuisine = it.cuisine;
+    if (it.rating) o.rating = it.rating + '（' + (it.ratings || 0) + ' 則評論）';
+    if (it.openNow != null) o.open_now = it.openNow ? '營業中' : '目前休息';
+    if (it.src === 'Google') o.source = 'Google 地圖';
     if (it.cat === 'parking') {
       if (it.avail != null) o.available_spaces = it.avail; if (it.total != null) o.total_spaces = it.total;
       if (it.car != null) o.car_available = it.car; if (it.moto != null) o.motorcycle_available = it.moto;
@@ -749,13 +901,13 @@
       }
       if (tool === 'travel_route') {
         var mode = { car: 'driving', drive: 'driving', driving: 'driving', '開車': 'driving', walk: 'walking', walking: 'walking', '走路': 'walking', '步行': 'walking',
-          bike: 'cycling', bicycle: 'cycling', cycling: 'cycling', '騎車': 'cycling', '自行車': 'cycling', transit: 'transit', '大眾運輸': 'transit', bus: 'transit', mrt: 'transit' }[String(a.mode || 'driving').toLowerCase()] || 'driving';
+          bike: 'cycling', bicycle: 'cycling', cycling: 'cycling', '自行車': 'cycling', '單車': 'cycling', '腳踏車': 'cycling', moto: 'moto', scooter: 'moto', motorcycle: 'moto', '機車': 'moto', '騎車': 'moto', transit: 'transit', '大眾運輸': 'transit', bus: 'transit', mrt: 'transit' }[String(a.mode || 'driving').toLowerCase()] || 'driving';
         var dest = String(a.destination || '').trim(); if (!dest) return { ok: false, error: '缺少 destination（目的地）' };
         var here = await API.locate({});
         var cands = await API.search(dest, here); if (!cands.length) return { ok: false, error: '找不到「' + dest + '」' };
         var to = cands[0], rt = await API.route({ lat: here.lat, lon: here.lon, name: '目前位置' }, { lat: to.lat, lon: to.lon, name: to.name }, mode);
         if (a.show_map && root.NovaTravel && root.NovaTravel.showRoute) { try { root.NovaTravel.showRoute(to, mode); } catch (e) { /* */ } }
-        return { ok: true, from: '目前位置' + (here.warn ? '（' + here.warn + '）' : ''), to: { name: to.name, address: to.addr || '' }, mode: { driving: '開車', walking: '步行', cycling: '自行車', transit: '大眾運輸' }[mode],
+        return { ok: true, from: '目前位置' + (here.warn ? '（' + here.warn + '）' : ''), to: { name: to.name, address: to.addr || '' }, mode: { driving: '開車', walking: '步行', cycling: '自行車', moto: '機車', transit: '大眾運輸' }[mode],
           distance: fmtDist(rt.dist), duration: fmtDur(rt.dur), steps: rt.steps.slice(0, 14).map(function (s) { return s.text + (s.dist ? '（' + fmtDist(s.dist) + '）' : ''); }),
           other_plans: rt.plans && rt.plans.length > 1 ? rt.plans.slice(1).map(function (p) { return fmtDur(p.dur) + '：' + p.steps.filter(function (s) { return s.kind === 'ride'; }).map(function (s) { return s.text; }).join(' → '); }) : undefined,
           google_maps_navigation: rt.gmaps, other_candidates: cands.slice(1, 4).map(function (c) { return c.name + (c.addr ? '（' + c.addr + '）' : ''); }), source: rt.src };
@@ -780,7 +932,7 @@
       { name: 'travel_route', label: 'TravelAgent 路線規劃', description: 'TravelAgent：從使用者目前位置規劃到目的地的路線（距離、時間、逐步指示）並附 Google 地圖導航連結。使用者說「帶我去／怎麼去／導航到／開車到○○要多久」時呼叫。目的地可以是地名、店名、地址或「緯度,經度」。',
         parameters: { type: 'object', properties: {
           destination: S('目的地（地名、店名、地址或 緯度,經度）'),
-          mode: S('driving（預設）、walking、cycling、transit（大眾運輸，需 TDX 金鑰）'),
+          mode: S('driving（預設）、moto（機車，需 Google 金鑰）、walking、cycling、transit（大眾運輸；有 Google 金鑰用 Google，否則需 TDX 金鑰）'),
           show_map: { type: 'boolean', description: '使用者明確要「導航／帶我去／在地圖上看」時設 true，會打開 TravelAgent 地圖顯示這條路線' } }, required: ['destination'] } }
     ].map(function (d) { d.readOnly = true; return d; });
   };

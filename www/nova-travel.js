@@ -1,10 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.0.3（2026-11-15，App v2.6.141）
+   版本：v1.1.0（2026-11-15，App v2.6.142）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.0 - App v2.6.142：
+     ① Google 模式（搭配 nova-travel-core.js v1.1.0）：有 Google Maps 金鑰時地圖改用 Google Maps JavaScript API（Google 的地點與路線依條款只能畫在 Google 地圖上）。
+        地圖拆成同一組介面的兩種實作（GoogleMap／LeafletMap），switchMap() 依 NovaTravelCore.provider() 建立；Google 載入失敗、逾時或 gm_authFailure
+        （金鑰沒啟用 Maps JavaScript API、應用程式限制不符）時標記 googleBroken 並整頁改回 OpenStreetMap 模式。🗺 鈕在 Google 模式切換 一般地圖／衛星圖。
+        清單卡片多「⭐評分」「營業中／休息中」、選取後多「詳情」（開 Google 地圖頁）；路線多「🛵 機車」（只有 Google 模式）；頁尾可切換 Google／OpenStreetMap。
+     ② 黑夜模式下地圖也用白晝樣式（使用者要求）：彈出框文字固定深色（原本跟著黑夜主題變淺色、白底上看不清）；拿掉 Leaflet 底圖反色濾鏡，國土測繪一律用彩色 EMAP，地圖區底色改淺灰。
    v1.0.3 - App v2.6.141：周邊設施暫用 Nominatim 備援資料時，清單上方加一行說明（完整資料到了會自動更新）。其他沒改。
    v1.0.2 - App v2.6.140：頁尾資料來源多列「新北市政府開放資料（停車）」（停車場改用市府資料時）。其他沒改。
    v1.0.1 - App v2.6.139：底圖修正。CARTO 現在要 API 金鑰（真機看到滿版「API KEY REQUIRED」，而且那是正常載入的圖磚、不會觸發錯誤，原本的自動退回沒作用）。
@@ -24,7 +30,6 @@
   'use strict';
   var D = W.document, C = null, L = null, H = {};
   var S = { open: false, res: null, scanning: false, cat: 'all', fun: 'all', sel: null, route: null, routeTo: null, mode: 'driving', search: null, err: '', refreshT: null, layers: [] };
-  var map = null, lyr = {}, tileErr = 0, tileLayer = null;
   function $(id) { return D.getElementById(id); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function toast(m, ms) { try { (H.toast || W.showToast)(m, ms || 3000); } catch (e) { /* */ } }
@@ -44,13 +49,13 @@
     '#ntv-win .ttl{flex:1;min-width:0}#ntv-win .ttl b{display:block;font-size:15px}#ntv-win .ttl .sub{display:block;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '#ntv-win .ib{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--t);font-size:20px;border-radius:12px;display:flex;align-items:center;justify-content:center}',
     '#ntv-win .ib:active{background:var(--c2)}#ntv-win .spin{animation:ntvSpin 1s linear infinite}@keyframes ntvSpin{to{transform:rotate(360deg)}}',
-    '#ntv-map{position:relative;height:38dvh;min-height:180px;flex:none;background:#0b1220;z-index:0}#ntv-win.rt #ntv-map{height:46dvh}',
-    '#ntv-map .leaflet-container{background:#0b1220;font:inherit}html.theme-light #ntv-map .leaflet-container{background:#e5e7eb}',
+    '#ntv-map{position:relative;height:38dvh;min-height:180px;flex:none;background:#e5e7eb;z-index:0;overflow:hidden}#ntv-mapc{position:absolute;inset:0}#ntv-win.rt #ntv-map{height:46dvh}',
+    '#ntv-map .leaflet-container{background:#e5e7eb;font:inherit}',   // v1.1.0：地圖一律白晝樣式
     '#ntv-map .fab{position:absolute;right:10px;z-index:500;width:44px;height:44px;border-radius:50%;border:1px solid rgba(0,0,0,.15);background:#fff;color:#1d4ed8;font-size:20px;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}',
     '#ntv-map .fab.me{bottom:12px}#ntv-map .fab.fit{bottom:62px;font-size:17px}#ntv-map .fab.lay{bottom:112px;font-size:18px}',
-    'html:not(.theme-light) #ntv-map .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92)}html:not(.theme-light) #ntv-map[data-tiles="nlsc"] .leaflet-tile-pane{filter:invert(1) brightness(.78) contrast(1.05)}',
+    // v1.1.0：拿掉黑夜模式的地圖反色（使用者要求黑夜模式也顯示白晝版地圖）
     'html body #ntv-win #ntv-map .fab{background:#ffffff!important;color:#1d4ed8!important;border:1px solid rgba(0,0,0,.15)!important;box-shadow:0 2px 8px rgba(0,0,0,.3)!important;opacity:1!important}',   // 白晝模式全域按鈕規則會把底色清掉
-    '#ntv-map .mapmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:400;color:#94a3b8;font-size:13px;text-align:center;padding:0 20px}',
+    '#ntv-map .mapmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:400;color:#64748b;font-size:13px;text-align:center;padding:0 20px}',
     '#ntv-wx{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--bd);overflow-x:auto;scrollbar-width:none;white-space:nowrap;min-height:46px}#ntv-wx::-webkit-scrollbar{display:none}',
     '#ntv-wx .now{display:flex;align-items:center;gap:6px;flex:none}#ntv-wx .now .ic{font-size:24px}#ntv-wx .now b{font-size:18px}',
     '#ntv-wx .meta{font-size:11.5px;color:var(--t2);line-height:1.35;flex:none}#ntv-wx .hr{flex:none;text-align:center;font-size:11px;color:var(--t2);padding:0 2px}#ntv-wx .hr b{display:block;color:var(--t);font-size:12px}',
@@ -70,12 +75,12 @@
     'html.theme-light #ntv-win .bdg.g{color:#15803d}html.theme-light #ntv-win .bdg.y{color:#a16207}html.theme-light #ntv-win .bdg.r{color:#b91c1c}',
     '#ntv-win .acts{display:flex;gap:6px;margin-top:8px}#ntv-win .btn{min-height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--bd);background:var(--c2);color:var(--t);font-size:13px;font-weight:600}',
     '#ntv-win .btn.pri{background:var(--ac);border-color:var(--ac);color:var(--on)}#ntv-win .btn.big{min-height:46px;width:100%;font-size:15px;border-radius:23px}',
-    '#ntv-win .modes{display:flex;gap:4px;padding:3px;border-radius:22px;background:var(--c2);margin:8px 0}#ntv-win .modes button{flex:1;min-height:38px;border:0;border-radius:19px;background:transparent;color:var(--t);font-size:13px}',
+    '#ntv-win .modes{display:flex;gap:4px;padding:3px;border-radius:22px;background:var(--c2);margin:8px 0}#ntv-win .modes button{flex:1;min-width:0;min-height:38px;padding:0 2px;font-size:12.5px!important;white-space:nowrap;border:0;border-radius:19px;background:transparent;color:var(--t);font-size:13px}',
     '#ntv-win .modes button.on{background:var(--ac);color:var(--on);font-weight:700}',
     '#ntv-win .step{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--bd)}#ntv-win .step:last-child{border-bottom:0}#ntv-win .step .no{flex:none;width:22px;height:22px;border-radius:50%;background:var(--c2);font-size:11px;display:flex;align-items:center;justify-content:center;color:var(--t2)}',
     '#ntv-win .sum{font-size:22px;font-weight:800}#ntv-win .note{font-size:12px;color:var(--t2);margin:6px 2px}',
     '#ntv-win .empty{padding:24px 10px;text-align:center;color:var(--t2)}',
-    '.ntv-pop{font-size:13px;line-height:1.4;min-width:150px}.ntv-pop b{font-size:14px}.ntv-pop .a{display:flex;gap:6px;margin-top:6px}.ntv-pop button{min-height:32px;padding:0 10px;border-radius:16px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;font-size:12px;font-weight:600}',
+    '.ntv-pop{font-size:13px;line-height:1.4;min-width:150px;color:#1e293b}.ntv-pop b{color:#0f172a}.ntv-pop b{font-size:14px}.ntv-pop .a{display:flex;gap:6px;margin-top:6px}.ntv-pop button{min-height:32px;padding:0 10px;border-radius:16px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;font-size:12px;font-weight:600}',
     '.ntv-pop button.p{background:#2f63d6;border-color:#2f63d6;color:#fff}',
     '.ntv-me{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 2px rgba(37,99,235,.35),0 1px 4px rgba(0,0,0,.4)}',
     '.ntv-dst{font-size:26px;line-height:26px;text-align:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}'
@@ -99,7 +104,15 @@
     $('ntv-sr').addEventListener('submit', function (e) { e.preventDefault(); doSearch($('ntv-q').value); try { $('ntv-q').blur(); } catch (e2) { /* */ } });
   }
 
-  /* ───────── Leaflet ───────── */
+  /* ───────── 地圖（v1.1.0：Google Maps JavaScript API／Leaflet 兩種實作，同一組介面） ─────────
+     介面：setView(lat,lon,z)、getZoom()、fitPoints(pts)、fitCircle(lat,lon,r)、drawMe(pos,r)、drawPois(list,styleFn,onClick)、popup(it,el)、closePopup()、
+           drawRoute(line,mode,to)、clearRoute()、resize()、layer()（切換底圖／圖層，回傳名稱）、destroy()。
+     v1.1.0 起地圖一律用白晝樣式（使用者要求：黑夜模式下地圖也顯示白晝版），不再反色。 */
+  var MP = null, mapKind = '';
+  function mapBox() { var c = $('ntv-mapc'); if (!c) { c = D.createElement('div'); c.id = 'ntv-mapc'; $('ntv-map').insertBefore(c, $('ntv-map').firstChild); } return c; }
+  function popEl(it) { var d = D.createElement('div'); d.innerHTML = popHtml(it); d = d.firstChild; d.addEventListener('click', onClick); return d; }   // 彈出框會擋點擊冒泡，按鈕自己綁
+
+  // ── Leaflet（OpenStreetMap 模式） ──
   function loadLeaflet() {
     if (W.L && W.L.map) return Promise.resolve(W.L);
     if (loadLeaflet.p) return loadLeaflet.p;
@@ -110,13 +123,11 @@
     });
     return loadLeaflet.p;
   }
-  // v1.0.1：CARTO 底圖現在要 API 金鑰（真機出現「API KEY REQUIRED」圖磚，而且圖磚照樣載入成功、不會觸發錯誤，自動退回失效）。
-  //   改成：台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰，白晝彩色 EMAP、黑夜灰階 EMAP01 加反色濾鏡）；境外預設 OpenStreetMap；
-  //   地圖右側「🗺」鈕可在 國土測繪／OpenStreetMap／Esri 間切換，選擇記在 localStorage nova_travel_tiles。
+  // 底圖：台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰），境外 OpenStreetMap；🗺 鈕在 國土測繪／OSM／Esri 間切換（nova_travel_tiles）。
   var TILES = {
-    nlsc: { zh: '國土測繪中心電子地圖', url: function () { return 'https://wmts.nlsc.gov.tw/wmts/' + (light() ? 'EMAP' : 'EMAP01') + '/default/GoogleMapsCompatible/{z}/{y}/{x}'; }, max: 18, attr: '© 內政部國土測繪中心' },
-    osm: { zh: 'OpenStreetMap', url: function () { return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'; }, max: 19, attr: '© OpenStreetMap' },
-    esri: { zh: 'Esri 街道圖', url: function () { return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'; }, max: 18, attr: '© Esri' }
+    nlsc: { zh: '國土測繪中心電子地圖', url: 'https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', max: 18, attr: '© 內政部國土測繪中心' },
+    osm: { zh: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', max: 19, attr: '© OpenStreetMap' },
+    esri: { zh: 'Esri 街道圖', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', max: 18, attr: '© Esri' }
   };
   var TILE_ORDER = ['nlsc', 'osm', 'esri'];
   function inTaiwan(p) { return p && p.lat > 21.5 && p.lat < 26.6 && p.lon > 118 && p.lon < 122.3; }
@@ -125,44 +136,138 @@
     if (TILES[k]) return k;
     return inTaiwan(S.res && S.res.pos) || !S.res ? 'nlsc' : 'osm';
   }
-  var curTile = '';
-  function setTiles(key) {
-    key = key || tileKey(); curTile = key;
-    var t = TILES[key];
-    if (tileLayer) { try { map.removeLayer(tileLayer); } catch (e) { /* */ } }
-    tileErr = 0;
-    tileLayer = L.tileLayer(t.url(), { maxZoom: 19, maxNativeZoom: t.max, attribution: t.attr });
-    tileLayer.on('tileerror', function () { if (++tileErr === 10 && !localStorage.getItem('nova_travel_tiles')) { var nx = TILE_ORDER[(TILE_ORDER.indexOf(curTile) + 1) % TILE_ORDER.length]; toast('底圖載入失敗，改用 ' + TILES[nx].zh); setTiles(nx); } });
-    tileLayer.on('tileload', function () { var m = $('ntv-mapmsg'); if (m) m.style.display = 'none'; });
-    tileLayer.addTo(map);
-    var el = $('ntv-map'); if (el) el.setAttribute('data-tiles', key);
-  }
-  function cycleTiles() {
-    var nx = TILE_ORDER[(TILE_ORDER.indexOf(curTile) + 1) % TILE_ORDER.length];
-    try { localStorage.setItem('nova_travel_tiles', nx); } catch (e) { /* */ }
-    setTiles(nx); toast('底圖：' + TILES[nx].zh, 1800);
-  }
-  async function initMap() {
-    if (map) { setTimeout(function () { map.invalidateSize(); }, 60); return; }
-    L = await loadLeaflet();
-    map = L.map($('ntv-map'), { zoomControl: false, attributionControl: true, preferCanvas: true, tap: true }).setView([25.04, 121.55], 15);
+  function LeafletMap() {
+    var map = L.map(mapBox(), { zoomControl: false, attributionControl: true, preferCanvas: true, tap: true }).setView([25.04, 121.55], 15);
     map.attributionControl.setPrefix(false);
+    var g = { range: L.layerGroup().addTo(map), poi: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), me: L.layerGroup().addTo(map) }, canvas = L.canvas({ padding: 0.3, tolerance: 8 });
+    var tl = null, cur = '', errN = 0;
+    function setTiles(key) {
+      key = key || tileKey(); cur = key; var t = TILES[key];
+      if (tl) { try { map.removeLayer(tl); } catch (e) { /* */ } }
+      errN = 0; tl = L.tileLayer(t.url, { maxZoom: 19, maxNativeZoom: t.max, attribution: t.attr });
+      tl.on('tileerror', function () { if (++errN === 10 && !localStorage.getItem('nova_travel_tiles')) { var nx = TILE_ORDER[(TILE_ORDER.indexOf(cur) + 1) % TILE_ORDER.length]; toast('底圖載入失敗，改用 ' + TILES[nx].zh); setTiles(nx); } });
+      tl.on('tileload', function () { var m = $('ntv-mapmsg'); if (m) m.style.display = 'none'; });
+      tl.addTo(map); $('ntv-map').setAttribute('data-tiles', key);
+    }
     setTiles();
-    lyr.range = L.layerGroup().addTo(map); lyr.poi = L.layerGroup().addTo(map); lyr.route = L.layerGroup().addTo(map); lyr.me = L.layerGroup().addTo(map);
-    lyr.canvas = L.canvas({ padding: 0.3, tolerance: 8 });
-    map.on('popupopen', function (ev) { var el = ev.popup.getElement(); if (el && !el._ntv) { el._ntv = 1; el.addEventListener('click', onClick); } });   // 彈出框會擋點擊冒泡，按鈕要自己綁
     setTimeout(function () { map.invalidateSize(); }, 80);
+    return {
+      kind: 'leaflet',
+      setView: function (la, lo, z) { map.setView([la, lo], z || map.getZoom(), { animate: true }); },
+      getZoom: function () { return map.getZoom(); },
+      fitPoints: function (pts) { map.fitBounds(L.latLngBounds(pts), { padding: [30, 30] }); },
+      fitCircle: function (la, lo, r) { map.fitBounds(L.latLng(la, lo).toBounds(r * 2), { padding: [6, 6] }); },
+      drawMe: function (p, r) {
+        if (cur !== tileKey() && !localStorage.getItem('nova_travel_tiles')) setTiles();
+        g.me.clearLayers(); g.range.clearLayers();
+        L.circle([p.lat, p.lon], { radius: r, color: '#5b8def', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(g.range);
+        if (p.acc && p.acc < 1500) L.circle([p.lat, p.lon], { radius: p.acc, color: '#2563eb', weight: 0, fillColor: '#2563eb', fillOpacity: 0.12, interactive: false }).addTo(g.me);
+        L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: '<div class="ntv-me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 1000, keyboard: false }).addTo(g.me);
+      },
+      drawPois: function (list, style, click) {
+        g.poi.clearLayers();
+        list.forEach(function (it) { var st = style(it); var m = L.circleMarker([it.lat, it.lon], { renderer: canvas, radius: st.r, color: '#ffffff', weight: st.w, fillColor: st.c, fillOpacity: 0.95 }); m.on('click', function () { click(it); }); m.addTo(g.poi); });
+      },
+      popup: function (it, el) { L.popup({ offset: [0, -4], autoPan: true }).setLatLng([it.lat, it.lon]).setContent(el).openOn(map); },
+      closePopup: function () { map.closePopup(); },
+      drawRoute: function (line, mode, to) {
+        g.route.clearLayers();
+        if (line && line.length > 1) {
+          L.polyline(line, { color: '#ffffff', weight: 9, opacity: 0.9 }).addTo(g.route);
+          L.polyline(line, { color: mode === 'transit' ? '#a855f7' : '#2563eb', weight: 5, opacity: 0.95, dashArray: mode === 'walking' ? '2 8' : null }).addTo(g.route);
+        }
+        if (to) L.marker([to.lat, to.lon], { icon: L.divIcon({ className: '', html: '<div class="ntv-dst">📍</div>', iconSize: [26, 26], iconAnchor: [13, 24] }) }).addTo(g.route);
+      },
+      clearRoute: function () { g.route.clearLayers(); },
+      resize: function () { setTimeout(function () { map.invalidateSize(); }, 60); },
+      layer: function () { var nx = TILE_ORDER[(TILE_ORDER.indexOf(cur) + 1) % TILE_ORDER.length]; try { localStorage.setItem('nova_travel_tiles', nx); } catch (e) { /* */ } setTiles(nx); return TILES[nx].zh; },
+      destroy: function () { try { map.remove(); } catch (e) { /* */ } }
+    };
   }
-  var themeObs = new MutationObserver(function () { if (map && tileLayer && curTile === 'nlsc') setTiles('nlsc'); });   // 國土測繪白晝／黑夜用不同圖層
-  themeObs.observe(D.documentElement, { attributes: true, attributeFilter: ['class'] });
 
-  function drawMe() {
-    if (!map || !S.res) return;
-    var p = S.res.pos; lyr.me.clearLayers(); lyr.range.clearLayers();
-    L.circle([p.lat, p.lon], { radius: S.res.radius, color: '#5b8def', weight: 1.5, dashArray: '6 6', fill: false, interactive: false }).addTo(lyr.range);
-    if (p.acc && p.acc < 1500) L.circle([p.lat, p.lon], { radius: p.acc, color: '#2563eb', weight: 0, fillColor: '#2563eb', fillOpacity: 0.12, interactive: false }).addTo(lyr.me);
-    L.marker([p.lat, p.lon], { icon: L.divIcon({ className: '', html: '<div class="ntv-me"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 1000, keyboard: false }).addTo(lyr.me);
+  // ── Google Maps JavaScript API（Google 模式；Places／Routes 的內容依 Google 條款必須畫在 Google 地圖上） ──
+  function loadGoogle(key) {
+    if (W.google && W.google.maps && W.google.maps.Map) return Promise.resolve();
+    if (loadGoogle.p) return loadGoogle.p;
+    loadGoogle.p = new Promise(function (res, rej) {
+      var t = setTimeout(function () { loadGoogle.p = null; rej(new Error('Google 地圖載入逾時')); }, 15000);
+      W.__ntvGmReady = function () { clearTimeout(t); res(); };
+      var s = D.createElement('script'); s.async = true;
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&v=weekly&language=zh-TW&region=TW&callback=__ntvGmReady';
+      s.onerror = function () { clearTimeout(t); loadGoogle.p = null; rej(new Error('無法連線到 Google 地圖')); };
+      D.head.appendChild(s);
+    });
+    return loadGoogle.p;
   }
+  // 金鑰不能用在 Maps JavaScript API（沒啟用、網域限制…）時 Google 會呼叫這個全域函式
+  W.gm_authFailure = function () {
+    if (!C) return;
+    C.googleBroken('這把 Google 金鑰不能使用 Maps JavaScript API（請在 Google Cloud 啟用，或檢查金鑰的應用程式限制）');
+    toast('Google 地圖無法使用，改用 OpenStreetMap 模式', 5000);
+    if (S.open) switchMap().then(function () { scan(false, false); });
+  };
+  function GoogleMap() {
+    var gm = W.google.maps;
+    var map = new gm.Map(mapBox(), { center: { lat: 25.04, lng: 121.55 }, zoom: 15, disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy', mapTypeId: 'roadmap', colorScheme: 'LIGHT' });
+    var me = [], pois = [], rt = [], iw = new gm.InfoWindow({ pixelOffset: new gm.Size(0, -4) });
+    function clear(arr) { arr.forEach(function (o) { o.setMap(null); }); arr.length = 0; }
+    gm.event.addListenerOnce(map, 'tilesloaded', function () { var m = $('ntv-mapmsg'); if (m) m.style.display = 'none'; });
+    $('ntv-map').setAttribute('data-tiles', 'google');
+    function ll(la, lo) { return { lat: la, lng: lo }; }
+    return {
+      kind: 'google',
+      setView: function (la, lo, z) { map.panTo(ll(la, lo)); if (z) map.setZoom(z); },
+      getZoom: function () { return map.getZoom(); },
+      fitPoints: function (pts) { var b = new gm.LatLngBounds(); pts.forEach(function (p) { b.extend(ll(p[0], p[1])); }); map.fitBounds(b, 30); },
+      fitCircle: function (la, lo, r) { var c = new gm.Circle({ center: ll(la, lo), radius: r }); map.fitBounds(c.getBounds(), 6); },
+      drawMe: function (p, r) {
+        clear(me);
+        me.push(new gm.Circle({ map: map, center: ll(p.lat, p.lon), radius: r, strokeColor: '#5b8def', strokeOpacity: 0.9, strokeWeight: 1.5, fillOpacity: 0, clickable: false }));
+        if (p.acc && p.acc < 1500) me.push(new gm.Circle({ map: map, center: ll(p.lat, p.lon), radius: p.acc, strokeWeight: 0, fillColor: '#2563eb', fillOpacity: 0.12, clickable: false }));
+        me.push(new gm.Marker({ map: map, position: ll(p.lat, p.lon), zIndex: 9999, clickable: false, icon: { path: gm.SymbolPath.CIRCLE, scale: 8, fillColor: '#2563eb', fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 3 } }));
+      },
+      drawPois: function (list, style, click) {
+        clear(pois);
+        list.forEach(function (it) {
+          var st = style(it);
+          var m = new gm.Marker({ map: map, position: ll(it.lat, it.lon), zIndex: st.w > 2 ? 900 : 1, icon: { path: gm.SymbolPath.CIRCLE, scale: st.r, fillColor: st.c, fillOpacity: 0.95, strokeColor: '#ffffff', strokeWeight: st.w } });
+          m.addListener('click', function () { click(it); }); pois.push(m);
+        });
+      },
+      popup: function (it, el) { iw.setContent(el); iw.setPosition(ll(it.lat, it.lon)); iw.open({ map: map, shouldFocus: false }); },
+      closePopup: function () { iw.close(); },
+      drawRoute: function (line, mode, to) {
+        clear(rt);
+        if (line && line.length > 1) {
+          var path = line.map(function (p) { return ll(p[0], p[1]); });
+          rt.push(new gm.Polyline({ map: map, path: path, strokeColor: '#ffffff', strokeWeight: 9, strokeOpacity: 0.9 }));
+          if (mode === 'walking') rt.push(new gm.Polyline({ map: map, path: path, strokeOpacity: 0, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, strokeColor: '#2563eb', scale: 3 }, offset: '0', repeat: '12px' }] }));
+          else rt.push(new gm.Polyline({ map: map, path: path, strokeColor: mode === 'transit' ? '#a855f7' : '#2563eb', strokeWeight: 5, strokeOpacity: 0.95 }));
+        }
+        if (to) rt.push(new gm.Marker({ map: map, position: ll(to.lat, to.lon), title: to.name || '' }));
+      },
+      clearRoute: function () { clear(rt); },
+      resize: function () { /* Google 地圖會自己偵測容器大小 */ },
+      layer: function () { var t = map.getMapTypeId() === 'roadmap' ? 'hybrid' : 'roadmap'; map.setMapTypeId(t); return t === 'hybrid' ? '衛星圖' : '一般地圖'; },
+      destroy: function () { clear(me); clear(pois); clear(rt); iw.close(); }
+    };
+  }
+  /** 依目前的資料來源建立（或換掉）地圖；Google 載入失敗就標記並改用 Leaflet */
+  async function switchMap() {
+    var want = C.provider() === 'google' ? 'google' : 'leaflet';
+    if (MP && mapKind === want) { MP.resize(); return; }
+    if (MP) { try { MP.destroy(); } catch (e) { /* */ } MP = null; var box = $('ntv-mapc'); if (box) box.parentNode.removeChild(box); }
+    var msg = $('ntv-mapmsg'); if (msg) { msg.style.display = ''; msg.textContent = '地圖載入中…'; }
+    if (want === 'google') {
+      try { await loadGoogle(C.googleKey()); MP = GoogleMap(); mapKind = 'google'; }
+      catch (e) { C.googleBroken(e.message); toast(e.message + '，改用 OpenStreetMap 模式', 5000); want = 'leaflet'; }
+    }
+    if (want === 'leaflet') { L = await loadLeaflet(); MP = LeafletMap(); mapKind = 'leaflet'; }
+    if (S.res) { drawMe(); drawPois(); if (S.route) drawRoute(); else MP.setView(S.res.pos.lat, S.res.pos.lon, 15); }
+  }
+  async function initMap() { await switchMap(); }
+
+  function drawMe() { if (MP && S.res) MP.drawMe(S.res.pos, S.res.radius); }
   function visibleItems() {
     if (!S.res) return [];
     return S.res.items.filter(function (it) {
@@ -171,21 +276,18 @@
       return true;
     });
   }
-  var mk = {};
   function drawPois() {
-    if (!map) return;
-    lyr.poi.clearLayers(); mk = {};
-    if (S.route) return;   // 看路線時只畫路線
-    visibleItems().slice(0, 600).forEach(function (it) {
+    if (!MP) return;
+    if (S.route) { MP.drawPois([], null, null); return; }   // 看路線時只畫路線
+    MP.drawPois(visibleItems().slice(0, mapKind === 'google' ? 400 : 600), function (it) {
       var c = C.cat(it.cat), sel = S.sel === it.id;
-      var m = L.circleMarker([it.lat, it.lon], { renderer: lyr.canvas, radius: sel ? 10 : (S.cat === 'all' ? 5 : 7), color: '#ffffff', weight: sel ? 3 : 1.2, fillColor: c ? c.color : '#94a3b8', fillOpacity: 0.95 });
-      m.on('click', function () { select(it.id, false); });
-      m.addTo(lyr.poi); mk[it.id] = m;
-    });
+      return { r: sel ? 10 : (S.cat === 'all' ? 5 : 7), w: sel ? 3 : 1.2, c: c ? c.color : '#94a3b8' };
+    }, function (it) { select(it.id, false); });
   }
   function popHtml(it) {
     var c = C.cat(it.cat);
     return '<div class="ntv-pop"><b>' + esc(it.name) + '</b><br><span style="color:#64748b">' + esc((c ? c.icon + ' ' : '') + it.sub) + ' · ' + esc(C.fmtDist(it.d)) + '</span>' +
+      (it.rating ? '<br>⭐ ' + it.rating + '（' + (it.ratings || 0) + '）' + (it.openNow != null ? ' · ' + (it.openNow ? '營業中' : '休息中') : '') : '') +
       (it.cat === 'parking' ? '<br>' + parkText(it) : '') + (it.rent != null ? '<br>可借 ' + it.rent + '／可還 ' + (it.ret == null ? '—' : it.ret) : '') +
       '<div class="a"><button data-ntv="route" data-id="' + esc(it.id) + '">路線</button><button class="p" data-ntv="nav" data-id="' + esc(it.id) + '">導航</button></div></div>';
   }
@@ -196,10 +298,9 @@
     return '剩 ' + it.avail + (it.total ? '／' + it.total : '') + ' 格' + (it.car != null ? '（汽車 ' + it.car + (it.moto != null ? '、機車 ' + it.moto : '') + '）' : it.moto != null ? '（機車 ' + it.moto + '）' : '');
   }
   function fitAll() {
-    if (!map || !S.res) return;
-    if (S.route && S.route.line && S.route.line.length) { map.fitBounds(L.latLngBounds(S.route.line), { padding: [30, 30] }); return; }
-    var p = S.res.pos, b = L.latLng(p.lat, p.lon).toBounds(S.res.radius * 2);
-    map.fitBounds(b, { padding: [6, 6] });
+    if (!MP || !S.res) return;
+    if (S.route && S.route.line && S.route.line.length) { MP.fitPoints(S.route.line); return; }
+    MP.fitCircle(S.res.pos.lat, S.res.pos.lon, S.res.radius);
   }
 
   /* ───────── 掃描 ───────── */
@@ -210,7 +311,7 @@
     try {
       var res = await C.scan({ fresh: fresh, pos: silent && S.res ? S.res.pos : undefined, onPart: function (k, r) {
         S.res = r;
-        if (k === 'pos') { if (map && !localStorage.getItem('nova_travel_tiles') && curTile !== tileKey()) setTiles(); $('ntv-loc').textContent = '已定位' + (r.pos.acc ? '（誤差約 ' + r.pos.acc + ' 公尺）' : '') + '，查詢地址…'; drawMe(); if (map && !silent) map.setView([r.pos.lat, r.pos.lon], 15); }
+        if (k === 'pos') { $('ntv-loc').textContent = '已定位' + (r.pos.acc ? '（誤差約 ' + r.pos.acc + ' 公尺）' : '') + '，查詢地址…'; drawMe(); if (MP && !silent) MP.setView(r.pos.lat, r.pos.lon, 15); }
         if (k === 'addr') renderLoc();
         if (k === 'wx') renderWx();
         if (k === 'items') { drawPois(); renderChips(); if (!S.route && !S.search) renderBody(); }
@@ -258,13 +359,15 @@
     }
     if (it.sub === 'YouBike') b += '<span class="bdg ' + (it.closed ? 'r' : it.rent > 3 ? 'g' : it.rent > 0 ? 'y' : 'r') + '">' + (it.closed ? '暫停' : '可借 ' + (it.rent == null ? '—' : it.rent) + (it.ebike ? '（電輔 ' + it.ebike + '）' : '') + '／可還 ' + (it.ret == null ? '—' : it.ret)) + '</span>';
     if (it.cat === 'fun') b += '<span class="bdg n">' + (it.indoor ? '室內' : '室外') + '</span>';
+    if (it.rating) b += '<span class="bdg n">⭐ ' + it.rating + '（' + (it.ratings || 0) + '）</span>';
+    if (it.openNow != null) b += '<span class="bdg ' + (it.openNow ? 'g' : 'r') + '">' + (it.openNow ? '營業中' : '休息中') + '</span>';
     if (it.hours) b += '<span class="bdg n">🕒 ' + esc(hoursZh(it.hours).slice(0, 40)) + '</span>';
     var sel = S.sel === it.id;
     return '<div class="card' + (sel ? ' sel' : '') + '" data-act="pick" data-id="' + esc(it.id) + '">' +
       '<div class="row"><span class="dot" style="background:' + (c ? c.color : '#94a3b8') + '"></span><div class="grow"><div class="nm">' + esc(it.name) + '</div>' +
       '<div class="sm mut">' + esc(it.sub) + (it.brand && it.brand !== it.name ? ' · ' + esc(it.brand) : '') + (it.addr ? ' · ' + esc(it.addr) : '') + '</div></div><span class="dist">' + esc(C.fmtDist(it.d)) + '</span></div>' +
       (b ? '<div>' + b + '</div>' : '') +
-      (sel ? '<div class="acts"><button class="btn" data-act="route" data-id="' + esc(it.id) + '">🧭 路線</button><button class="btn pri" data-act="nav" data-id="' + esc(it.id) + '">導航</button>' + (it.phone ? '<button class="btn" data-act="tel" data-id="' + esc(it.id) + '">📞 電話</button>' : '') + '</div>' : '') +
+      (sel ? '<div class="acts"><button class="btn" data-act="route" data-id="' + esc(it.id) + '">🧭 路線</button><button class="btn pri" data-act="nav" data-id="' + esc(it.id) + '">導航</button>' + (it.phone ? '<button class="btn" data-act="tel" data-id="' + esc(it.id) + '">📞</button>' : '') + (it.gurl ? '<button class="btn" data-act="gurl" data-id="' + esc(it.id) + '">詳情</button>' : '') + '</div>' : '') +
       '</div>';
   }
   function renderBody() {
@@ -279,6 +382,8 @@
     if ((S.cat === 'all' || S.cat === 'parking') && S.res.parkNote) notes.push('🅿️ ' + S.res.parkNote);
     if ((S.cat === 'all' || S.cat === 'transit') && S.res.bikeNote) notes.push('🚲 ' + S.res.bikeNote);
     if (S.res.osmErr) notes.push('⚠️ ' + S.res.osmErr);
+    if (S.res.gErr) notes.push('⚠️ ' + S.res.gErr + '；這次改用 OpenStreetMap 資料');
+    (S.res.notes || []).forEach(function (n) { if (/^部分類別查詢失敗/.test(n)) notes.push('⚠️ Google ' + n); });
     if (S.res.osmSrc === 'Nominatim') notes.push('ℹ️ 周邊設施暫用備援資料（OSM 類別搜尋，每類最多 40 筆，沒有公車站以外的小站點）；完整資料查到後會自動更新。');
     (S.res.pos.warn ? [S.res.pos.warn] : []).forEach(function (n) { notes.push('📍 ' + n); });
     h += notes.map(function (n) { return '<div class="note">' + esc(n) + '</div>'; }).join('');
@@ -294,14 +399,20 @@
         }).join('');
       } else h += shown.map(itemCard).join('') + (list.length > shown.length ? '<div class="note">只列最近 ' + shown.length + ' 個（共 ' + list.length + ' 個）</div>' : '');
     }
-    h += '<div class="note">資料：OpenStreetMap' + (C.hasTdx() ? '、交通部 TDX（停車、YouBike）' : '') + (S.res.items.some(function (x) { return x.src === '新北市'; }) ? '、新北市政府開放資料（停車）' : '') + '、Open-Meteo。距離為直線距離。' + (S.res.at ? ' 更新於 ' + new Date(S.res.at).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '') + '</div>';
+    var gm = S.res.provider === 'google' && !S.res.gErr;
+    h += '<div class="note">資料：' + (gm ? 'Google 地圖' : 'OpenStreetMap') + (C.hasTdx() ? '、交通部 TDX（停車、YouBike）' : '') + (S.res.items.some(function (x) { return x.src === '新北市'; }) ? '、新北市政府開放資料（停車）' : '') + '、Open-Meteo。距離為直線距離。' + (S.res.at ? ' 更新於 ' + new Date(S.res.at).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '') + '</div>';
+    if (C.googleKey()) {   // v1.1.0：Google／OpenStreetMap 切換
+      var isG = C.provider() === 'google';
+      h += '<div class="note">' + (isG ? (S.res.gErr ? '目前用 Google 地圖；地點資料這次用 OpenStreetMap。' : '目前用 Google 地圖與地點資料。') : (C.googleBroken() ? 'Google 地圖無法使用：' + esc(C.googleBroken()) + '。' : '目前用 OpenStreetMap 免費資料。')) +
+        ' <button class="btn" style="min-height:30px;margin-left:4px" data-act="prov" data-p="' + (isG ? 'osm' : 'google') + '">' + (isG ? '改用 OpenStreetMap' : (C.googleBroken() ? '再試 Google' : '改用 Google')) + '</button></div>';
+    }
     el.innerHTML = h;
   }
   function findItem(id) { return S.res && S.res.items.filter(function (x) { return x.id === id; })[0]; }
   function select(id, fromList) {
     S.sel = S.sel === id && fromList ? null : id; var it = findItem(id);
     drawPois();
-    if (it && map && S.sel) { map.setView([it.lat, it.lon], Math.max(map.getZoom(), 16), { animate: true }); L.popup({ offset: [0, -4], autoPan: true }).setLatLng([it.lat, it.lon]).setContent(popHtml(it)).openOn(map); }
+    if (it && MP && S.sel) { MP.setView(it.lat, it.lon, Math.max(MP.getZoom() || 15, 16)); MP.popup(it, popEl(it)); }
     renderBody();
     if (!fromList && S.sel) { var c = D.querySelector('#ntv-body .card.sel'); if (c) c.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   }
@@ -334,40 +445,37 @@
     if (!S.res) { toast('還沒定位完成'); return; }
     var first = !S.route && !S.routeTo;
     S.routeTo = to; S.mode = mode || S.mode || 'driving';
-    if (first) pushLayer(function () { S.route = null; S.routeTo = null; lyr.route && lyr.route.clearLayers(); $('ntv-win').classList.remove('rt'); renderChips(); drawPois(); if (S.search) renderSearch(); else renderBody(); setTimeout(function () { map && map.invalidateSize(); fitAll(); }, 80); });
+    if (first) pushLayer(function () { S.route = null; S.routeTo = null; MP && MP.clearRoute(); $('ntv-win').classList.remove('rt'); renderChips(); drawPois(); if (S.search) renderSearch(); else renderBody(); setTimeout(function () { MP && MP.resize(); fitAll(); }, 80); });
     S.route = { loading: true, to: to, mode: S.mode }; $('ntv-win').classList.add('rt'); renderChips(); drawPois(); renderRoute();
-    setTimeout(function () { map && map.invalidateSize(); }, 80);
+    setTimeout(function () { MP && MP.resize(); }, 80);
     var from = { lat: S.res.pos.lat, lon: S.res.pos.lon, name: '目前位置' };
-    try { var r = await C.route(from, to, S.mode); if (S.routeTo !== to || S.mode !== r.mode) return; S.route = r; }
+    var want = S.mode;
+    try { var r = await C.route(from, to, want); if (S.routeTo !== to || S.mode !== want) return; S.route = r; if (r.mode !== want) S.route.fallbackFrom = want; }
     catch (e) { if (S.routeTo !== to) return; S.route = { err: e.message, to: to, mode: S.mode, gmaps: C.gmapsNav(to.lat, to.lon, S.mode, from.lat, from.lon) }; }
     drawRoute(); renderRoute();
   }
   function drawRoute() {
-    if (!map) return; lyr.route.clearLayers();
+    if (!MP) return; MP.clearRoute();
     var r = S.route; if (!r) return;
-    var to = r.to || S.routeTo;
-    if (r.line && r.line.length > 1) {
-      L.polyline(r.line, { color: '#ffffff', weight: 9, opacity: 0.9 }).addTo(lyr.route);
-      L.polyline(r.line, { color: r.mode === 'transit' ? '#a855f7' : '#2563eb', weight: 5, opacity: 0.95, dashArray: r.mode === 'walking' ? '2 8' : null }).addTo(lyr.route);
-    }
-    if (to) L.marker([to.lat, to.lon], { icon: L.divIcon({ className: '', html: '<div class="ntv-dst">📍</div>', iconSize: [26, 26], iconAnchor: [13, 24] }) }).addTo(lyr.route);
+    MP.drawRoute(r.line, r.mode, r.to || S.routeTo);
     fitAll();
   }
   function renderRoute() {
     var r = S.route, el = $('ntv-body'); if (!r || !el) return;
-    var to = r.to || S.routeTo, modes = [['driving', '🚗 開車'], ['walking', '🚶 步行'], ['cycling', '🚲 單車'], ['transit', '🚌 大眾運輸']];
+    var to = r.to || S.routeTo, modes = [['driving', '🚗 開車']].concat(C.provider() === 'google' ? [['moto', '🛵 機車']] : [], [['walking', '🚶 步行'], ['cycling', '🚲 單車'], ['transit', '🚌 大眾']]);   // v1.1.0：機車只有 Google 有
     var h = '<div class="row" style="margin-top:6px"><div class="grow"><div class="sm mut">目的地</div><div class="nm">' + esc(to.name) + '</div>' + (to.addr ? '<div class="sm mut">' + esc(to.addr) + '</div>' : '') + '</div><button class="ib" data-act="back" aria-label="關閉路線">✕</button></div>' +
       '<div class="modes">' + modes.map(function (m) { return '<button class="' + (S.mode === m[0] ? 'on' : '') + '" data-act="mode" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>';
     if (r.loading) h += '<div class="empty">規劃路線中…</div>';
     else if (r.err) h += '<div class="card"><div>' + esc(r.err) + '</div><div class="acts"><button class="btn pri" data-act="gmaps">改用 Google 地圖導航</button></div></div>';
     else {
-      h += '<div class="card"><div class="row"><div class="grow"><div class="sum">' + esc(C.fmtDur(r.dur)) + '</div><div class="mut sm">' + esc(C.fmtDist(r.dist)) + (r.mode === 'transit' ? '（直線距離）' : '') + ' · ' + esc(r.src || '') + '</div></div></div>' +
+      h += '<div class="card"><div class="row"><div class="grow"><div class="sum">' + esc(C.fmtDur(r.dur)) + '</div><div class="mut sm">' + esc(C.fmtDist(r.dist)) + (r.mode === 'transit' && !/^Google/.test(r.src || '') ? '（直線距離）' : '') + ' · ' + esc(r.src || '') + '</div></div></div>' +
         '<div class="acts"><button class="btn pri big" data-act="gmaps">▶ 開始導航（Google 地圖）</button></div></div>';
       if (r.plans && r.plans.length > 1) h += '<div class="note">其他方案：' + r.plans.slice(1).map(function (p) { return esc(C.fmtDur(p.dur)) + '（' + esc(p.steps.filter(function (s) { return s.kind === 'ride'; }).map(function (s) { return s.text.replace(/（.*$/, ''); }).join(' → ') || '步行') + '）'; }).join('；') + '</div>';
       h += '<div class="card">' + (r.steps || []).map(function (s, i) {
         return '<div class="step"><span class="no">' + (i + 1) + '</span><div class="grow">' + esc(s.text) + '<div class="sm mut">' + [s.dist ? C.fmtDist(s.dist) : '', s.dur ? C.fmtDur(s.dur) : ''].filter(Boolean).join(' · ') + '</div></div></div>';
       }).join('') + '</div>';
-      if (r.mode !== 'transit') h += '<div class="note">路線由 OpenStreetMap 開放路網計算，沒有即時路況；實際導航請以 Google 地圖為準。</div>';
+      if (r.fallbackFrom === 'moto') h += '<div class="note">Google 機車路線查詢失敗，先顯示開車路線。</div>';
+      if (r.mode !== 'transit' && !/^Google/.test(r.src || '')) h += '<div class="note">路線由 OpenStreetMap 開放路網計算，沒有即時路況；實際導航請以 Google 地圖為準。</div>';
     }
     el.innerHTML = h; el.scrollTop = 0;
   }
@@ -382,13 +490,15 @@
       case 'close': return close();
       case 'back': return closeTop();
       case 'refresh': return scan(true, false);
-      case 'me': if (map && S.res) map.setView([S.res.pos.lat, S.res.pos.lon], 16); return;
+      case 'me': if (MP && S.res) MP.setView(S.res.pos.lat, S.res.pos.lon, 16); return;
       case 'fit': return fitAll();
-      case 'tiles': return map && cycleTiles();
-      case 'cat': S.cat = t.getAttribute('data-c'); S.sel = null; if (map) map.closePopup(); renderChips(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
+      case 'tiles': if (MP) toast((MP.kind === 'google' ? '地圖：' : '底圖：') + MP.layer(), 1800); return;
+      case 'prov': { var toG = t.getAttribute('data-p') === 'google'; C.providerPref(toG ? 'auto' : 'osm'); if (toG) C.googleBroken(''); S.sel = null; switchMap().then(function () { scan(false, false); }); return; }
+      case 'gurl': { var ig = findItem(id); if (ig && ig.gurl) openExt(ig.gurl); return; }
+      case 'cat': S.cat = t.getAttribute('data-c'); S.sel = null; if (MP) MP.closePopup(); renderChips(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
       case 'fun': S.fun = t.getAttribute('data-f'); renderBody(); drawPois(); return;
       case 'pick': if (e.target.closest('button')) return; return select(id, true);
-      case 'route': { var it = findItem(id); if (it) { if (map) map.closePopup(); planTo({ lat: it.lat, lon: it.lon, name: it.name, addr: it.addr || it.sub }, autoMode(it.d)); } return; }
+      case 'route': { var it = findItem(id); if (it) { if (MP) MP.closePopup(); planTo({ lat: it.lat, lon: it.lon, name: it.name, addr: it.addr || it.sub }, autoMode(it.d)); } return; }
       case 'nav': { var it2 = findItem(id); if (it2 && S.res) openExt(C.gmapsNav(it2.lat, it2.lon, autoMode(it2.d), S.res.pos.lat, S.res.pos.lon)); return; }
       case 'tel': { var it3 = findItem(id); if (it3 && it3.phone) openExt('tel:' + String(it3.phone).split(/[;,]/)[0].replace(/[^\d+]/g, '')); return; }
       case 'go': { var x = S.search && S.search.list[+t.getAttribute('data-i')]; if (x) planTo(x, autoMode(x.d != null ? x.d : 99999)); return; }
@@ -430,5 +540,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.0.3', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
+  W.NovaTravel = { version: '1.1.0', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return MP; } };
 })(window);
