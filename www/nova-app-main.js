@@ -1,9 +1,18 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.3
+   目前版本：v1.4.4
    最後更新：2026-11-14
 
    版本紀錄：
+   v1.4.4 - App v2.6.135：接入 DeepSeek（官方 OpenAI 相容 API；對標桌面 nova-app-main.js v1.18.0／desktop-patch v3.135.0）。
+            appState.keys.deepseek（nova_key_deepseek）、appState.deepseekModel（nova_deepseek_model，預設 deepseek-v4-pro）、MODEL_CONFIG.deepseek（ph-fish、bg-cyan-700：
+            手機的預編 Tailwind 沒有 bg-sky-*）、window.setDeepseekModel、子模型選單顯示切換、輸入框外框色、「啟用的模型」多一組 DeepSeek（novaModelGroup 認得 deepseek-*）、
+            金鑰存取（saveKeys／設定頁回填／匯入金鑰）、完整備份與還原帶 deepseekModel、斜線指令 /ds（V4 Pro）／/dsf（V4.1 Flash）、多 AI 控制台的選單與 callAgent 路由。
+            fetchAIResponse 新增 model==='deepseek' 分支：手機沒有 sidecar，直接連 https://api.deepseek.com/chat/completions（CapacitorHttp 走原生請求）；
+            思考預設開，thinkingLevel minimal／none 或 options.deepseekThinking===false 關閉、low→reasoning_effort low、其餘→high；options.jsonMode→json_object；
+            options.deepseekModelOverride 指定型號；V4 Pro 不支援圖片（附圖時在提示詞註明沒送出），V4.1 Flash 才送 image_url；回傳文字（思考內容不顯示），
+            用量存在 window._novaLastDeepSeekUsage。新增 window._novaMigrateDeepseekId：官方已退役的 deepseek-v4-flash／-vision-exp 與舊別名 deepseek-chat／reasoner → deepseek-flash。
+            DeepSeek 沒有接 Google 搜尋與原生 Function Calling（同桌面）；連網搜尋開著時跟 OpenAI／Grok 一樣走搜尋代理。
    v1.4.3 - App v2.6.134：只改 NOVA_APP_VERSION（2.6.134）與 NOVA_CHANGELOG 一筆（Interactions API 轉換層 nova-interactions.js v1.0.0、Insight nova-insight.js v1.5.0）；本檔程式沒有改動。
    v1.4.2 - App v2.6.133：系統狀態列（上）與導覽列（下）跟 App 背景同色。新增 window.novaSyncSystemBars(theme)：讀 nova-ui.css 的 --nv-canvas
             （B 案黑夜 #131a24、白晝 #fafbfd）設定 StatusBar、NovaSystemBars 導覽列與 meta theme-color；applyTheme 與啟動時的 StatusBar 初始化都改呼叫它。
@@ -49,8 +58,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.134';
+        const NOVA_APP_VERSION = '2.6.135';
+        // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
+        window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.135', date: '2026-11-15', notes: [
+                '接入 DeepSeek（對標桌面 desktop-patch v3.135.0；僅 www，不需重新打包）：設定 → API 金鑰填 DeepSeek API Key（platform.deepseek.com）後，主模型選單選「DeepSeek」，子選單可選 DeepSeek V4 Pro（較強、不收圖片）或 V4.1 Flash（便宜、可看圖）；也可以輸入 /ds、/dsf 切換。思考模式預設開。雙 AI、AI 協作、多 AI 控制台都能選 DeepSeek；設定 →「啟用的模型」多一組 DeepSeek。型號依 DeepSeek 官方定價頁（2026-11）：deepseek-v4-pro、deepseek-flash；舊的 deepseek-v4-flash 等名稱會自動轉成 deepseek-flash。在模擬環境以假回應測過 9 項（金鑰、選單、思考開關、JSON、附圖、斜線指令、實際送出、啟用的模型、多 AI 選單），未用真的金鑰在真機測試。'
+            ] },
             { v: '2.6.134', date: '2026-11-15', notes: [
                 'Gemini 呼叫改走 Interactions API（新檔 nova-interactions.js v1.0.0，移植桌面 desktop-patch v3.130.0；僅 www）：Google 已把 generateContent 標成舊版。App 在送出前自動把請求轉成新格式、回應轉回原本的樣子，原本的程式一行都不用改；新介面失敗時自動用舊介面重送一次，連續 3 次找不到模型就 30 分鐘內直接走舊介面。不讓 Google 保存對話（store:false）。生圖、Gemini 語音、嵌入（記憶、知識庫）照舊。設定 → API 金鑰：Gemini API Key 下方可切回舊版並看轉換統計。知識庫與簡報頁也一起套用。轉換核心與桌面版逐字相同，桌面的 6 項自動測試全部通過。',
                 'Project Insight（nova-insight.js v1.5.0）：① 地球上點地點更準——原本手指只要在按下到放開之間稍微移動就不算點擊、城市名稱也會擋住點擊；現在改成依螢幕距離挑手指附近最近的地點。模擬觸控測 17 個城市，手指微移 6px 時由 0/17 變 16/17。② 新增平面地圖：地圖右上角「🌐 地球｜🗺 平面」切換，平面可拖曳、雙指縮放、＋／－，事件水波與城市名稱都看得到，點選方式相同；會記住你選的模式，地球載入失敗時也會自動改用平面。【以上在電腦的 Chrome 模擬 Note10+ 驗證，未在真機測試】'
@@ -1690,6 +1704,7 @@ async function encodeMp3(audioBuffer) {
                     geminiModel: appState.geminiModel,
                     grokModel: appState.grokModel,
                     gptModel: appState.gptModel,
+                    deepseekModel: appState.deepseekModel,   // v1.4.4：DeepSeek
                     disabledModels: (window.novaDisabledModels ? window.novaDisabledModels() : []),   // v2.6.22：啟用的模型（批次 1 漏掉的備份欄位）
                     memoryData: (window.NovaMemory ? await NovaMemory.exportAll().catch(() => null) : null),   // v2.6.25：AI 記憶（IndexedDB）
                     privateMemoryData: (window.NovaMemoryPrivate ? await NovaMemoryPrivate.exportAll().catch(() => null) : null),   // v2.6.62：私密記憶（獨立資料庫，還原時也只回私密庫）
@@ -1825,6 +1840,7 @@ async function encodeMp3(audioBuffer) {
                     if (data.keys.groq)   localStorage.setItem('nova_key_groq',   data.keys.groq);
                     if (data.keys.openai) localStorage.setItem('nova_key_openai', data.keys.openai);
                     if (data.keys.cohere) localStorage.setItem('nova_key_cohere', data.keys.cohere);
+                    if (data.keys.deepseek) localStorage.setItem('nova_key_deepseek', data.keys.deepseek);   // v1.4.4
                     if (data.keys.serpapi)    localStorage.setItem('nova_key_serpapi',    data.keys.serpapi);
                     if (data.keys.gmaps)      localStorage.setItem('nova_key_gmaps',      data.keys.gmaps);
                     if (data.keys.aws_ak)     localStorage.setItem('nova_key_aws_ak',     data.keys.aws_ak);
@@ -1856,6 +1872,7 @@ async function encodeMp3(audioBuffer) {
                 if (data.currentModel) appState.currentModel = data.currentModel;
                 if (data.geminiModel)  appState.geminiModel  = window._novaMigrateGeminiId(data.geminiModel);   // v2.6.19：舊型號自動轉換
                 if (data.gptModel)     { appState.gptModel = data.gptModel; try { localStorage.setItem('nova_gpt_model', data.gptModel); } catch (e) {} }
+                if (data.deepseekModel) { appState.deepseekModel = window._novaMigrateDeepseekId(data.deepseekModel); try { localStorage.setItem('nova_deepseek_model', appState.deepseekModel); } catch (e) {} }   // v1.4.4
                 if (Array.isArray(data.disabledModels)) { try { localStorage.setItem('nova_disabled_models', JSON.stringify(data.disabledModels)); if (window.novaApplyModelFilter) window.novaApplyModelFilter(); } catch (e) {} }   // v2.6.22
                 if (data.memoryData && window.NovaMemory) { try { await NovaMemory.importAll(data.memoryData); } catch (e) {} }   // v2.6.25
                 if (data.privateMemoryData && window.NovaMemoryPrivate) { try { await NovaMemoryPrivate.importAll(data.privateMemoryData); } catch (e) {} }   // v2.6.62：私密記憶只還原到私密庫
@@ -1965,6 +1982,7 @@ async function encodeMp3(audioBuffer) {
         const appState = window.appState = {
             currentModel: 'gemini', grokModel: 'grok-multi', geminiModel: 'gemini-multi',
             gptModel: (function () { try { return localStorage.getItem('nova_gpt_model') || 'gpt-6-luna'; } catch (e) { return 'gpt-6-luna'; } })(),   // v2.6.19
+            deepseekModel: (function () { try { return window._novaMigrateDeepseekId(localStorage.getItem('nova_deepseek_model') || 'deepseek-v4-pro'); } catch (e) { return 'deepseek-v4-pro'; } })(),   // v1.4.4：DeepSeek（預設 V4 Pro，同桌面）
             isMaster: localStorage.getItem('nova_is_master') === 'true',
             liveSyncEnabled: localStorage.getItem('nova_live_sync_enabled') !== 'false',
             deletedIds: JSON.parse(localStorage.getItem('nova_deleted_ids') || '{}'),
@@ -1980,7 +1998,7 @@ async function encodeMp3(audioBuffer) {
             chatTitles: JSON.parse(localStorage.getItem('nova_chat_titles') || '{}'),
             theme: localStorage.getItem('nova_theme') || 'dark',
             weather: { temp: '--', condition: 'cloudy', humidity: '--', wind: '--', loc: '未定位' },
-            keys: { gemini: localStorage.getItem('nova_key_gemini')||'', groq: localStorage.getItem('nova_key_groq')||'', cohere: localStorage.getItem('nova_key_cohere')||'', openai: localStorage.getItem('nova_key_openai')||'', grok: localStorage.getItem('nova_key_grok')||'', firecrawl: localStorage.getItem('nova_key_firecrawl')||'', local: localStorage.getItem('nova_key_local')||'', serpapi: localStorage.getItem('nova_key_serpapi')||'', aws_ak: localStorage.getItem('nova_key_aws_ak')||'', aws_sk: localStorage.getItem('nova_key_aws_sk')||'', aws_region: localStorage.getItem('nova_key_aws_region')||'ap-northeast-1', gmaps: localStorage.getItem('nova_key_gmaps')||'' },
+            keys: { gemini: localStorage.getItem('nova_key_gemini')||'', groq: localStorage.getItem('nova_key_groq')||'', cohere: localStorage.getItem('nova_key_cohere')||'', deepseek: localStorage.getItem('nova_key_deepseek')||'', openai: localStorage.getItem('nova_key_openai')||'', grok: localStorage.getItem('nova_key_grok')||'', firecrawl: localStorage.getItem('nova_key_firecrawl')||'', local: localStorage.getItem('nova_key_local')||'', serpapi: localStorage.getItem('nova_key_serpapi')||'', aws_ak: localStorage.getItem('nova_key_aws_ak')||'', aws_sk: localStorage.getItem('nova_key_aws_sk')||'', aws_region: localStorage.getItem('nova_key_aws_region')||'ap-northeast-1', gmaps: localStorage.getItem('nova_key_gmaps')||'' },
             localApiUrl: localStorage.getItem('nova_local_api_url')||'http://127.0.0.1:8080',
             localMaxTokens: parseInt(localStorage.getItem('nova_local_max_tokens'))||1024,
             localDisableThinking: localStorage.getItem('nova_local_disable_thinking') !== 'false',
@@ -2044,7 +2062,7 @@ async function encodeMp3(audioBuffer) {
         };
         
         const MODEL_CONFIG = {
-            gemini: { name: 'Gemini', color: 'text-blue-400', bg: 'bg-blue-600', icon: 'ph-globe' }, grok: { name: 'Grok', color: 'text-slate-100', bg: 'bg-slate-600', icon: 'ph-lightning' }, groq: { name: 'Groq', color: 'text-rose-400', bg: 'bg-rose-600', icon: 'ph-rocket' }, cohere: { name: 'Cohere', color: 'text-violet-400', bg: 'bg-violet-600', icon: 'ph-cpu' }, gpt: { name: 'OpenAI', color: 'text-emerald-400', bg: 'bg-emerald-600', icon: 'ph-cpu' }, local: { name: 'Local API', color: 'text-lime-400', bg: 'bg-lime-600', icon: 'ph-desktop' }
+            gemini: { name: 'Gemini', color: 'text-blue-400', bg: 'bg-blue-600', icon: 'ph-globe' }, grok: { name: 'Grok', color: 'text-slate-100', bg: 'bg-slate-600', icon: 'ph-lightning' }, groq: { name: 'Groq', color: 'text-rose-400', bg: 'bg-rose-600', icon: 'ph-rocket' }, cohere: { name: 'Cohere', color: 'text-violet-400', bg: 'bg-violet-600', icon: 'ph-cpu' }, gpt: { name: 'OpenAI', color: 'text-emerald-400', bg: 'bg-emerald-600', icon: 'ph-cpu' }, local: { name: 'Local API', color: 'text-lime-400', bg: 'bg-lime-600', icon: 'ph-desktop' }, deepseek: { name: 'DeepSeek', color: 'text-sky-400', bg: 'bg-cyan-700', icon: 'ph-fish' }
         };
         function getTime() { return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
         
@@ -4778,7 +4796,7 @@ return html;
         window.saveKeys = function() {
             const s = (id, key) => { const v = document.getElementById(id).value.trim();
 appState.keys[key] = v; localStorage.setItem('nova_key_'+key, v); };
-            s('key-gemini', 'gemini'); s('key-groq', 'groq'); s('key-cohere', 'cohere'); s('key-openai', 'openai'); s('key-grok', 'grok'); s('key-firecrawl', 'firecrawl'); s('key-local', 'local'); s('key-serpapi', 'serpapi'); s('key-aws-ak', 'aws_ak');
+            s('key-gemini', 'gemini'); s('key-groq', 'groq'); s('key-cohere', 'cohere'); s('key-deepseek', 'deepseek'); s('key-openai', 'openai'); s('key-grok', 'grok'); s('key-firecrawl', 'firecrawl'); s('key-local', 'local'); s('key-serpapi', 'serpapi'); s('key-aws-ak', 'aws_ak');
 s('key-aws-sk', 'aws_sk'); s('key-aws-region', 'aws_region'); s('key-gmaps', 'gmaps');
             appState.localApiUrl = (document.getElementById('key-local-url').value.trim() || 'http://127.0.0.1:8080').replace(/\/+$/,''); localStorage.setItem('nova_local_api_url', appState.localApiUrl);
             appState.localDisableThinking = document.getElementById('key-local-disable-thinking').checked; localStorage.setItem('nova_local_disable_thinking', appState.localDisableThinking);
@@ -7905,6 +7923,7 @@ msg.files : (msg.file ? [msg.file] : []);
         window.setGeminiModel = function(val) { appState.geminiModel = window._novaMigrateGeminiId(val); };
         window.setGrokModel = function(val) { appState.grokModel = val; };
         window.setGptModel = function(val) { appState.gptModel = val; try { localStorage.setItem('nova_gpt_model', val); } catch (e) {} };
+        window.setDeepseekModel = function(val) { appState.deepseekModel = val; try { localStorage.setItem('nova_deepseek_model', val); } catch (e) {} };   // v1.4.4
         // ════════════════════════════════════════════════════════════
         // ★ v2.6.20（批次 1）：啟用的模型（設定頁「🧩 模型」分頁）——移植自桌面版 v3.60.0。
         //   停用清單存 localStorage nova_disabled_models（JSON 陣列；預設空＝全部啟用）。
@@ -7919,7 +7938,7 @@ msg.files : (msg.file ? [msg.file] : []);
             window.novaModelGroup = function (v) {
                 v = String(v || '');
                 if (v === 'gemini-multi' || v === 'grok-multi') return '';
-                var p = /^gemini-/.test(v) ? 'gemini' : (/^grok-/.test(v) ? 'grok' : (/^gpt-/.test(v) ? 'gpt' : ''));
+                var p = /^gemini-/.test(v) ? 'gemini' : (/^grok-/.test(v) ? 'grok' : (/^gpt-/.test(v) ? 'gpt' : (/^deepseek-/.test(v) ? 'deepseek' : '')));
                 if (!p) return '';
                 return p + ':' + (/image|imagen|imagine|nano-banana/i.test(v) ? 'image' : 'text');
             };
@@ -7943,7 +7962,7 @@ msg.files : (msg.file ? [msg.file] : []);
                 if (prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; })) sel.value = prev;
             };
         })();
-        window._NOVA_EM_SELECTS = ['gemini-sub-model-select', 'grok-sub-model-select', 'gpt-sub-model-select'];
+        window._NOVA_EM_SELECTS = ['gemini-sub-model-select', 'grok-sub-model-select', 'gpt-sub-model-select', 'deepseek-sub-model-select'];
         window.novaModelMasterList = function () {
             const out = [], seen = {};
             window._NOVA_EM_SELECTS.forEach(function (id) {
@@ -7963,13 +7982,14 @@ msg.files : (msg.file ? [msg.file] : []);
         window.novaResolveActiveModels = function () {
             if (typeof appState === 'undefined' || !appState) return;
             const vals = window.novaModelMasterList().map(function (m) { return m.value; });
-            [['geminiModel', 'Gemini'], ['grokModel', 'Grok'], ['gptModel', 'OpenAI']].forEach(function (p) {
+            [['geminiModel', 'Gemini'], ['grokModel', 'Grok'], ['gptModel', 'OpenAI'], ['deepseekModel', 'DeepSeek']].forEach(function (p) {
                 const v = appState[p[0]];
                 if (!v) return;
                 const n = window.novaPickEnabled(v, vals);
                 if (n !== v) {
                     appState[p[0]] = n;
                     if (p[0] === 'gptModel') { try { localStorage.setItem('nova_gpt_model', n); } catch (e) {} }
+                    if (p[0] === 'deepseekModel') { try { localStorage.setItem('nova_deepseek_model', n); } catch (e) {} }
                     if (typeof showToast === 'function') showToast('「' + v + '」已在設定停用，改用 ' + n, 4500);
                 }
             });
@@ -8003,7 +8023,7 @@ msg.files : (msg.file ? [msg.file] : []);
             if (!box) return;
             const dis = window.novaDisabledModels();
             const list = window.novaModelMasterList();
-            const groups = [['gemini:text', 'Gemini・文字模型'], ['gemini:image', 'Gemini・圖像模型'], ['grok:text', 'Grok・文字模型'], ['grok:image', 'Grok・圖像模型'], ['gpt:text', 'OpenAI・文字模型']];
+            const groups = [['gemini:text', 'Gemini・文字模型'], ['gemini:image', 'Gemini・圖像模型'], ['grok:text', 'Grok・文字模型'], ['grok:image', 'Grok・圖像模型'], ['gpt:text', 'OpenAI・文字模型'], ['deepseek:text', 'DeepSeek・文字模型']];
             box.textContent = '';
             groups.forEach(function (g) {
                 const items = list.filter(function (m) { return m.group === g[0]; });
@@ -8047,6 +8067,8 @@ msg.files : (msg.file ? [msg.file] : []);
             '/gk':    { model: 'grok',   grokModel: 'grok-multi',               label: 'Grok 智慧切換 (Auto)' },
             '/gpt':   { model: 'gpt',    gptModel: 'gpt-6-luna',                label: 'OpenAI GPT-6 Luna' },
             '/gpt6sol': { model: 'gpt',  gptModel: 'gpt-6.1-sol',               label: 'OpenAI GPT-6.1 Sol' },
+            '/ds':    { model: 'deepseek', deepseekModel: 'deepseek-v4-pro',   label: 'DeepSeek V4 Pro' },       // v1.4.4（同桌面）
+            '/dsf':   { model: 'deepseek', deepseekModel: 'deepseek-flash',    label: 'DeepSeek V4.1 Flash' },
             '/coh':   { model: 'cohere',                                       label: 'Cohere' }
         };
         // 選單用的指令清單：arg=true 代表後面要接內容（點選後只填入輸入框）；否則點選即執行
@@ -12225,8 +12247,10 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             if(geminiSelect) { if (appState.currentModel === 'gemini') { geminiSelect.classList.remove('hidden'); geminiSelect.value = appState.geminiModel; } else { geminiSelect.classList.add('hidden'); } }
             const gptSelect = document.getElementById('gpt-sub-model-select');
             if(gptSelect) { if (appState.currentModel === 'gpt') { gptSelect.classList.remove('hidden'); gptSelect.value = appState.gptModel; } else { gptSelect.classList.add('hidden'); } }
+            const dsSelect = document.getElementById('deepseek-sub-model-select');   // v1.4.4
+            if(dsSelect) { if (appState.currentModel === 'deepseek') { dsSelect.classList.remove('hidden'); dsSelect.value = appState.deepseekModel; } else { dsSelect.classList.add('hidden'); } }
 
-            const wrap = document.getElementById('input-wrapper'); if(wrap) wrap.className = `flex-1 flex items-end bg-slate-950 rounded-2xl px-3 py-1.5 border transition-colors border-slate-700 focus-within:border-${appState.currentModel==='gemini'?'blue':appState.currentModel==='groq'?'rose':appState.currentModel==='cohere'?'violet':appState.currentModel==='gpt'?'emerald':'slate'}-500`; 
+            const wrap = document.getElementById('input-wrapper'); if(wrap) wrap.className = `flex-1 flex items-end bg-slate-950 rounded-2xl px-3 py-1.5 border transition-colors border-slate-700 focus-within:border-${appState.currentModel==='gemini'?'blue':appState.currentModel==='groq'?'rose':appState.currentModel==='cohere'?'violet':appState.currentModel==='gpt'?'emerald':appState.currentModel==='deepseek'?'sky':'slate'}-500`; 
             const badge=document.getElementById('web-search-badge'); const searchBtn=document.getElementById('search-toggle-btn'); const hint=document.getElementById('search-hint'); 
             updateSearchToggleUI();
             updateContextUI();
@@ -14744,7 +14768,9 @@ try {
             if (geminiSelect) geminiHTML = `<optgroup label="Gemini 系列">${geminiSelect.innerHTML}</optgroup>`;
             if (grokSelect) grokHTML = `<optgroup label="Grok 系列">${grokSelect.innerHTML}</optgroup>`;
             const gptSelectEl = document.getElementById('gpt-sub-model-select');
-            if (gptSelectEl) gptHTML = gptSelectEl.innerHTML;   // v2.6.19：已含自己的 optgroup，不再外包一層（避免巢狀 optgroup 被展平成空群組）
+            if (gptSelectEl) gptHTML = gptSelectEl.innerHTML;
+            const dsSelectEl = document.getElementById('deepseek-sub-model-select');   // v1.4.4：已含自己的 optgroup
+            if (dsSelectEl) gptHTML += dsSelectEl.innerHTML;   // v2.6.19：已含自己的 optgroup，不再外包一層（避免巢狀 optgroup 被展平成空群組）
             
             const systemModelsHTML = `
                 ${geminiHTML}
@@ -14762,7 +14788,7 @@ try {
             document.getElementById('agent-image-model').innerHTML = '<option value="none">❌ 不產生圖片</option>' + systemModelsHTML;
             
             // 預設選取當前主系統正在使用的細部 Model
-            const current = appState.currentModel === 'gemini' ? appState.geminiModel : (appState.currentModel === 'grok' ? appState.grokModel : (appState.currentModel === 'gpt' ? (appState.gptModel || 'gpt-6-luna') : appState.currentModel));
+            const current = appState.currentModel === 'deepseek' ? appState.deepseekModel : appState.currentModel === 'gemini' ? appState.geminiModel : (appState.currentModel === 'grok' ? appState.grokModel : (appState.currentModel === 'gpt' ? (appState.gptModel || 'gpt-6-luna') : appState.currentModel));
             try {
                 document.getElementById('agent-orchestrator').value = current;
                 document.getElementById('agent-researcher').value = current;
@@ -14802,16 +14828,19 @@ window.startMultiAgentResearch = async function() {
                 else if(subModel.toLowerCase().includes('gpt') || subModel.toLowerCase().includes('o1') || subModel.toLowerCase().includes('dall-e')) provider = 'gpt';
                 else if(subModel.toLowerCase().includes('groq') || subModel.toLowerCase().includes('llama')) provider = 'groq';
                 else if(subModel.toLowerCase().includes('cohere') || subModel.toLowerCase().includes('command')) provider = 'cohere';
+                else if(subModel.toLowerCase().indexOf('deepseek') === 0) provider = 'deepseek';   // v1.4.4
                 
                 const origModel = appState.currentModel;
                 const origGemini = appState.geminiModel;
                 const origGrok = appState.grokModel;
                 const origGpt = appState.gptModel;   // v2.6.19
+                const origDs = appState.deepseekModel;   // v1.4.4
                 
                 appState.currentModel = provider; // 【修復】強制切換主系統模型，防止底層 API 迷路
                 if(provider === 'gemini') appState.geminiModel = subModel;
                 if(provider === 'grok') appState.grokModel = subModel;
                 if(provider === 'gpt' && subModel.toLowerCase().indexOf('gpt-') === 0) appState.gptModel = subModel;   // v2.6.19
+                if(provider === 'deepseek') appState.deepseekModel = subModel;   // v1.4.4
                 
                 let res = await fetchAIResponse(prompt, provider, opts);
                 
@@ -14819,6 +14848,7 @@ window.startMultiAgentResearch = async function() {
                 appState.geminiModel = origGemini;
                 appState.grokModel = origGrok;
                 appState.gptModel = origGpt;   // v2.6.19
+                appState.deepseekModel = origDs;   // v1.4.4
                 return res;
             };
 
@@ -15447,6 +15477,7 @@ window.startMultiAgentResearch = async function() {
                     if (_mc.geminiModel) appState.geminiModel = _mc.geminiModel;
                     if (_mc.grokModel) appState.grokModel = _mc.grokModel;
                     if (_mc.gptModel) { appState.gptModel = _mc.gptModel; try { localStorage.setItem('nova_gpt_model', _mc.gptModel); } catch (e) {} }
+                    if (_mc.deepseekModel) { appState.deepseekModel = _mc.deepseekModel; try { localStorage.setItem('nova_deepseek_model', _mc.deepseekModel); } catch (e) {} }   // v1.4.4
                     updateModelUI();
                     showToast('✅ 已切換至 ' + _mc.label);
                     return;
@@ -17703,6 +17734,36 @@ if (appState.pendingAnalyzeContextId) {
                     if (isGrokAutoRouted && !options.isAnalysis) outputText += `\n\n*(系統提示：Grok Multi 已自動為您調配至 **${mName}** 執行此任務)*`;
                     return outputText;
                 }
+                else if (model === 'deepseek') {
+                    // v1.4.4：DeepSeek（官方 OpenAI 相容 /chat/completions，api-docs.deepseek.com；對標桌面 nova-app-main.js v1.18.0）。
+                    //   手機沒有 sidecar：直接連 api.deepseek.com（Android 上 CapacitorHttp 走原生請求，沒有瀏覽器 CORS 問題）。
+                    //   型號：deepseek-v4-pro（預設，不支援圖片）／deepseek-flash（V4.1 Flash，支援圖片）。思考模式官方預設開：
+                    //   thinkingLevel 'minimal'／'none' 或 options.deepseekThinking===false → 關；low → reasoning_effort low，其餘指定等級 → high（max 照傳）。
+                    const dsModel = window._novaMigrateDeepseekId(options.deepseekModelOverride || appState.deepseekModel || 'deepseek-v4-pro');
+                    const messagesPayload = chatHistory.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text || "[附檔]" }));
+                    let finalUserContent = finalPrompt;
+                    const dsFiles = Array.isArray(options.files) ? options.files : (options.files ? [options.files] : (options.file ? [options.file] : []));
+                    const dsImgs = dsFiles.filter(f => f && f.category === 'image' && f.data && String(f.data).includes(','));
+                    if (dsImgs.length) {
+                        if (/flash/i.test(dsModel)) {   // 官方：只有 Flash 支援圖片
+                            finalUserContent = [{ type: 'text', text: finalPrompt }].concat(dsImgs.map(f => ({ type: 'image_url', image_url: { url: `data:${f.mime};base64,${String(f.data).split(',')[1]}` } })));
+                        } else {
+                            finalUserContent = finalPrompt + '\n\n（系統註記：DeepSeek V4 Pro 不支援圖片，附加的 ' + dsImgs.length + ' 張圖片沒有送出；要看圖請改用 DeepSeek V4.1 Flash 或其他模型。）';
+                        }
+                    }
+                    messagesPayload.push({ role: 'user', content: finalUserContent });
+                    const dsBody = { model: dsModel, messages: messagesPayload, stream: false };
+                    const _lvl = String(options.thinkingLevel || '').toLowerCase();
+                    if (options.deepseekThinking === false || _lvl === 'minimal' || _lvl === 'none') dsBody.thinking = { type: 'disabled' };
+                    else { dsBody.thinking = { type: 'enabled' }; if (_lvl) dsBody.reasoning_effort = (_lvl === 'low' ? 'low' : (_lvl === 'max' ? 'max' : 'high')); }
+                    if (options.jsonMode) dsBody.response_format = { type: 'json_object' };
+                    const res = await fetchWithTimeout('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify(dsBody) }, options.isAnalysis ? 300000 : 180000);
+                    const resText = await res.text(); let data; try { data = JSON.parse(resText); } catch (e) { throw new Error(`DeepSeek 回應異常：${resText.substring(0, 80)}`); }
+                    if (!res.ok) throw new Error(`DeepSeek API 錯誤（模型：${dsModel}）：${(data.error && data.error.message) || res.status}`);
+                    try { window._novaLastDeepSeekUsage = data.usage || null; } catch (e) { /* */ }   // 含 prompt_cache_hit_tokens（自動前綴快取）與 reasoning_tokens
+                    const dsMsg = (data.choices && data.choices[0] && data.choices[0].message) || {};
+                    return dsMsg.content || '(無回傳文字)';   // 思考內容（reasoning_content）不顯示在對話裡
+                }
                 else if (model === 'local') {
                     const messagesPayload = chatHistory.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text || "[附檔]" }));
                     let finalUserContent = finalPrompt;
@@ -18313,7 +18374,7 @@ ${evts.map(e=>`• ${e.start.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'
             }
             
             const safeSet = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ''; };
-            safeSet('key-gemini', appState.keys.gemini); safeSet('key-groq', appState.keys.groq); safeSet('key-cohere', appState.keys.cohere); safeSet('key-openai', appState.keys.openai); safeSet('key-grok', appState.keys.grok); safeSet('key-firecrawl', appState.keys.firecrawl); safeSet('key-local', appState.keys.local); safeSet('key-local-url', appState.localApiUrl); safeSet('key-local-max-tokens', appState.localMaxTokens); const _lct = document.getElementById('key-local-disable-thinking'); if (_lct) _lct.checked = appState.localDisableThinking !== false; safeSet('key-serpapi', appState.keys.serpapi); safeSet('key-aws-ak', appState.keys.aws_ak); safeSet('key-aws-sk', appState.keys.aws_sk); safeSet('key-aws-region', appState.keys.aws_region); safeSet('key-doc-url', appState.docMonitorUrl); safeSet('key-drive-url', appState.driveUrl); safeSet('key-cors-proxy-url', appState.corsProxyUrl); safeSet('key-gmaps', appState.keys.gmaps);
+            safeSet('key-gemini', appState.keys.gemini); safeSet('key-groq', appState.keys.groq); safeSet('key-cohere', appState.keys.cohere); safeSet('key-deepseek', appState.keys.deepseek); safeSet('key-openai', appState.keys.openai); safeSet('key-grok', appState.keys.grok); safeSet('key-firecrawl', appState.keys.firecrawl); safeSet('key-local', appState.keys.local); safeSet('key-local-url', appState.localApiUrl); safeSet('key-local-max-tokens', appState.localMaxTokens); const _lct = document.getElementById('key-local-disable-thinking'); if (_lct) _lct.checked = appState.localDisableThinking !== false; safeSet('key-serpapi', appState.keys.serpapi); safeSet('key-aws-ak', appState.keys.aws_ak); safeSet('key-aws-sk', appState.keys.aws_sk); safeSet('key-aws-region', appState.keys.aws_region); safeSet('key-doc-url', appState.docMonitorUrl); safeSet('key-drive-url', appState.driveUrl); safeSet('key-cors-proxy-url', appState.corsProxyUrl); safeSet('key-gmaps', appState.keys.gmaps);
             safeSet('key-voice-timeout', appState.voiceTimeout);
             safeSet('key-translate-b-timeout', appState.translateBTimeout);
             safeSet('key-vad-multiplier', appState.vadMultiplier);
