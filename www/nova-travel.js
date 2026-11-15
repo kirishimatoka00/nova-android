@@ -1,10 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.1.0（2026-11-15，App v2.6.142）
+   版本：v1.1.1（2026-11-15，App v2.6.143）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.1 - App v2.6.143（使用者要求「任我決定每次開啟要不要用 Maps JavaScript API」）：
+     ① 有 Google 金鑰且設定是「每次詢問」（預設）時，打開先問「這次要用哪種地圖？」：Google 地圖／OpenStreetMap（免費），可勾「記住我的選擇」；
+        附本月 Google 用量與免費額度。選好才載入地圖、開始查詢。頁面最下方「打開時」可改 每次詢問／一律 Google／一律 OpenStreetMap，
+        「這次改用…」鈕只切換這次；「本月 Google 用量」列出各項用量。建立 Google 地圖時計 1 次地圖載入。
+     ② 2 分鐘自動更新改成只更新停車與 YouBike（scan keepPoi，沿用上次的周邊設施），不再重查 Google；沒有 TDX 金鑰也會更新（新北市停車不需要金鑰）。
    v1.1.0 - App v2.6.142：
      ① Google 模式（搭配 nova-travel-core.js v1.1.0）：有 Google Maps 金鑰時地圖改用 Google Maps JavaScript API（Google 的地點與路線依條款只能畫在 Google 地圖上）。
         地圖拆成同一組介面的兩種實作（GoogleMap／LeafletMap），switchMap() 依 NovaTravelCore.provider() 建立；Google 載入失敗、逾時或 gm_authFailure
@@ -101,6 +106,7 @@
       '<div id="ntv-chips"></div><div id="ntv-body"></div>';
     D.body.appendChild(w);
     w.addEventListener('click', onClick);
+    w.addEventListener('change', function (e) { if (e.target && e.target.id === 'ntv-pref') { C.providerPref(e.target.value); toast(e.target.value === 'ask' ? '之後每次打開都會詢問' : e.target.value === 'google' ? '之後一律使用 Google 地圖' : '之後一律使用 OpenStreetMap', 2200); } });
     $('ntv-sr').addEventListener('submit', function (e) { e.preventDefault(); doSearch($('ntv-q').value); try { $('ntv-q').blur(); } catch (e2) { /* */ } });
   }
 
@@ -259,7 +265,7 @@
     if (MP) { try { MP.destroy(); } catch (e) { /* */ } MP = null; var box = $('ntv-mapc'); if (box) box.parentNode.removeChild(box); }
     var msg = $('ntv-mapmsg'); if (msg) { msg.style.display = ''; msg.textContent = '地圖載入中…'; }
     if (want === 'google') {
-      try { await loadGoogle(C.googleKey()); MP = GoogleMap(); mapKind = 'google'; }
+      try { await loadGoogle(C.googleKey()); MP = GoogleMap(); mapKind = 'google'; C.countUsage('maps'); }
       catch (e) { C.googleBroken(e.message); toast(e.message + '，改用 OpenStreetMap 模式', 5000); want = 'leaflet'; }
     }
     if (want === 'leaflet') { L = await loadLeaflet(); MP = LeafletMap(); mapKind = 'leaflet'; }
@@ -309,13 +315,14 @@
     var rf = $('ntv-rf'); if (rf) rf.classList.add('spin');
     if (!silent) { $('ntv-loc').textContent = '定位中…'; }
     try {
-      var res = await C.scan({ fresh: fresh, pos: silent && S.res ? S.res.pos : undefined, onPart: function (k, r) {
+      var keep = silent && S.res && S.res.poi ? { keepPoi: S.res.poi, keepSrc: S.res.osmSrc, keepGErr: S.res.gErr, keepProvider: S.res.provider } : {};
+      var res = await C.scan(Object.assign({ fresh: fresh, pos: silent && S.res ? S.res.pos : undefined, onPart: function (k, r) {
         S.res = r;
         if (k === 'pos') { $('ntv-loc').textContent = '已定位' + (r.pos.acc ? '（誤差約 ' + r.pos.acc + ' 公尺）' : '') + '，查詢地址…'; drawMe(); if (MP && !silent) MP.setView(r.pos.lat, r.pos.lon, 15); }
         if (k === 'addr') renderLoc();
         if (k === 'wx') renderWx();
         if (k === 'items') { drawPois(); renderChips(); if (!S.route && !S.search) renderBody(); }
-      } });
+      } }, keep));
       S.res = res;
     } catch (e) {
       S.err = e.message || String(e);
@@ -404,7 +411,11 @@
     if (C.googleKey()) {   // v1.1.0：Google／OpenStreetMap 切換
       var isG = C.provider() === 'google';
       h += '<div class="note">' + (isG ? (S.res.gErr ? '目前用 Google 地圖；地點資料這次用 OpenStreetMap。' : '目前用 Google 地圖與地點資料。') : (C.googleBroken() ? 'Google 地圖無法使用：' + esc(C.googleBroken()) + '。' : '目前用 OpenStreetMap 免費資料。')) +
-        ' <button class="btn" style="min-height:30px;margin-left:4px" data-act="prov" data-p="' + (isG ? 'osm' : 'google') + '">' + (isG ? '改用 OpenStreetMap' : (C.googleBroken() ? '再試 Google' : '改用 Google')) + '</button></div>';
+        ' <button class="btn" style="min-height:30px;margin-left:4px" data-act="prov" data-p="' + (isG ? 'osm' : 'google') + '">' + (isG ? '這次改用 OpenStreetMap' : (C.googleBroken() ? '再試 Google' : '這次改用 Google')) + '</button></div>';
+      var pf = C.providerPref();
+      h += '<div class="note row" style="gap:6px;flex-wrap:wrap">打開時：<select id="ntv-pref" style="min-height:32px;border-radius:10px;border:1px solid var(--bd);background:var(--c);color:var(--t);padding:0 8px">' +
+        [['ask', '每次詢問'], ['google', '一律 Google'], ['osm', '一律 OpenStreetMap']].map(function (o) { return '<option value="' + o[0] + '"' + (pf === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+        '</select><button class="btn" style="min-height:32px" data-act="usage">本月 Google 用量</button></div><div id="ntv-usage"></div>';
     }
     el.innerHTML = h;
   }
@@ -493,7 +504,14 @@
       case 'me': if (MP && S.res) MP.setView(S.res.pos.lat, S.res.pos.lon, 16); return;
       case 'fit': return fitAll();
       case 'tiles': if (MP) toast((MP.kind === 'google' ? '地圖：' : '底圖：') + MP.layer(), 1800); return;
-      case 'prov': { var toG = t.getAttribute('data-p') === 'google'; C.providerPref(toG ? 'auto' : 'osm'); if (toG) C.googleBroken(''); S.sel = null; switchMap().then(function () { scan(false, false); }); return; }
+      case 'choose': return pickProvider(t.getAttribute('data-p'));
+      case 'usage': { var u = $('ntv-usage'); if (u) u.innerHTML = u.innerHTML ? '' : usageHtml(true); return; }
+      case 'prov': {   // 這次改用另一種；設定是「一律」時一併改設定
+        var toG = t.getAttribute('data-p') === 'google';
+        if (toG) C.googleBroken('');
+        C.sessionProvider(toG ? 'google' : 'osm'); if (C.providerPref() !== 'ask') C.providerPref(toG ? 'google' : 'osm');
+        S.sel = null; switchMap().then(function () { scan(false, false); }); return;
+      }
       case 'gurl': { var ig = findItem(id); if (ig && ig.gurl) openExt(ig.gurl); return; }
       case 'cat': S.cat = t.getAttribute('data-c'); S.sel = null; if (MP) MP.closePopup(); renderChips(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
       case 'fun': S.fun = t.getAttribute('data-f'); renderBody(); drawPois(); return;
@@ -506,19 +524,46 @@
       case 'gmaps': { var r = S.route, to = r && (r.to || S.routeTo); if (to && S.res) openExt(r.gmaps || C.gmapsNav(to.lat, to.lon, S.mode, S.res.pos.lat, S.res.pos.lon)); return; }
     }
   }
+  /* ───────── v1.1.1：這次用哪種地圖（Google 會用到 Google Maps Platform 的免費額度／費用） ───────── */
+  function usageHtml(all) {
+    var rows = C.usageRows().filter(function (r) { return all || r.used > 0 || r.key === 'nearby' || r.key === 'maps'; });
+    return '<div class="sm mut" style="margin-top:8px;line-height:1.6">本月 Google 用量（這支手機的 TravelAgent；費用以 Google Cloud 帳單為準）：<br>' +
+      rows.map(function (r) { var pct = r.used / r.free; return esc(r.zh) + ' <b style="color:' + (pct >= 1 ? '#f87171' : pct >= 0.8 ? '#facc15' : 'inherit') + '">' + r.used + '</b>／免費 ' + r.free.toLocaleString() + ' 次'; }).join('<br>') + '</div>';
+  }
+  var choiceResolve = null;
+  function askProvider() {
+    var el = $('ntv-body'); $('ntv-chips').style.display = 'none';
+    var m = $('ntv-mapmsg'); if (m) { m.style.display = ''; m.textContent = '請在下方選擇這次要用的地圖'; }
+    el.innerHTML = '<div class="card" style="margin-top:10px"><b style="font-size:15px">這次要用哪種地圖？</b>' +
+      '<div class="sm mut" style="margin:6px 0 10px">Google 的店家資料較完整（含評分、營業中），每次打開約用 1 次地圖載入＋14 次附近搜尋，超過每月免費額度會計費；OpenStreetMap 免費，但店家可能有缺漏。停車剩餘車位、YouBike、天氣兩種都有。</div>' +
+      '<button class="btn pri big" data-act="choose" data-p="google">Google 地圖</button>' +
+      '<button class="btn big" style="margin-top:8px" data-act="choose" data-p="osm">OpenStreetMap（免費）</button>' +
+      '<label class="row sm" style="margin-top:10px;gap:8px"><input type="checkbox" id="ntv-remember" style="width:18px;height:18px"> 記住我的選擇，下次不再詢問（頁面最下方可以改回）</label>' +
+      usageHtml(false) + '</div>';
+    return new Promise(function (res) { choiceResolve = res; });
+  }
+  function pickProvider(p) {
+    var rem = $('ntv-remember') && $('ntv-remember').checked;
+    C.sessionProvider(p); if (rem) C.providerPref(p);
+    var f = choiceResolve; choiceResolve = null; f && f(p);
+  }
+
   /* ───────── 開關 ───────── */
   async function open(opts) {
     C = W.NovaTravelCore; if (!C) return toast('TravelAgent 引擎沒有載入');
     ensureDom();
     if (!S.open) {
       S.open = true; $('ntv-win').classList.add('on');
-      pushLayer(function () { S.open = false; $('ntv-win').classList.remove('on'); clearInterval(S.refreshT); S.refreshT = null; });
+      pushLayer(function () { S.open = false; $('ntv-win').classList.remove('on'); clearInterval(S.refreshT); S.refreshT = null; if (choiceResolve) { var f = choiceResolve; choiceResolve = null; f(''); } });
     }
+    // v1.1.1：每次打開都由使用者決定這次要不要用 Google（設定成「一律」就不問）
+    C.sessionProvider('');
+    if (C.needsChoice()) { await askProvider(); if (!S.open) return; }
     try { await initMap(); } catch (e) { $('ntv-mapmsg').textContent = '地圖載入失敗：' + e.message; }
     renderBody();
     var p = scan(true, false);
     clearInterval(S.refreshT);
-    S.refreshT = setInterval(function () { if (S.open && !S.scanning && S.res && !D.hidden && C.hasTdx()) scan(false, true); }, 120000);
+    S.refreshT = setInterval(function () { if (S.open && !S.scanning && S.res && !D.hidden) scan(false, true); }, 120000);   // 只更新停車與 YouBike（v1.1.1）
     return p;
   }
   function close() { while (S.layers.length > 1) { var f = S.layers.pop(); try { f(); } catch (e) { /* */ } } closeTop(); }
@@ -540,5 +585,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.1.0', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return MP; } };
+  W.NovaTravel = { version: '1.1.1', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return MP; } };
 })(window);

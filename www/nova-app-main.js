@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.1
+   目前版本：v1.5.2
    最後更新：2026-11-15
 
    版本紀錄：
+   v1.5.2 - App v2.6.143：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.1.1、nova-travel.js v1.1.1）；本檔程式沒有其他改動。
    v1.5.1 - App v2.6.142：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent Google 模式：nova-travel-core.js v1.1.0、nova-travel.js v1.1.0）；本檔程式沒有其他改動。
    v1.5.0 - App v2.6.141：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.3、nova-travel.js v1.0.3）；本檔程式沒有其他改動。
    v1.4.9 - App v2.6.140：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.2、nova-travel.js v1.0.2）；本檔程式沒有其他改動。
@@ -84,10 +85,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.142';
+        const NOVA_APP_VERSION = '2.6.143';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.143', date: '2026-11-15', notes: [
+                'TravelAgent：每次打開都可以決定這次要用 Google 地圖還是免費的 OpenStreetMap（可勾「記住我的選擇」；頁面最下方可改成 每次詢問／一律 Google／一律 OpenStreetMap），並顯示本月 Google 用量與免費額度。',
+                'TravelAgent：頁面開著時的自動更新只更新停車與 YouBike，不再重複查 Google，避免浪費額度。AI 回答附近問題時，設定為「每次詢問」用 OpenStreetMap，設定為「一律 Google」才用 Google。'
+            ] },
             { v: '2.6.142', date: '2026-11-15', notes: [
                 'TravelAgent 接上 Google：有設定 Google Maps 金鑰時，地圖改用 Google 地圖，周邊設施改用 Google 地點資料（較完整，含評分、營業中、電話、詳情連結），路線改用 Google（含即時路況，新增機車模式，大眾運輸也用 Google）。',
                 '停車剩餘車位與 YouBike 照舊用政府資料；Google 無法使用（金鑰沒開 Maps JavaScript API 或 Places API (New)）時自動退回 OpenStreetMap 模式，頁尾可手動切換。',

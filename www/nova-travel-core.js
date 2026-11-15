@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.1.0（2026-11-15，App v2.6.142）
+   版本：v1.1.1（2026-11-15，App v2.6.143）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.1 - App v2.6.143：
+     ① 使用者決定要不要用 Google：providerPref 改為 'ask'（預設，每次打開詢問）／'google'／'osm'；sessionProvider 記這次的選擇；needsChoice() 給介面判斷要不要問。
+        AI 工具在「每次詢問」且這次沒選時用 OpenStreetMap（AI 無法跳出來問）；設成「一律 Google」才用 Google。
+     ② 本月 Google 用量計數（localStorage nova_travel_gusage，跨月歸零）：地圖載入、附近搜尋（每類一次）、地點搜尋、路線（依計費等級分三種）；
+        usageRows() 附各項每月免費額度（依 Google 價目表：Dynamic Maps 10,000、Nearby Search Enterprise 1,000、Text Search Pro 5,000、
+        Compute Routes Essentials 10,000／Pro 5,000／Enterprise 1,000）。只計這支手機的 TravelAgent，費用以 Google Cloud 帳單為準。
+     ③ 修正浪費：scan({keepPoi}) 沿用上次的周邊設施，只更新停車與 YouBike；介面的 2 分鐘自動更新改用這個（原本 Google 結果 5 分鐘過期後，
+        每次自動更新都會再打 14 次附近搜尋）。res.poi 存這次的周邊設施清單。
    v1.1.0 - App v2.6.142：接入 Google（使用者同意的方案）。有 Google Maps 金鑰（appState.keys.gmaps，和聊天「附近地點」同一把）時預設 Google 模式：
      ・周邊設施：Places API（New）searchNearby，14 組類型各一次（依距離、最多 20 筆、半徑內），多了評分、營業中與否、電話、Google 地圖連結；
        停業的不列。任一組失敗不影響其他組；全部失敗（金鑰沒開 Places API (New)、額度等）這次改用 OSM 資料並提示原因。
@@ -61,7 +69,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.1.0' };
+  var API = { VERSION: '1.1.1' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -545,9 +553,31 @@
   var gBroken = '';
   API.googleKey = gKey;
   API.googleBroken = function (why) { if (why != null) { gBroken = String(why || ''); osmCache = null; } return gBroken; };
-  API.providerPref = function (v) { if (v != null) { try { LS.setItem('nova_travel_provider', v); } catch (e) { /* */ } osmCache = null; } try { return (LS && LS.getItem('nova_travel_provider')) || 'auto'; } catch (e) { return 'auto'; } };
-  /** 'google'：有金鑰、沒被停用、地圖沒失敗；否則 'osm' */
-  API.provider = function () { return gKey() && !gBroken && API.providerPref() !== 'osm' ? 'google' : 'osm'; };
+  // v1.1.1：使用者決定要不要用 Google（使用者要求「任我決定每次開啟要不要用 Maps JavaScript API」）。
+  //   providerPref：'ask'（預設，每次打開 TravelAgent 詢問）／'google'（一律 Google）／'osm'（一律 OpenStreetMap），記在 nova_travel_provider；
+  //   sessionProvider：'ask' 時這次打開選了什麼（只放記憶體）。AI 工具在 'ask' 且這次沒選過時用 OSM（AI 無法跳出來問）。
+  var sessionProv = '';
+  API.providerPref = function (v) {
+    if (v != null) { try { LS.setItem('nova_travel_provider', v); } catch (e) { /* */ } }
+    var x = ''; try { x = (LS && LS.getItem('nova_travel_provider')) || ''; } catch (e) { /* */ }
+    return x === 'google' || x === 'osm' ? x : 'ask';   // 舊版存的 'auto' 視為 'ask'
+  };
+  API.sessionProvider = function (v) { if (v != null) sessionProv = v === 'google' || v === 'osm' ? v : ''; return sessionProv; };
+  API.needsChoice = function () { return !!gKey() && !gBroken && API.providerPref() === 'ask' && !sessionProv; };
+  /** 'google' 或 'osm' */
+  API.provider = function () {
+    if (!gKey() || gBroken) return 'osm';
+    var p = API.providerPref(); if (p !== 'ask') return p;
+    return sessionProv === 'google' ? 'google' : 'osm';
+  };
+  // v1.1.1：本月 Google 用量（本機計數，只計這支手機的 TravelAgent；費用以 Google Cloud 帳單為準）
+  var USAGE_KEY = 'nova_travel_gusage';
+  var FREE = { maps: 10000, nearby: 1000, text: 5000, routesEss: 10000, routesPro: 5000, routesEnt: 1000 };
+  var USAGE_ZH = { maps: '地圖載入', nearby: '附近搜尋', text: '地點搜尋', routesEss: '路線（步行／單車／大眾）', routesPro: '路線（開車含路況）', routesEnt: '路線（機車）' };
+  function month() { var d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1); }
+  API.usage = function () { var u = {}; try { u = JSON.parse((LS && LS.getItem(USAGE_KEY)) || '{}') || {}; } catch (e) { u = {}; } if (u.m !== month()) u = { m: month() }; return u; };
+  API.countUsage = function (k, n) { var u = API.usage(); u[k] = (u[k] || 0) + (n || 1); try { LS.setItem(USAGE_KEY, JSON.stringify(u)); } catch (e) { /* */ } return u; };
+  API.usageRows = function () { var u = API.usage(); return Object.keys(FREE).map(function (k) { return { key: k, zh: USAGE_ZH[k], used: u[k] || 0, free: FREE[k] }; }); };
   async function gPost(url, body, mask, what) {
     return httpJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': gKey(), 'X-Goog-FieldMask': mask }, body: JSON.stringify(body), timeout: 15000, what: what || 'Google' });
   }
@@ -592,6 +622,7 @@
     var items = [], seen = {}, errs = [], ok = 0, done = 0;
     await new Promise(function (resolve) {
       G_GROUPS.forEach(function (g) {
+        API.countUsage('nearby');
         gPost('https://places.googleapis.com/v1/places:searchNearby', { includedTypes: g.types, maxResultCount: 20, rankPreference: 'DISTANCE', languageCode: 'zh-TW', regionCode: 'TW',
           locationRestriction: { circle: { center: { latitude: lat, longitude: lon }, radius: r } } }, G_MASK, '附近地點（Google）')
           .then(function (d) {
@@ -625,6 +656,7 @@
       travelMode: G_MODE[mode] || 'DRIVE', languageCode: 'zh-TW', regionCode: 'TW', units: 'METRIC', computeAlternativeRoutes: mode === 'transit' };
     if (mode === 'driving' || mode === 'moto') body.routingPreference = 'TRAFFIC_AWARE';
     var mask = 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration,routes.legs.steps.travelMode,routes.legs.steps.transitDetails';
+    API.countUsage(mode === 'moto' ? 'routesEnt' : body.routingPreference ? 'routesPro' : 'routesEss');
     var j = await gPost('https://routes.googleapis.com/directions/v2:computeRoutes', body, mask, '路線規劃（Google）');
     var rts = j.routes || []; if (!rts.length) throw new Error('Google 找不到這種交通方式的路線');
     function plan(rt) {
@@ -653,6 +685,7 @@
   async function googleSearch(q, near) {
     var body = { textQuery: q, languageCode: 'zh-TW', regionCode: 'TW', maxResultCount: 8 };
     if (near) body.locationBias = { circle: { center: { latitude: near.lat, longitude: near.lon }, radius: 50000 } };
+    API.countUsage('text');
     var d = await gPost('https://places.googleapis.com/v1/places:searchText', body, 'places.id,places.displayName,places.formattedAddress,places.location', '地點搜尋（Google）');
     return (d.places || []).map(function (p) { return p.location ? { name: (p.displayName && p.displayName.text) || q, lat: p.location.latitude, lon: p.location.longitude, addr: String(p.formattedAddress || '').replace(/^\d{3,6}\s*/, '').replace(/^台灣/, ''), src: 'google' } : null; }).filter(Boolean);
   }
@@ -670,9 +703,10 @@
     var pAddr = API.reverse(pos.lat, pos.lon).then(function (a) { res.addr = a; part('addr'); return a; }, function (e) { res.notes.push('地址查詢失敗：' + e.message); return null; });
     var pWx = API.weather(pos.lat, pos.lon).then(function (w) { res.wx = w; part('wx'); }, function (e) { res.notes.push('天氣查詢失敗：' + e.message); res.wxErr = e.message; part('wx'); });
     var osm = [], tdxPark = [], bikes = null;
-    res.provider = API.provider();
+    res.provider = opts.keepPoi ? (opts.keepProvider || API.provider()) : API.provider();
     var onPoi = function (x, src) { osm = x; res.osmSrc = src; merge(); part('items'); };
-    var pOsm = (res.provider === 'google'
+    // v1.1.1：自動更新（頁面開著每 2 分鐘）只更新停車與 YouBike，周邊設施沿用上次結果，不再重查 Google（原本 5 分鐘後每次自動更新都會再打 14 次附近搜尋）
+    var pOsm = opts.keepPoi ? Promise.resolve(opts.keepPoi).then(function (x) { osm = x; res.osmSrc = opts.keepSrc; res.gErr = opts.keepGErr; merge(); part('items'); return x; }) : (res.provider === 'google'
       ? fetchGoogle(pos.lat, pos.lon, r, !!opts.force, onPoi).then(function (x) { if (x._warn) res.notes.push(x._warn); return x; }, function (e) {
           // Google 附近搜尋失敗（金鑰沒開 Places API (New)、額度…）→ 這次改用 OSM 資料（OSM 資料畫在 Google 地圖上沒有條款問題）
           res.notes.push(e.message + '；這次改用 OpenStreetMap 資料'); res.gErr = e.message; return fetchOsm(pos.lat, pos.lon, r, !!opts.force, onPoi);
@@ -682,6 +716,7 @@
     var pPark = pAddr.then(function (a) { return fetchParking(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { tdxPark = x.items; if (x.note) res.parkNote = x.note; merge(); part('items'); }, function (e) { res.parkNote = '停車剩餘車位查詢失敗：' + e.message; part('items'); });
     var pBike = pAddr.then(function (a) { return fetchBikes(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { bikes = x.items; merge(); part('items'); }, function (e) { res.bikeNote = 'YouBike 查詢失敗：' + e.message; });
     function merge() {
+      res.poi = osm;
       var list = osm.slice();
       if (tdxPark.length) list = list.filter(function (it) { return !(it.cat === 'parking' && tdxPark.some(function (p) { return dist(p.lat, p.lon, it.lat, it.lon) < 60; })); }).concat(tdxPark);   // 官方（TDX／新北市）有即時車位，優先
       if (bikes && bikes.length) list = list.filter(function (it) { return it.sub !== '自行車租借' || !/youbike|微笑/i.test(it.name); }).concat(bikes);
