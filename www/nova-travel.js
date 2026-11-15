@@ -1,10 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.0.0（2026-11-15，App v2.6.138）
+   版本：v1.0.1（2026-11-15，App v2.6.139）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.1 - App v2.6.139：底圖修正。CARTO 現在要 API 金鑰（真機看到滿版「API KEY REQUIRED」，而且那是正常載入的圖磚、不會觸發錯誤，原本的自動退回沒作用）。
+            改成台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰；白晝彩色 EMAP、黑夜灰階 EMAP01 反色），境外預設 OpenStreetMap；
+            地圖右側新增「🗺」鈕在 國土測繪／OpenStreetMap／Esri 間切換（記在 nova_travel_tiles）；沒手動選過時，連續 10 張圖磚載入失敗會自動換下一個。
+            黑夜模式的底圖用 CSS 濾鏡反色，不再依賴各家的深色圖層。
    v1.0.0 - 首版。
      ・打開就重新定位（不吃快取），依序顯示：地址 → 天氣（現在＋接下來 6 小時）→ 2 公里內 7 類設施（加油站、停車、醫療、餐飲、休閒〔室內／室外〕、購物、運輸）。
        地圖畫出所在位置、定位誤差圈、2 公里範圍圈與各類設施（顏色分類）；下方清單依距離排序，點清單項目地圖會飛過去並顯示資訊。
@@ -41,7 +45,8 @@
     '#ntv-map{position:relative;height:38dvh;min-height:180px;flex:none;background:#0b1220;z-index:0}#ntv-win.rt #ntv-map{height:46dvh}',
     '#ntv-map .leaflet-container{background:#0b1220;font:inherit}html.theme-light #ntv-map .leaflet-container{background:#e5e7eb}',
     '#ntv-map .fab{position:absolute;right:10px;z-index:500;width:44px;height:44px;border-radius:50%;border:1px solid rgba(0,0,0,.15);background:#fff;color:#1d4ed8;font-size:20px;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center}',
-    '#ntv-map .fab.me{bottom:12px}#ntv-map .fab.fit{bottom:62px;font-size:17px}',
+    '#ntv-map .fab.me{bottom:12px}#ntv-map .fab.fit{bottom:62px;font-size:17px}#ntv-map .fab.lay{bottom:112px;font-size:18px}',
+    'html:not(.theme-light) #ntv-map .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92)}html:not(.theme-light) #ntv-map[data-tiles="nlsc"] .leaflet-tile-pane{filter:invert(1) brightness(.78) contrast(1.05)}',
     'html body #ntv-win #ntv-map .fab{background:#ffffff!important;color:#1d4ed8!important;border:1px solid rgba(0,0,0,.15)!important;box-shadow:0 2px 8px rgba(0,0,0,.3)!important;opacity:1!important}',   // 白晝模式全域按鈕規則會把底色清掉
     '#ntv-map .mapmsg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:400;color:#94a3b8;font-size:13px;text-align:center;padding:0 20px}',
     '#ntv-wx{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--bd);overflow-x:auto;scrollbar-width:none;white-space:nowrap;min-height:46px}#ntv-wx::-webkit-scrollbar{display:none}',
@@ -83,7 +88,7 @@
       '<div class="ttl"><b>TravelAgent</b><span class="sub" id="ntv-loc">定位中…</span></div>' +
       '<button class="ib" data-act="refresh" aria-label="重新定位"><i class="ph ph-arrows-clockwise" id="ntv-rf"></i></button></div>' +
       '<div id="ntv-map" class="nv-keep"><div class="mapmsg" id="ntv-mapmsg">地圖載入中…</div>' +
-      '<button class="fab fit" data-act="fit" aria-label="顯示全部">⤢</button><button class="fab me" data-act="me" aria-label="回到我的位置"><i class="ph-bold ph-crosshair"></i></button></div>' +
+      '<button class="fab lay" data-act="tiles" aria-label="切換底圖">🗺</button><button class="fab fit" data-act="fit" aria-label="顯示全部">⤢</button><button class="fab me" data-act="me" aria-label="回到我的位置"><i class="ph-bold ph-crosshair"></i></button></div>' +
       '<div id="ntv-wx"><span class="mut sm">天氣載入中…</span></div>' +
       '<form id="ntv-sr" autocomplete="off"><input id="ntv-q" type="search" placeholder="想去哪裡？輸入地名、店名或地址" enterkeyhint="search"><button type="submit">搜尋</button></form>' +
       '<div id="ntv-chips"></div><div id="ntv-body"></div>';
@@ -103,31 +108,50 @@
     });
     return loadLeaflet.p;
   }
-  function tileUrl(fallback) {
-    if (fallback) return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-    return 'https://{s}.basemaps.cartocdn.com/' + (light() ? 'rastertiles/voyager' : 'dark_all') + '/{z}/{x}/{y}{r}.png';
+  // v1.0.1：CARTO 底圖現在要 API 金鑰（真機出現「API KEY REQUIRED」圖磚，而且圖磚照樣載入成功、不會觸發錯誤，自動退回失效）。
+  //   改成：台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰，白晝彩色 EMAP、黑夜灰階 EMAP01 加反色濾鏡）；境外預設 OpenStreetMap；
+  //   地圖右側「🗺」鈕可在 國土測繪／OpenStreetMap／Esri 間切換，選擇記在 localStorage nova_travel_tiles。
+  var TILES = {
+    nlsc: { zh: '國土測繪中心電子地圖', url: function () { return 'https://wmts.nlsc.gov.tw/wmts/' + (light() ? 'EMAP' : 'EMAP01') + '/default/GoogleMapsCompatible/{z}/{y}/{x}'; }, max: 18, attr: '© 內政部國土測繪中心' },
+    osm: { zh: 'OpenStreetMap', url: function () { return 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'; }, max: 19, attr: '© OpenStreetMap' },
+    esri: { zh: 'Esri 街道圖', url: function () { return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'; }, max: 18, attr: '© Esri' }
+  };
+  var TILE_ORDER = ['nlsc', 'osm', 'esri'];
+  function inTaiwan(p) { return p && p.lat > 21.5 && p.lat < 26.6 && p.lon > 118 && p.lon < 122.3; }
+  function tileKey() {
+    var k = ''; try { k = localStorage.getItem('nova_travel_tiles') || ''; } catch (e) { /* */ }
+    if (TILES[k]) return k;
+    return inTaiwan(S.res && S.res.pos) || !S.res ? 'nlsc' : 'osm';
   }
-  function setTiles(fallback) {
+  var curTile = '';
+  function setTiles(key) {
+    key = key || tileKey(); curTile = key;
+    var t = TILES[key];
     if (tileLayer) { try { map.removeLayer(tileLayer); } catch (e) { /* */ } }
     tileErr = 0;
-    tileLayer = L.tileLayer(tileUrl(fallback), { maxZoom: 19, subdomains: 'abcd', crossOrigin: true,
-      attribution: fallback ? '© OpenStreetMap' : '© OpenStreetMap © CARTO' });
-    tileLayer.on('tileerror', function () { if (++tileErr === 8 && !fallback) setTiles(true); });
+    tileLayer = L.tileLayer(t.url(), { maxZoom: 19, maxNativeZoom: t.max, attribution: t.attr });
+    tileLayer.on('tileerror', function () { if (++tileErr === 10 && !localStorage.getItem('nova_travel_tiles')) { var nx = TILE_ORDER[(TILE_ORDER.indexOf(curTile) + 1) % TILE_ORDER.length]; toast('底圖載入失敗，改用 ' + TILES[nx].zh); setTiles(nx); } });
     tileLayer.on('tileload', function () { var m = $('ntv-mapmsg'); if (m) m.style.display = 'none'; });
     tileLayer.addTo(map);
+    var el = $('ntv-map'); if (el) el.setAttribute('data-tiles', key);
+  }
+  function cycleTiles() {
+    var nx = TILE_ORDER[(TILE_ORDER.indexOf(curTile) + 1) % TILE_ORDER.length];
+    try { localStorage.setItem('nova_travel_tiles', nx); } catch (e) { /* */ }
+    setTiles(nx); toast('底圖：' + TILES[nx].zh, 1800);
   }
   async function initMap() {
     if (map) { setTimeout(function () { map.invalidateSize(); }, 60); return; }
     L = await loadLeaflet();
     map = L.map($('ntv-map'), { zoomControl: false, attributionControl: true, preferCanvas: true, tap: true }).setView([25.04, 121.55], 15);
     map.attributionControl.setPrefix(false);
-    setTiles(false);
+    setTiles();
     lyr.range = L.layerGroup().addTo(map); lyr.poi = L.layerGroup().addTo(map); lyr.route = L.layerGroup().addTo(map); lyr.me = L.layerGroup().addTo(map);
     lyr.canvas = L.canvas({ padding: 0.3, tolerance: 8 });
     map.on('popupopen', function (ev) { var el = ev.popup.getElement(); if (el && !el._ntv) { el._ntv = 1; el.addEventListener('click', onClick); } });   // 彈出框會擋點擊冒泡，按鈕要自己綁
     setTimeout(function () { map.invalidateSize(); }, 80);
   }
-  var themeObs = new MutationObserver(function () { if (map && tileLayer && tileErr < 8) setTiles(false); });
+  var themeObs = new MutationObserver(function () { if (map && tileLayer && curTile === 'nlsc') setTiles('nlsc'); });   // 國土測繪白晝／黑夜用不同圖層
   themeObs.observe(D.documentElement, { attributes: true, attributeFilter: ['class'] });
 
   function drawMe() {
@@ -184,7 +208,7 @@
     try {
       var res = await C.scan({ fresh: fresh, pos: silent && S.res ? S.res.pos : undefined, onPart: function (k, r) {
         S.res = r;
-        if (k === 'pos') { $('ntv-loc').textContent = '已定位' + (r.pos.acc ? '（誤差約 ' + r.pos.acc + ' 公尺）' : '') + '，查詢地址…'; drawMe(); if (map && !silent) map.setView([r.pos.lat, r.pos.lon], 15); }
+        if (k === 'pos') { if (map && !localStorage.getItem('nova_travel_tiles') && curTile !== tileKey()) setTiles(); $('ntv-loc').textContent = '已定位' + (r.pos.acc ? '（誤差約 ' + r.pos.acc + ' 公尺）' : '') + '，查詢地址…'; drawMe(); if (map && !silent) map.setView([r.pos.lat, r.pos.lon], 15); }
         if (k === 'addr') renderLoc();
         if (k === 'wx') renderWx();
         if (k === 'items') { drawPois(); renderChips(); if (!S.route && !S.search) renderBody(); }
@@ -357,6 +381,7 @@
       case 'refresh': return scan(true, false);
       case 'me': if (map && S.res) map.setView([S.res.pos.lat, S.res.pos.lon], 16); return;
       case 'fit': return fitAll();
+      case 'tiles': return map && cycleTiles();
       case 'cat': S.cat = t.getAttribute('data-c'); S.sel = null; if (map) map.closePopup(); renderChips(); renderBody(); drawPois(); $('ntv-body').scrollTop = 0; return;
       case 'fun': S.fun = t.getAttribute('data-f'); renderBody(); drawPois(); return;
       case 'pick': if (e.target.closest('button')) return; return select(id, true);
@@ -402,5 +427,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.0.0', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
+  W.NovaTravel = { version: '1.0.1', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
 })(window);

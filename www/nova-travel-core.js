@@ -1,9 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.0.0（2026-11-15，App v2.6.138）
+   版本：v1.0.1（2026-11-15，App v2.6.139）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.1 - App v2.6.139，依真機截圖修三個問題：
+     ① 周邊設施全部查不到：overpass-api.de 回 406、private.coffee 回 429「請帶有意義的 User-Agent」、maps.mail.ru 憑證不被 Android 信任。
+        原因是 App 內 fetch 走 CapacitorHttp 原生請求，User-Agent 是系統預設值。改成 App 裡的 GET 直接呼叫 CapacitorHttp 外掛並帶
+        「NOVA-TravelAgent/1.0 (...)」UA（Overpass 改用 GET ?data=）；Nominatim／Photon／OSRM／Open-Meteo 也一併帶上。鏡像改為 overpass-api.de → private.coffee → kumi.systems。
+     ② YouBike 回 404：TDX 的 NearBy 空間過濾最大半徑 1000 公尺，送 2000 會失敗。半徑 ≤1000 用 NearBy，否則（或 NearBy 失敗）改抓
+        /v2/Bike/Station/City/{縣市}＋/v2/Bike/Availability/City/{縣市} 自己篩距離（站點快取 12 小時、可借數 60 秒）。
+     ③ 停車 0 筆時看不出原因：範圍內沒有 TDX 停車場時，提示會列出各縣市 TDX 回傳幾處、幾處有座標、範圍內幾處。
    v1.0.0 - 首版。
      【定位】navigator.geolocation（WebView 內建，與主畫面右上角同一套權限）。先取高精度（逾時 15 秒、可用 1 分鐘內快取），失敗退回
             主畫面最近一次的真實位置（appState.lastLat/lastLon，manualLocIndex===0 時）或 localStorage nova_last_loc_v1（主程式 v1.4.6 存的），
@@ -32,7 +39,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.0.0' };
+  var API = { VERSION: '1.0.1' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -42,8 +49,21 @@
       p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
     });
   }
+  // v1.0.1：公益伺服器（Overpass、Nominatim、Photon、OSRM）要求可辨識的 User-Agent，WebView 的 fetch 改不了 UA，
+  //   CapacitorHttp 原生請求預設的 UA（Dalvik／Java）會被 Overpass 回 406／429。所以 GET 請求在 App 裡改走 CapacitorHttp 外掛並帶上 App 自己的 UA。
+  var UA = 'NOVA-TravelAgent/1.0 (Android app; +https://github.com/kirishimatoka00/nova-android)';
+  function nativeHttp() { var cp = root.Capacitor; return cp && cp.isNativePlatform && cp.isNativePlatform() && cp.Plugins && cp.Plugins.CapacitorHttp; }
   async function httpJson(url, opt) {
     opt = opt || {};
+    var CH = (!opt.method || opt.method === 'GET') && !opt.noNative ? nativeHttp() : null;
+    if (CH) {
+      var ms = opt.timeout || 15000;
+      var nr = await withTimeout(CH.request({ method: 'GET', url: url, headers: Object.assign({ 'User-Agent': UA, 'Accept': opt.accept || 'application/json', 'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.5' }, opt.headers || {}),
+        responseType: 'text', connectTimeout: ms, readTimeout: ms }), ms + 2000, opt.what || '連線');
+      var body = typeof nr.data === 'string' ? nr.data : JSON.stringify(nr.data);
+      if (nr.status < 200 || nr.status >= 300) throw new Error('HTTP ' + nr.status + (body ? ' ' + String(body).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 120) : ''));
+      try { return typeof nr.data === 'object' && nr.data ? nr.data : JSON.parse(body); } catch (e) { throw new Error('回應不是 JSON：' + String(body).slice(0, 80)); }
+    }
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var init = { method: opt.method || 'GET', headers: Object.assign({ 'Accept': 'application/json' }, opt.headers || {}) };
     if (opt.body != null) init.body = opt.body;
@@ -183,7 +203,7 @@
       'node["highway"="bus_stop"]' + a + ';' +
       ');out center tags;';
   }
-  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];   // v1.0.1：拿掉 maps.mail.ru（Android 不信任它的憑證）
   function nameOf(t) { return t['name:zh-Hant'] || t['name:zh_hant'] || t['name:zh-TW'] || t.name || t['name:zh'] || t.brand || ''; }
   function addrOf(t) {
     var s = (t['addr:city'] || '') + (t['addr:district'] || '') + (t['addr:street'] || '') + (t['addr:housenumber'] ? t['addr:housenumber'] + (/號$/.test(t['addr:housenumber']) ? '' : '號') : '');
@@ -232,7 +252,9 @@
     var q = overpassQuery(lat, lon, r), errs = [];
     for (var i = 0; i < OVERPASS.length; i++) {
       try {
-        var d = await httpJson(OVERPASS[i], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 25000, what: '周邊設施查詢' });
+        var d = nativeHttp()
+          ? await httpJson(OVERPASS[i] + '?data=' + encodeURIComponent(q), { timeout: 30000, accept: '*/*', what: '周邊設施查詢' })   // App 內：GET＋自訂 UA
+          : await httpJson(OVERPASS[i], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 25000, what: '周邊設施查詢' });
         var items = parseOsm(d.elements, lat, lon);
         osmCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items };
         return items;
@@ -271,17 +293,19 @@
   async function fetchParking(lat, lon, r, addrCity) {
     var t = NT(); if (!API.hasTdx()) return { items: [], note: '沒有設定 TDX 金鑰，停車場沒有剩餘車位資訊（設定 → 專家與 Bot → 交通 API）' };
     var cities = citiesFor(addrCity, lat, lon); if (!cities.length) return { items: [], note: '這個位置不在 TDX 停車資料涵蓋的縣市' };
-    var items = [], notes = [];
+    var items = [], notes = [], stats = [];
     for (var i = 0; i < cities.length; i++) {
       var city = cities[i];
       try {
         var parks = lst(await t._tdxGet('/v1/Parking/OffStreet/CarPark/City/' + city, { $select: 'CarParkID,CarParkName,CarParkPosition,Address,FareDescription' }, 43200));
+        var withPos = parks.filter(function (p) { var q = p.CarParkPosition || {}; return isFinite(q.PositionLat) && isFinite(q.PositionLon) && q.PositionLat; }).length;
         var near = parks.map(function (p) {
           var pos = p.CarParkPosition || {}; if (!isFinite(pos.PositionLat) || !isFinite(pos.PositionLon)) return null;
           var d = dist(lat, lon, pos.PositionLat, pos.PositionLon); if (d > r) return null;
           return { id: 'tdx:' + city + ':' + p.CarParkID, pid: p.CarParkID, cat: 'parking', sub: '停車場', name: zh(p.CarParkName) || '停車場', lat: pos.PositionLat, lon: pos.PositionLon, d: Math.round(d),
             addr: p.Address || '', fare: p.FareDescription || '', src: 'TDX', city: city };
         }).filter(Boolean);
+        stats.push(CITY_ZH[city] + '：TDX 停車場 ' + parks.length + ' 處（有座標 ' + withPos + '），範圍內 ' + near.length + ' 處');
         if (!near.length) continue;
         var avs = [];
         try { avs = lst(await t._tdxGet('/v1/Parking/OffStreet/ParkingAvailability/City/' + city, { $select: 'CarParkID,TotalSpaces,AvailableSpaces,Availabilities,ServiceStatus,FullStatus,DataCollectTime' }, 60)); }
@@ -302,25 +326,48 @@
         items = items.concat(near);
       } catch (e) { notes.push(city + '：' + e.message); }
     }
+    if (!items.length && stats.length) notes.push('範圍內沒有 TDX 停車場資料（' + stats.join('；') + '）');
     return { items: items, note: notes.join('；') };
   }
+  var CITY_ZH = {}; CITY.forEach(function (c) { if (!CITY_ZH[c[1]]) CITY_ZH[c[1]] = c[0]; });
   /** 半徑內 YouBike（含可借可還） */
-  async function fetchBikes(lat, lon, r) {
+  // v1.0.1：TDX 的 NearBy 空間過濾最大半徑 1000 公尺（送 2000 會失敗）。先用 NearBy（≤1000m），失敗或要更大範圍時改抓整個縣市再自己篩。
+  function bikeItem(s, a, lat, lon) {
+    var pos = s.StationPosition || {}; if (!isFinite(pos.PositionLat) || !pos.PositionLat) return null;
+    a = a || {};
+    var it = { id: 'bike:' + s.StationUID, cat: 'transit', sub: 'YouBike', name: zh(s.StationName).replace(/^YouBike\s*\d(\.\d)?_?/i, '') || 'YouBike', lat: pos.PositionLat, lon: pos.PositionLon,
+      d: Math.round(dist(lat, lon, pos.PositionLat, pos.PositionLon)), src: 'TDX', addr: zh(s.StationAddress) };
+    if (a.AvailableRentBikes >= 0) it.rent = a.AvailableRentBikes;
+    if (a.AvailableReturnBikes >= 0) it.ret = a.AvailableReturnBikes;
+    if (a.AvailableRentBikesDetail && a.AvailableRentBikesDetail.ElectricBikes >= 0) it.ebike = a.AvailableRentBikesDetail.ElectricBikes;
+    if (a.ServiceStatus === 0 || a.ServiceStatus === 2) it.closed = true;
+    return it;
+  }
+  async function fetchBikes(lat, lon, r, addrCity) {
     var t = NT(); if (!API.hasTdx()) return { items: [] };
-    var sf = 'nearby(' + lat.toFixed(6) + ',' + lon.toFixed(6) + ',' + Math.min(r, 3000) + ')';
-    var st = lst(await t._tdxGet('/v2/Bike/Station/NearBy', { $spatialFilter: sf, $top: 200 }, 3600));
-    var av = []; try { av = lst(await t._tdxGet('/v2/Bike/Availability/NearBy', { $spatialFilter: sf, $top: 200 }, 0)); } catch (e) { /* 只有位置也可 */ }
-    var byId = {}; av.forEach(function (a) { byId[a.StationUID] = a; });
-    return { items: st.map(function (s) {
-      var pos = s.StationPosition || {}; if (!isFinite(pos.PositionLat)) return null;
-      var a = byId[s.StationUID] || {}, it = { id: 'bike:' + s.StationUID, cat: 'transit', sub: 'YouBike', name: zh(s.StationName).replace(/^YouBike\s*\d(\.\d)?_?/i, '') || 'YouBike', lat: pos.PositionLat, lon: pos.PositionLon,
-        d: Math.round(dist(lat, lon, pos.PositionLat, pos.PositionLon)), src: 'TDX', addr: zh(s.StationAddress) };
-      if (a.AvailableRentBikes >= 0) it.rent = a.AvailableRentBikes;
-      if (a.AvailableReturnBikes >= 0) it.ret = a.AvailableReturnBikes;
-      if (a.AvailableRentBikesDetail && a.AvailableRentBikesDetail.ElectricBikes >= 0) it.ebike = a.AvailableRentBikesDetail.ElectricBikes;
-      if (a.ServiceStatus === 0 || a.ServiceStatus === 2) it.closed = true;
-      return it;
-    }).filter(Boolean) };
+    var errs = [];
+    if (r <= 1000) {
+      try {
+        var sf = 'nearby(' + lat.toFixed(6) + ',' + lon.toFixed(6) + ',' + r + ')';
+        var st = lst(await t._tdxGet('/v2/Bike/Station/NearBy', { $spatialFilter: sf, $top: 300 }, 3600));
+        var av = []; try { av = lst(await t._tdxGet('/v2/Bike/Availability/NearBy', { $spatialFilter: sf, $top: 300 }, 0)); } catch (e) { /* 只有位置也可 */ }
+        var by = {}; av.forEach(function (a) { by[a.StationUID] = a; });
+        return { items: st.map(function (s) { return bikeItem(s, by[s.StationUID], lat, lon); }).filter(Boolean) };
+      } catch (e) { errs.push(e.message); }
+    }
+    var cities = citiesFor(addrCity, lat, lon), items = [];
+    for (var i = 0; i < cities.length; i++) {
+      try {
+        var all = lst(await t._tdxGet('/v2/Bike/Station/City/' + cities[i], { $select: 'StationUID,StationName,StationPosition,StationAddress' }, 43200));
+        var near = all.filter(function (s) { var p = s.StationPosition || {}; return isFinite(p.PositionLat) && dist(lat, lon, p.PositionLat, p.PositionLon) <= r; });
+        if (!near.length) continue;
+        var avs = []; try { avs = lst(await t._tdxGet('/v2/Bike/Availability/City/' + cities[i], {}, 60)); } catch (e) { errs.push(CITY_ZH[cities[i]] + ' 可借數：' + e.message); }
+        var byId = {}; avs.forEach(function (a) { byId[a.StationUID] = a; });
+        items = items.concat(near.map(function (s) { return bikeItem(s, byId[s.StationUID], lat, lon); }).filter(Boolean));
+      } catch (e) { if (!/404/.test(e.message)) errs.push(CITY_ZH[cities[i]] + '：' + e.message); }   // 404＝該縣市沒有公共自行車
+    }
+    if (!items.length && errs.length) throw new Error(errs.join('；'));
+    return { items: items };
   }
 
   // ───────────────────────── 天氣 ─────────────────────────
@@ -359,7 +406,7 @@
     var osm = [], tdxPark = [], bikes = null;
     var pOsm = fetchOsm(pos.lat, pos.lon, r, !!opts.force).then(function (x) { osm = x; merge(); part('items'); }, function (e) { res.notes.push(e.message); res.osmErr = e.message; part('items'); });
     var pPark = pAddr.then(function (a) { return fetchParking(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { tdxPark = x.items; if (x.note) res.parkNote = x.note; merge(); part('items'); }, function (e) { res.parkNote = '停車剩餘車位查詢失敗：' + e.message; part('items'); });
-    var pBike = fetchBikes(pos.lat, pos.lon, r).then(function (x) { bikes = x.items; merge(); part('items'); }, function (e) { res.bikeNote = 'YouBike 查詢失敗：' + e.message; });
+    var pBike = pAddr.then(function (a) { return fetchBikes(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { bikes = x.items; merge(); part('items'); }, function (e) { res.bikeNote = 'YouBike 查詢失敗：' + e.message; });
     function merge() {
       var list = osm.slice();
       if (tdxPark.length) list = list.filter(function (it) { return !(it.cat === 'parking' && tdxPark.some(function (p) { return dist(p.lat, p.lon, it.lat, it.lon) < 60; })); }).concat(tdxPark);
