@@ -2,6 +2,7 @@
 <!--
   ═══ knowledgebank.html（NOVA Android 向量資料庫）v2（2026-10-11）═══
   版本紀錄：
+  v4.5 - 2026-11-15（App v2.6.134）：最前面載入 nova-interactions.js v1.0.0（本頁的 Gemini generateContent 呼叫自動改走 Interactions API，失敗時退回舊介面）；本檔其餘不變。
   v4.4 - 2026-11-14（App v2.6.131）：nova-subpage-light.css 連結改 ?v=1.1.0（B 案配色：白晝冷色藍灰＋鈷藍、黑夜藍灰底與灰字提亮，對標桌面 knowledgebank v1.5.0～v1.6.0）；本檔其餘不變。
   v4.3 - 2026-11-11（App v2.6.129）：在 nova-memory.js 前多載入 nova-memory-core.js（AI 記憶共用核心）。匯入文件後抽出的事實改走記憶核心寫入，
          不會把主畫面寫進去的附加資料（釘選、別名、事實時間軸）蓋掉；其餘不變。
@@ -28,6 +29,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>NOVA 向量資料庫 v2</title>
 <link rel="stylesheet" href="./vendor/tailwind.css">
+<script src="./nova-interactions.js?v=1.0.0"></script>
 <script src="./vendor/phosphor-loader.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- PDF / DOCX / XLSX 解析函式庫 (本機未內建向量資料庫所需的解析器，故透過 CDN 載入) -->

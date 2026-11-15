@@ -1,4 +1,4 @@
-/* nova-insight.js — v1.4.0 (2026-11-13)
+/* nova-insight.js — v1.5.0 (2026-11-15)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
@@ -10,6 +10,14 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.5.0 2026-11-15  App v2.6.134。① 地球上點地點的準度：不再用 globe.gl 內建的 onPointClick／onGlobeClick——它只要手指在按下到放開之間移動一點點就判成拖曳、
+ *                      不觸發點擊，觸控時也常抓不到手指下的物件，城市名稱標籤還會吃掉點擊。改成自己判斷點擊（bindTap：移動 ≤ 12px、≤ 700ms、單指），
+ *                      把每個地點換成螢幕座標，挑手指周圍 34px 內最近的（城市／事件 1、鏡頭 1.2、航班 1.5 加權；地球背面的不算）。
+ *                      模擬觸控測 17 個東亞城市：手指微移 6px 時，改前 0/17、改後 16/17；正中不動兩版都是 17/17。
+ *                      ② 新增平面地圖：地圖右上角「🌐 地球｜🗺 平面」切換（記在 nin_prefs_v1.mode）。平面用地球同一張 4096×2048 衛星貼圖（另做 2048／1024 縮小版），
+ *                      等距長方投影、左右無限循環；單指拖曳、雙指縮放、右下 ＋／－；事件水波、城市名稱（重疊就不畫，熱門的優先）、鏡頭、航班都畫，點擊跟地球共用同一套挑選。
+ *                      選城市時平面也會移過去並放大；地球載入失敗時自動改用平面地圖（原本只能看列表）。地球模式時暫停平面的繪製，平面模式時暫停地球的動畫。
+ *                      ③ NovaInsight.version 改成 1.5.0；新增 NovaInsight._dbg（測試用：screenOf／pickAt／flat／setMode／redraw／globe）。資料層與其他分頁沒有改動。
  *   v1.4.0 2026-11-13  事件串與來源健康度燈號（App v2.6.130；資料層見 nova-insight-core.js v1.4.0，對標桌面 nova-insight.js v1.17.0）：
  *                      ①事件列表的卡片多「🧵N」（同一事件串有 N 則）；事件詳情多「🧵 同一事件串 N 則」清單，點一則直接開它的詳情。
  *                      ②列表底部的來源狀態改成燈號統計（🔴／🟡／🟢 各幾個），點開看每個來源的燈號、原因、成功率、平均耗時、上次成功時間。
@@ -30,10 +38,10 @@
   var DOMCOL = { ai: '#a78bfa', tech: '#38bdf8', finance: '#34d399', energy: '#fbbf24', war: '#ef4444', security: '#fb923c', politics: '#60a5fa', election: '#f472b6', disaster: '#f97316', climate: '#2dd4bf', health: '#4ade80', space: '#c084fc', life: '#94a3b8' };
   var TABS = [['ev', '事件'], ['mk', '市場'], ['live', '直播'], ['cam', '鏡頭'], ['stk', '個股'], ['fc', '預判'], ['pt', '交易']];
   var S = { open: false, tab: 'ev', sheet: 'mid', draw: false, hours: 24, doms: null, city: '', evs: [], evAt: 0, loading: false, status: [], mk: null, mkBusy: false, wx: {}, hist: {}, stkRes: null, stkQ: '', stkBusy: false, stkRows: {},
-    liveSel: '', liveEdit: false, fc: { busy: false, q: '' }, camLive: null, rot: true,
+    liveSel: '', liveEdit: false, fc: { busy: false, q: '' }, camLive: null, rot: true, mode: 'globe',
     fl: { on: false, list: [], at: 0, src: '', err: '', emg: [], tw: 0, busy: false, presets: ['tw'], custom: [] } };
-  try { var sv = JSON.parse(W.localStorage.getItem('nin_prefs_v1') || '{}'); if (sv.hours) S.hours = sv.hours; if (sv.doms) S.doms = sv.doms; if (sv.presets) S.fl.presets = sv.presets; if (sv.custom) S.fl.custom = sv.custom; if (sv.rot === false) S.rot = false; } catch (e) { /* */ }
-  function savePrefs() { try { W.localStorage.setItem('nin_prefs_v1', JSON.stringify({ hours: S.hours, doms: S.doms, presets: S.fl.presets, custom: S.fl.custom, rot: S.rot })); } catch (e) { /* */ } }
+  try { var sv = JSON.parse(W.localStorage.getItem('nin_prefs_v1') || '{}'); if (sv.hours) S.hours = sv.hours; if (sv.doms) S.doms = sv.doms; if (sv.presets) S.fl.presets = sv.presets; if (sv.custom) S.fl.custom = sv.custom; if (sv.mode === 'flat') S.mode = 'flat'; if (sv.rot === false) S.rot = false; } catch (e) { /* */ }
+  function savePrefs() { try { W.localStorage.setItem('nin_prefs_v1', JSON.stringify({ hours: S.hours, doms: S.doms, presets: S.fl.presets, custom: S.fl.custom, rot: S.rot, mode: S.mode })); } catch (e) { /* */ } }
   function doms() { if (!S.doms) { S.doms = {}; Object.keys(DOMZH).forEach(function (k) { S.doms[k] = true; }); } return S.doms; }
 
   function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -64,6 +72,11 @@
     '#nin-win .top .ttl{flex:1;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '#nin-win .ib{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--t);font-size:20px;border-radius:12px}',
     '#nin-map{flex:1;min-height:90px;position:relative;background:#02030a;overflow:hidden;touch-action:none}',
+    '#nin-gl,#nin-flat{position:absolute;inset:0}#nin-map #nin-flat{display:none;width:100%;height:100%}#nin-map.flat #nin-flat{display:block}#nin-map.flat #nin-gl{display:none}',   // v1.5.0：要比下面的「#nin-map canvas{display:block}」權重高，不然地球模式時平面畫布會疊在地球上擋住手勢
+    '#nin-map .nin-mm{position:absolute;top:8px;right:8px;z-index:5;display:flex;gap:2px;padding:3px;border-radius:22px;background:rgba(10,14,22,.72);border:1px solid rgba(255,255,255,.2);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}',
+    '#nin-map .nin-mm button{min-height:38px;min-width:66px;padding:0 12px;border:0;border-radius:18px;background:transparent;color:#e2e8f0;font-size:13px;font-weight:600}#nin-map .nin-mm button.on{background:#ffffff;color:#0f172a}',
+    '#nin-map .nin-zm{position:absolute;right:8px;bottom:10px;z-index:5;display:none;flex-direction:column;gap:6px}#nin-map.flat .nin-zm{display:flex}',
+    '#nin-map .nin-zm button{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(10,14,22,.72);color:#e2e8f0;font-size:22px;line-height:1}',
     '#nin-map canvas{touch-action:none;display:block}#nin-map .nin-gf{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--t2)}',
     '#nin-sheetbar{position:relative;z-index:1;display:flex;flex-direction:column;background:var(--c);border-top:1px solid var(--bd);border-radius:16px 16px 0 0;box-shadow:0 -6px 18px rgba(0,0,0,.25)}',
     '#nin-sheetbar.min{height:calc(98px + env(safe-area-inset-bottom,0px))}#nin-sheetbar.mid{height:calc(48dvh)}#nin-sheetbar.full{height:calc(100dvh - 130px)}',
@@ -100,7 +113,7 @@
     var st = D.createElement('style'); st.textContent = CSS; D.head.appendChild(st);
     var w = D.createElement('div'); w.id = 'nin-win';
     w.innerHTML = '<div class="top"><button class="ib" data-act="close" aria-label="返回">‹</button><button class="ib" data-act="draw" aria-label="圖層">☰</button><div class="ttl" id="nin-ttl">Project Insight</div><button class="ib" data-act="refresh" id="nin-rf" aria-label="重新整理">⟳</button><button class="ib" data-act="sync" aria-label="同步">☁</button></div>' +
-      '<div id="nin-map"></div><div id="nin-sheetbar" class="mid"><div class="grab" data-act="grab"><i></i></div><div id="nin-tabs"></div><div id="nin-body"></div></div><div id="nin-dim" data-act="drawclose"></div><div id="nin-draw"></div>';
+      '<div id="nin-map"><div id="nin-gl"></div><canvas id="nin-flat"></canvas><div class="nin-mm" id="nin-mm"><button class="nv-keep" data-act="mode" data-m="globe">🌐 地球</button><button class="nv-keep" data-act="mode" data-m="flat">🗺 平面</button></div><div class="nin-zm"><button class="nv-keep" data-act="fzoom" data-d="1" aria-label="放大">＋</button><button class="nv-keep" data-act="fzoom" data-d="-1" aria-label="縮小">－</button></div></div><div id="nin-sheetbar" class="mid"><div class="grab" data-act="grab"><i></i></div><div id="nin-tabs"></div><div id="nin-body"></div></div><div id="nin-dim" data-act="drawclose"></div><div id="nin-draw"></div>';
     D.body.appendChild(w);
     var sh = D.createElement('div'); sh.id = 'nin-sheet'; sh.innerHTML = '<div class="box" id="nin-box"></div>'; D.body.appendChild(sh);
     sh.addEventListener('click', function (e) { if (e.target === sh) closeTop(); });
@@ -133,36 +146,91 @@
   /* ───────── 地圖 ───────── */
   var TEX = './vendor/globe/img/';
   function loadScript(src) { return new Promise(function (res, rej) { var sc = D.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = function () { rej(new Error('地球元件載入失敗')); }; D.head.appendChild(sc); }); }
-  function resizeGlobe() { var el = $('nin-map'); if (globe && el) { try { globe.width(el.clientWidth).height(el.clientHeight); } catch (e) { /* */ } } }
+  function resizeGlobe() { var el = $('nin-map'); if (globe && el && S.mode === 'globe') { try { globe.width(el.clientWidth).height(el.clientHeight); } catch (e) { /* */ } } if (S.mode === 'flat') flat.resize(); }
   function hexA(hex, a) { var n = parseInt(String(hex).replace('#', ''), 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')'; }
   async function initMap() {
+    bindTap(); setModeUI();
+    if (S.mode === 'flat') { if (globe) { try { globe.pauseAnimation(); } catch (e) { /* */ } } flat.start(); drawMap(); return; }
+    flat.stop();
     if (globe) { resizeGlobe(); try { globe.resumeAnimation(); } catch (e) { /* */ } return; }
-    if (globeFail) return;
+    if (globeFail) { setMode('flat'); return; }
     try {
       if (typeof W.Globe !== 'function') await loadScript('./vendor/globe/globe.gl.min.js');
       if (typeof W.Globe !== 'function') throw new Error('Globe 未定義');
-      var el = $('nin-map');
-      var g = W.Globe()(el).width(el.clientWidth || W.innerWidth).height(el.clientHeight || 300)
+      var el = $('nin-gl'), box = $('nin-map');
+      var g = W.Globe()(el).width(box.clientWidth || W.innerWidth).height(box.clientHeight || 300)
         .backgroundImageUrl(TEX + 'night-sky.png').globeImageUrl(TEX + 'earth-blue-marble.jpg').bumpImageUrl(TEX + 'earth-topology.png')
         .showAtmosphere(true).atmosphereColor('#5b8cff').atmosphereAltitude(0.18)
         .pointLat('lat').pointLng('lng').pointAltitude('alt').pointRadius('rad').pointColor('color').pointResolution(8)
-        .onPointClick(onPoint).onGlobeClick(onGlobe)
         .ringLat('lat').ringLng('lng').ringColor(function (d) { return function (t) { return hexA(d.color, 1 - t); }; }).ringMaxRadius('maxR').ringPropagationSpeed('speed').ringRepeatPeriod('period')
         .labelLat('lat').labelLng('lng').labelText('text').labelSize(0.9).labelDotRadius(0).labelColor(function () { return 'rgba(230,240,255,.92)'; }).labelResolution(2).labelAltitude(0.012);
+      // v1.5.0：不再用 globe.gl 內建的 onPointClick／onGlobeClick——手指只要稍微移動就被判成拖曳而不觸發、城市名稱標籤會吃掉點擊；改由 bindTap() 自己判斷點擊並依螢幕距離挑地點
       try { g.renderer().setPixelRatio(Math.min(W.devicePixelRatio || 1, 2)); } catch (e) { /* */ }
       var ctl = g.controls(); ctl.autoRotate = S.rot; ctl.autoRotateSpeed = 0.45; ctl.enableDamping = true; ctl.minDistance = 106; ctl.maxDistance = 520; ctl.zoomSpeed = 1.3;
       ctl.addEventListener('start', function () { ctl.autoRotate = false; clearTimeout(rotTimer); });
-      ctl.addEventListener('end', function () { clearTimeout(rotTimer); rotTimer = setTimeout(function () { if (S.open && !S.city && S.rot) ctl.autoRotate = true; }, 9000); });
+      ctl.addEventListener('end', function () { clearTimeout(rotTimer); rotTimer = setTimeout(function () { if (S.open && !S.city && S.rot && S.mode === 'globe') ctl.autoRotate = true; }, 9000); });
       g.pointOfView({ lat: 24, lng: 121, altitude: 1.9 }, 0);
       globe = g;
-      if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(resizeGlobe); ro.observe(el); }
+      if (typeof ResizeObserver !== 'undefined') { ro = new ResizeObserver(resizeGlobe); ro.observe(box); }
       drawMap();
     } catch (e) {
-      globeFail = (e && e.message) || String(e); var m = $('nin-map'); if (m) m.innerHTML = '<div class="nin-gf">立體地球無法顯示（' + esc(globeFail) + '）。仍可使用下方的事件列表與各分頁。</div>';
-      S.sheet = 'full'; applySheet();
+      globeFail = (e && e.message) || String(e);
+      toast('立體地球無法顯示（' + globeFail + '），已改用平面地圖', 5000);
+      setMode('flat');
     }
   }
-  function focusGlobe(lat, lng, alt) { if (!globe) return; try { globe.controls().autoRotate = false; globe.pointOfView({ lat: lat, lng: lng, altitude: alt || 1.5 }, 900); } catch (e) { /* */ } }
+  /* ───────── v1.5.0：地球／平面切換 ───────── */
+  function setModeUI() {
+    var m = $('nin-map'); if (m) m.classList.toggle('flat', S.mode === 'flat');
+    var mm = $('nin-mm'); if (mm) mm.querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-m') === S.mode); });
+  }
+  function setMode(m) {
+    m = m === 'flat' ? 'flat' : 'globe'; if (m === 'globe' && globeFail) { toast('立體地球無法顯示（' + globeFail + '）'); m = 'flat'; }
+    var c = S.city && city(S.city);
+    S.mode = m; savePrefs(); setModeUI();
+    if (m === 'flat') { if (globe) { try { globe.controls().autoRotate = false; globe.pauseAnimation(); } catch (e) { /* */ } } flat.start(); if (c) flat.focus(c.lat, c.lon, 1.5, true); drawMap(); }
+    else { flat.stop(); initMap().then(function () { resizeGlobe(); if (c) focusGlobe(c.lat, c.lon, 1.5); drawMap(); }); }
+  }
+  /* ───────── v1.5.0：點擊挑地點（地球與平面共用）───────── */
+  // 手指點一下：按下到放開移動 ≤ 12px、時間 ≤ 700ms（再久就是長按）、只有一根手指才算；把每個可點的地點換成螢幕座標，挑手指附近 34px 內最近的（依種類加權：城市／事件 1、鏡頭 1.2、航班 1.5）
+  var TAP_R = 34, tapBound = false;
+  function screenOf(lat, lng) {
+    if (S.mode === 'flat') return flat.project(lat, lng);
+    if (!globe) return null;
+    try {
+      var pov = globe.pointOfView(), alt = pov.altitude || 2, horizon = Math.acos(1 / (1 + alt)) * 180 / Math.PI;
+      if (angDist(pov.lat, pov.lng, lat, lng) > horizon - 1.5) return null;   // 在地球背面
+      var p = globe.getScreenCoords(lat, lng, 0.01); return p && isFinite(p.x) && isFinite(p.y) ? p : null;
+    } catch (e) { return null; }
+  }
+  function pickAt(x, y) {
+    var best = null, bd = 1e9;
+    picks.forEach(function (p) {
+      var q = screenOf(p.lat, p.lng); if (!q) return;
+      var d = Math.sqrt((q.x - x) * (q.x - x) + (q.y - y) * (q.y - y)); if (d > TAP_R) return;
+      var wd = d * (p.w || 1); if (wd < bd) { bd = wd; best = p; }
+    });
+    return best;
+  }
+  function bindTap() {
+    var el = $('nin-map'); if (!el || tapBound) return; tapBound = true;
+    var down = {}, n = 0, cand = null;
+    el.addEventListener('pointerdown', function (e) {
+      if (e.target.closest && e.target.closest('.nin-mm,.nin-zm')) return;
+      down[e.pointerId] = 1; n++;
+      cand = n === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now() } : null;
+    }, true);
+    el.addEventListener('pointermove', function (e) { if (cand && e.pointerId === cand.id && Math.abs(e.clientX - cand.x) + Math.abs(e.clientY - cand.y) > 12) cand = null; }, true);
+    function up(e) {
+      if (!down[e.pointerId]) return; delete down[e.pointerId]; n = Math.max(0, n - 1);
+      var c = cand; if (!c || e.pointerId !== c.id || e.type === 'pointercancel') { if (!n) cand = null; return; }
+      cand = null; if (Date.now() - c.t > 700) return;
+      var r = el.getBoundingClientRect(), hit = pickAt(c.x - r.left, c.y - r.top);
+      if (hit) onPoint(hit.d);
+    }
+    el.addEventListener('pointerup', up, true); el.addEventListener('pointercancel', up, true);
+  }
+  function focusGlobe(lat, lng, alt) { if (S.mode === 'flat') return flat.focus(lat, lng, alt); if (!globe) return; try { globe.controls().autoRotate = false; globe.pointOfView({ lat: lat, lng: lng, altitude: alt || 1.5 }, 900); } catch (e) { /* */ } }
   function visibleEvents() {
     var dm = doms(), cut = Date.now() / 1000 - S.hours * 3600;
     return S.evs.filter(function (e) { return dm[e.domain] !== false && e.ts >= cut; });
@@ -174,17 +242,11 @@
     else if (d.cam) { S.tab = 'cam'; S.camLive = d.cam.id; if (S.sheet === 'min') S.sheet = 'mid'; applySheet(); render(); }
     else if (d.flight) { var f = d.flight; toast('✈ ' + (f[1] || f[0]) + ' ' + (f[8] || '') + ' ' + (f[7] || '') + ' · ' + Math.round(f[4] * 3.28084 / 100) * 100 + ' ft · ' + Math.round(f[5] * 1.944) + ' kt', 4500); }
   }
-  /* 事件用「不同顏色的細小水波」標示（不用光柱）：水波顏色＝該處最主要的領域，波幅與速度隨嚴重度；點地球時找最近的事件點（手指比水波粗，所以用範圍挑選，不靠點中水波） */
+  /* 事件用「不同顏色的細小水波」標示（不用光柱）：水波顏色＝該處最主要的領域，波幅與速度隨嚴重度；點擊由 bindTap()／pickAt() 依螢幕距離挑最近的地點 */
   var picks = [];
   function angDist(la1, lo1, la2, lo2) { var r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2), b = Math.sin((lo2 - lo1) * r / 2), h = a * a + Math.cos(la1 * r) * Math.cos(la2 * r) * b * b; return 2 * Math.asin(Math.min(1, Math.sqrt(h))) / r; }
-  function onGlobe(c) {
-    if (!c || !picks.length) return; var alt = 2; try { alt = globe.pointOfView().altitude || 2; } catch (e) { /* */ }
-    var thr = Math.max(2.5, Math.min(12, alt * 4)), best = null, bd = 1e9;
-    picks.forEach(function (p) { var d = angDist(c.lat, c.lng, p.lat, p.lng) / (p.w || 1); if (d < bd) { bd = d; best = p; } });
-    if (best && bd <= thr) onPoint(best.d);
-  }
+  var MAPD = { pts: [], rings: [], labels: [] };
   function drawMap() {
-    if (!globe) return;
     var pts = [], rings = [], labels = [], byCity = {}; picks = [];
     visibleEvents().forEach(function (e) {
       if (e.lat != null && e.lon != null && isFinite(e.lat) && isFinite(e.lon)) { rings.push({ lat: e.lat, lng: e.lon, color: DOMCOL[e.domain] || '#94a3b8', maxR: 1.6 + e.severity * 0.55, speed: 0.9 + e.severity * 0.15, period: 3000 - e.severity * 320, hot: e.hot }); picks.push({ lat: e.lat, lng: e.lon, d: { event: e }, w: 1 }); return; }
@@ -198,13 +260,122 @@
     });
     rings.sort(function (a, b) { return b.hot - a.hot; }); rings = rings.slice(0, 70);
     labels.sort(function (a, b) { return b.hot - a.hot; }); labels = labels.slice(0, 12);
-    if (S.fl.on) S.fl.list.forEach(function (f) { var alt = f[4]; pts.push({ lat: f[3], lng: f[2], alt: 0.008, rad: C.isTwFlight(f) ? 0.2 : 0.12, color: C.isTwFlight(f) ? '#f43f5e' : alt > 7000 ? '#22d3ee' : alt > 3000 ? '#facc15' : '#fb923c', flight: f }); });
+    if (S.fl.on) S.fl.list.forEach(function (f) { var alt = f[4]; pts.push({ lat: f[3], lng: f[2], alt: 0.008, rad: C.isTwFlight(f) ? 0.2 : 0.12, color: C.isTwFlight(f) ? '#f43f5e' : alt > 7000 ? '#22d3ee' : alt > 3000 ? '#facc15' : '#fb923c', flight: f }); picks.push({ lat: f[3], lng: f[2], d: { flight: f }, w: 1.5 }); });
     C.cams.list().forEach(function (cm) {
       var p = cm.lat != null ? [cm.lat, cm.lon] : (city(cm.city) ? [city(cm.city).lat, city(cm.city).lon] : null); if (!p) return;
-      pts.push({ lat: p[0], lng: p[1], alt: 0.006, rad: 0.28, color: '#22d3ee', cam: cm }); picks.push({ lat: p[0], lng: p[1], d: { cam: cm }, w: 0.6 });
+      pts.push({ lat: p[0], lng: p[1], alt: 0.006, rad: 0.28, color: '#22d3ee', cam: cm }); picks.push({ lat: p[0], lng: p[1], d: { cam: cm }, w: 1.2 });
     });
-    try { globe.pointsData(pts).ringsData(rings).labelsData(labels); } catch (e) { /* */ }
+    MAPD = { pts: pts, rings: rings, labels: labels };
+    if (globe) { try { globe.pointsData(pts).ringsData(rings).labelsData(labels); } catch (e) { /* */ } }
+    if (S.mode === 'flat') flat.dirty();
   }
+
+  /* ───────── v1.5.0：平面地圖（等距長方投影；底圖用地球同一張 4096×2048 衛星貼圖，離線可用）───────── */
+  var flat = (function () {
+    var cv = null, ctx = null, img = null, imgs = [], W0 = 0, H0 = 0, dpr = 1, cx = 121, cy = 24, z = 0, raf = 0, on = false, dirtyF = true, lastT = 0, anim = null;
+    var ptr = {}, pinch = null, drag = null;
+    function el() { if (!cv) { cv = $('nin-flat'); if (cv) { ctx = cv.getContext('2d'); bind(); } } return cv; }
+    function loadImg() {
+      if (img) return; img = new Image(); img.decoding = 'async';
+      img.onload = function () {   // 先做 2048／1024 的縮小版，縮小看世界時不用每格都縮放 4096 大圖
+        imgs = [{ w: 4096, im: img }];
+        [2048, 1024].forEach(function (w) { try { var c = D.createElement('canvas'); c.width = w; c.height = w / 2; c.getContext('2d').drawImage(img, 0, 0, w, w / 2); imgs.push({ w: w, im: c }); } catch (e) { /* */ } });
+        dirtyF = true;
+      };
+      img.src = TEX + 'earth-blue-marble.jpg';
+    }
+    function zmin() { return Math.max(H0 / 180, W0 / 360); }
+    function clamp() {
+      z = Math.max(zmin(), Math.min(z || W0 / 120, 160));
+      var half = H0 / 2 / z; if (90 - half < -90 + half) cy = 0; else cy = Math.max(-90 + half, Math.min(90 - half, cy));
+      cx = ((cx + 180) % 360 + 360) % 360 - 180;
+    }
+    function resize() {
+      if (!el()) return; var box = $('nin-map'); if (!box) return;
+      W0 = box.clientWidth || 1; H0 = box.clientHeight || 1; dpr = Math.min(W.devicePixelRatio || 1, 2);
+      cv.width = Math.round(W0 * dpr); cv.height = Math.round(H0 * dpr); if (!z) z = W0 / 120; clamp(); dirtyF = true;
+    }
+    function project(lat, lng) {
+      if (!W0) return null;
+      var dx = lng - cx; dx = ((dx + 180) % 360 + 360) % 360 - 180;   // 取離中心最近的那一份（左右循環）
+      var x = W0 / 2 + dx * z, y = H0 / 2 - (lat - cy) * z;
+      return (x < -40 || x > W0 + 40 || y < -40 || y > H0 + 40) ? null : { x: x, y: y };
+    }
+    function hexA2(hex, a) { return hexA(hex, a); }
+    function draw(t) {
+      if (!ctx) return; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = '#02030a'; ctx.fillRect(0, 0, W0, H0);
+      var ww = 360 * z, hh = 180 * z, x0 = W0 / 2 + (-180 - cx) * z, y0 = H0 / 2 - (90 - cy) * z;
+      var src = null; if (imgs.length) { src = imgs[0]; for (var i = 0; i < imgs.length; i++) if (imgs[i].w >= ww * dpr * 0.9) src = imgs[i]; }
+      if (src) { ctx.imageSmoothingEnabled = true; for (var k = -1; k <= 1; k++) { var xx = x0 + k * ww; if (xx + ww < 0 || xx > W0) continue; ctx.drawImage(src.im, xx, y0, ww, hh); } }
+      else { ctx.fillStyle = '#0b1a33'; ctx.fillRect(0, y0, W0, hh); }
+      // 經緯線（淡）
+      ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1; ctx.beginPath();
+      var step = z > 12 ? 10 : 30;
+      for (var lo = -180; lo <= 180; lo += step) for (var k2 = -1; k2 <= 1; k2++) { var gx = x0 + (lo + 180) * z + k2 * ww; if (gx >= 0 && gx <= W0) { ctx.moveTo(gx, Math.max(0, y0)); ctx.lineTo(gx, Math.min(H0, y0 + hh)); } }
+      for (var la = -60; la <= 60; la += step) { var gy = H0 / 2 - (la - cy) * z; if (gy >= 0 && gy <= H0) { ctx.moveTo(0, gy); ctx.lineTo(W0, gy); } }
+      ctx.stroke();
+      var d = MAPD;
+      // 事件水波：跟地球一樣顏色＝主要領域、選中的城市白色；半徑至少 10px，手指才看得到
+      d.rings.forEach(function (r) {
+        var p = project(r.lat, r.lng); if (!p) return;
+        var R = Math.max(10, Math.min(46, r.maxR * z * 0.9)), per = Math.max(900, r.period || 2400);
+        for (var j = 0; j < 2; j++) { var ph = ((t / per) + j / 2) % 1; ctx.beginPath(); ctx.arc(p.x, p.y, 3 + ph * R, 0, 6.2832); ctx.strokeStyle = hexA2(r.color, (1 - ph) * 0.9); ctx.lineWidth = 2; ctx.stroke(); }
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3.2, 0, 6.2832); ctx.fillStyle = r.color; ctx.fill();
+      });
+      d.pts.forEach(function (q) {
+        var p = project(q.lat, q.lng); if (!p) return; var rr = q.cam ? 5 : 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 6.2832); ctx.fillStyle = q.color; ctx.fill();
+        if (q.cam) { ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(2,6,23,.85)'; ctx.stroke(); }
+      });
+      ctx.font = '600 12px Inter, "Noto Sans TC", system-ui, sans-serif'; ctx.textBaseline = 'middle';
+      var boxes = [];   // 名稱互相重疊就不畫（labels 已依熱度排序，熱門的先畫）
+      d.labels.forEach(function (l) {
+        var p = project(l.lat, l.lng); if (!p) return; var tx = p.x + 9, ty = p.y - 9, bw = ctx.measureText(l.text).width;
+        var bx = { x0: tx - 2, x1: tx + bw + 2, y0: ty - 8, y1: ty + 8 };
+        if (boxes.some(function (o) { return bx.x0 < o.x1 && bx.x1 > o.x0 && bx.y0 < o.y1 && bx.y1 > o.y0; })) return; boxes.push(bx);
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(2,6,23,.85)'; ctx.strokeText(l.text, tx, ty); ctx.fillStyle = 'rgba(235,242,255,.96)'; ctx.fillText(l.text, tx, ty);
+      });
+    }
+    function loop(ts) {
+      raf = 0; if (!on) return;
+      if (anim) { var k = Math.min(1, (ts - anim.t0) / 600), e = 1 - Math.pow(1 - k, 3); cx = anim.cx0 + anim.dx * e; cy = anim.cy0 + (anim.cy1 - anim.cy0) * e; z = anim.z0 + (anim.z1 - anim.z0) * e; clamp(); if (k >= 1) anim = null; dirtyF = true; }
+      var animRings = MAPD.rings.length > 0;
+      if (!D.hidden && S.open && (dirtyF || (animRings && ts - lastT > 33))) { draw(ts); lastT = ts; dirtyF = false; }
+      raf = requestAnimationFrame(loop);
+    }
+    var fro = null;
+    function start() { if (!el()) return; loadImg(); on = true; resize(); if (!fro && typeof ResizeObserver !== 'undefined') { fro = new ResizeObserver(function () { if (on) resize(); }); fro.observe($('nin-map')); } if (!raf) raf = requestAnimationFrame(loop); }
+    function stop() { on = false; if (raf) cancelAnimationFrame(raf); raf = 0; }
+    function zoomAt(f, px, py) {   // 以 (px,py) 為中心縮放
+      var lng = cx + (px - W0 / 2) / z, lat = cy - (py - H0 / 2) / z;
+      z *= f; clamp(); cx = lng - (px - W0 / 2) / z; cy = lat + (py - H0 / 2) / z; clamp(); dirtyF = true;
+    }
+    function focus(lat, lng, alt, instant) {
+      if (!W0) resize();
+      var zt = Math.max(z, W0 / (alt && alt < 1.2 ? 22 : 40)), dx = ((lng - cx + 180) % 360 + 360) % 360 - 180;
+      if (instant) { cx += dx; cy = lat; z = zt; clamp(); dirtyF = true; return; }
+      anim = { t0: performance.now(), cx0: cx, dx: dx, cy0: cy, cy1: lat, z0: z, z1: zt };
+    }
+    function bind() {
+      cv.addEventListener('pointerdown', function (e) {
+        cv.setPointerCapture && cv.setPointerCapture(e.pointerId); ptr[e.pointerId] = { x: e.clientX, y: e.clientY }; anim = null;
+        var ids = Object.keys(ptr);
+        if (ids.length === 2) { var a = ptr[ids[0]], b = ptr[ids[1]]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: z }; drag = null; }
+        else if (ids.length === 1) drag = { x: e.clientX, y: e.clientY };
+      });
+      cv.addEventListener('pointermove', function (e) {
+        if (!ptr[e.pointerId]) return; ptr[e.pointerId] = { x: e.clientX, y: e.clientY };
+        var ids = Object.keys(ptr), r = cv.getBoundingClientRect();
+        if (pinch && ids.length >= 2) { var a = ptr[ids[0]], b = ptr[ids[1]], dd = Math.hypot(a.x - b.x, a.y - b.y) || 1, f = (pinch.z * dd / pinch.d) / z; zoomAt(f, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top); }
+        else if (drag) { cx -= (e.clientX - drag.x) / z; cy += (e.clientY - drag.y) / z; drag = { x: e.clientX, y: e.clientY }; clamp(); dirtyF = true; }
+      });
+      function end(e) { delete ptr[e.pointerId]; var ids = Object.keys(ptr); if (ids.length < 2) pinch = null; drag = ids.length === 1 ? { x: ptr[ids[0]].x, y: ptr[ids[0]].y } : null; }
+      cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+      cv.addEventListener('wheel', function (e) { e.preventDefault(); var r = cv.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.18 : 1 / 1.18, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+    }
+    return { start: start, stop: stop, resize: resize, project: project, focus: focus, dirty: function () { dirtyF = true; }, zoom: function (dir) { if (!W0) return; zoomAt(dir > 0 ? 1.6 : 1 / 1.6, W0 / 2, H0 / 2); }, view: function (lng, lat, zz) { anim = null; cx = lng; cy = lat; if (zz) z = zz; clamp(); dirtyF = true; }, _st: function () { return { cx: cx, cy: cy, z: z, W: W0, H: H0, imgs: imgs.length }; } };
+  })();
 
   /* ───────── 載入資料 ───────── */
   async function loadEvents(force) {
@@ -415,6 +586,8 @@
     try {
       switch (a) {
         case 'close': return close();
+        case 'mode': return setMode(el.getAttribute('data-m'));   // v1.5.0：地球／平面切換
+        case 'fzoom': return flat.zoom(+el.getAttribute('data-d'));
         case 'grab': S.sheet = S.sheet === 'min' ? 'mid' : S.sheet === 'mid' ? 'full' : 'min'; applySheet(); return render();
         case 'tab': S.tab = el.getAttribute('data-t'); if (S.sheet === 'min') S.sheet = 'mid'; applySheet(); return render();
         case 'draw': return drawOpen(!S.draw); case 'drawclose': return drawOpen(false);
@@ -459,7 +632,7 @@
     if (k === 'dom') { doms()[el.getAttribute('data-k')] = el.checked; savePrefs(); drawMap(); render(); }
     else if (k === 'flon') { S.fl.on = el.checked; flStart(); renderDraw(); }
     else if (k === 'flpre') { var id = el.getAttribute('data-k'), ix = S.fl.presets.indexOf(id); if (el.checked && ix < 0) S.fl.presets.push(id); if (!el.checked && ix >= 0) S.fl.presets.splice(ix, 1); savePrefs(); if (S.fl.on) flStart(); }
-    else if (k === 'rot') { S.rot = el.checked; savePrefs(); if (globe) globe.controls().autoRotate = S.rot && !S.city; }
+    else if (k === 'rot') { S.rot = el.checked; savePrefs(); if (globe) globe.controls().autoRotate = S.rot && !S.city && S.mode === 'globe'; }
     else if (k === 'jrrule') { var jr = C.journal.load(); if (jr) { jr.rules.forEach(function (r) { if (r.id === el.getAttribute('data-id')) r.on = el.checked; }); C.journal.save(jr); } }
   }
 
@@ -467,7 +640,7 @@
   async function open() {
     C = W.NovaInsightCore; if (!C) return toast('Insight 引擎沒有載入');
     ensureDom(); S.open = true; $('nin-win').classList.add('on'); S.sheet = S.sheet === 'min' ? 'mid' : S.sheet; applySheet();
-    pushLayer(function () { if (S.draw) setDraw(false); S.open = false; $('nin-win').classList.remove('on'); clearInterval(flTimer); if (globe) { try { globe.pauseAnimation(); } catch (e) { /* */ } } });
+    pushLayer(function () { if (S.draw) setDraw(false); S.open = false; $('nin-win').classList.remove('on'); clearInterval(flTimer); flat.stop(); if (globe) { try { globe.pauseAnimation(); } catch (e) { /* */ } } });
     render(); try { await initMap(); } catch (e) { toast(e.message, 5000); }
     if (S.fl.on) flStart(); if (!S.evs.length || Date.now() / 1000 - S.evAt > 600) loadEvents(false); else { drawMap(); }
   }
@@ -480,5 +653,5 @@
   W.addEventListener('nova-insight-synced', function () { if (S.open) { S.stkRows = {}; ptPx = {}; drawMap(); render(); } });
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaInsight = { version: '1.0.0', init: function (h) { H = h || {}; }, open: open, close: close, get syncKeys() { return (W.NovaInsightCore && W.NovaInsightCore.syncKeys) || []; }, _S: S };
+  W.NovaInsight = { version: '1.5.0', init: function (h) { H = h || {}; }, open: open, close: close, _dbg: { screenOf: function (a, b) { return screenOf(a, b); }, pickAt: function (x, y) { return pickAt(x, y); }, flat: flat, setMode: function (m) { setMode(m); }, redraw: function () { drawMap(); }, globe: function () { return globe; } }, get syncKeys() { return (W.NovaInsightCore && W.NovaInsightCore.syncKeys) || []; }, _S: S };
 })();

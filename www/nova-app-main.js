@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.2
+   目前版本：v1.4.3
    最後更新：2026-11-14
 
    版本紀錄：
+   v1.4.3 - App v2.6.134：只改 NOVA_APP_VERSION（2.6.134）與 NOVA_CHANGELOG 一筆（Interactions API 轉換層 nova-interactions.js v1.0.0、Insight nova-insight.js v1.5.0）；本檔程式沒有改動。
    v1.4.2 - App v2.6.133：系統狀態列（上）與導覽列（下）跟 App 背景同色。新增 window.novaSyncSystemBars(theme)：讀 nova-ui.css 的 --nv-canvas
             （B 案黑夜 #131a24、白晝 #fafbfd）設定 StatusBar、NovaSystemBars 導覽列與 meta theme-color；applyTheme 與啟動時的 StatusBar 初始化都改呼叫它。
             原本寫死黑夜 #020617、白晝 #ffffff，v2.6.131 換成 B 案底色後，上下兩條跟 App 背景明顯不同色（手機截圖：黑夜 #030617 對 #131a24、白晝 #ffffff 對 #fafbfd）。
@@ -48,8 +49,12 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.133';
+        const NOVA_APP_VERSION = '2.6.134';
         const NOVA_CHANGELOG = [
+            { v: '2.6.134', date: '2026-11-15', notes: [
+                'Gemini 呼叫改走 Interactions API（新檔 nova-interactions.js v1.0.0，移植桌面 desktop-patch v3.130.0；僅 www）：Google 已把 generateContent 標成舊版。App 在送出前自動把請求轉成新格式、回應轉回原本的樣子，原本的程式一行都不用改；新介面失敗時自動用舊介面重送一次，連續 3 次找不到模型就 30 分鐘內直接走舊介面。不讓 Google 保存對話（store:false）。生圖、Gemini 語音、嵌入（記憶、知識庫）照舊。設定 → API 金鑰：Gemini API Key 下方可切回舊版並看轉換統計。知識庫與簡報頁也一起套用。轉換核心與桌面版逐字相同，桌面的 6 項自動測試全部通過。',
+                'Project Insight（nova-insight.js v1.5.0）：① 地球上點地點更準——原本手指只要在按下到放開之間稍微移動就不算點擊、城市名稱也會擋住點擊；現在改成依螢幕距離挑手指附近最近的地點。模擬觸控測 17 個城市，手指微移 6px 時由 0/17 變 16/17。② 新增平面地圖：地圖右上角「🌐 地球｜🗺 平面」切換，平面可拖曳、雙指縮放、＋／－，事件水波與城市名稱都看得到，點選方式相同；會記住你選的模式，地球載入失敗時也會自動改用平面。【以上在電腦的 Chrome 模擬 Note10+ 驗證，未在真機測試】'
+            ] },
             { v: '2.6.133', date: '2026-11-14', notes: [
                 '手機最上方的狀態列與最下方的導覽列（返回／首頁／最近工作）跟 App 背景同色（nova-app-main.js v1.4.2；僅 www，不需重新打包原生）：v2.6.131 換成 B 案配色後，上下兩條仍是舊的近黑 #020617（黑夜）與純白（白晝），跟 App 背景 #131a24／#fafbfd 不同色。現在直接取 App 背景色設定，切換黑夜／白晝時一起變；狀態列圖示在白晝為深色、黑夜為淺色。另外原生的啟動預設色（MainActivity、styles.xml）也改成 #131a24，下次重新打包 APK 後，開 App 的第一瞬間也不會先閃舊的近黑。【未在真機驗證】'
             ] },

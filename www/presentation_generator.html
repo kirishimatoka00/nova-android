@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <!--
-  ═══ presentation_generator v43（Android；2026-11-14，App v2.6.131）═══
+  ═══ presentation_generator v44（Android；2026-11-15，App v2.6.134）═══
+  v44：在 Tailwind 前面載入 nova-interactions.js v1.0.0（本頁的 Gemini generateContent 呼叫自動改走 Interactions API；生圖照舊走 generateContent）。本檔其餘不變。
   v43：nova-subpage-light.css 連結改 ?v=1.1.0（B 案配色，對標桌面 v54～v55：白晝冷色藍灰＋單一鈷藍強調色，「開始生成」等漸層鈕白晝改鈷藍實心；黑夜藍灰底、灰字提亮）。本檔其餘不變。
   v42：模型清單新增 gemini-4-hydrogen（Gemini 4 Hydrogen）與 gemini-4-carbon（Gemini 4 Carbon），放在 4 Argon 前面（四個文字模型下拉都有）。
        這兩個模型不收 thinkingBudget（送了會 HTTP 400）：本檔只在模型名稱含 flash 時送 thinkingBudget:0，它們的名稱不含 flash，所以不受影響；
@@ -37,6 +38,7 @@
 
     <!-- Tailwind：CDN 為主（有網路），vendor/tailwind.css 為離線備援 -->
     <link rel="stylesheet" href="./vendor/tailwind.css">
+    <script src="./nova-interactions.js?v=1.0.0"></script>
     <script src="https://cdn.tailwindcss.com" onerror="console.warn('[NOVA] Tailwind CDN 載入失敗，使用本地 CSS')"></script>
     <script src="./vendor/phosphor-loader.js"></script>
     <script src="./vendor/pptxgen.bundle.js"></script>
