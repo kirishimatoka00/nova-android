@@ -1,9 +1,16 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.0.2（2026-11-15，App v2.6.140）
+   版本：v1.0.3（2026-11-15，App v2.6.141）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.3 - App v2.6.141，依第三次真機截圖：
+     ① 周邊設施仍三個鏡像逾時：overpass-api.de 自 2026-04 起擋預設 UA（已在 v1.0.1 處理），之後主站常超載。鏡像改為
+        kumi.systems → z.overpass-api.de → lz4.overpass-api.de → private.coffee → overpass-api.de（錯開 3 秒、單次 25 秒）；
+        並加 Nominatim 類別查詢備援（q=[amenity=fuel] 這種寫法＋bounded viewbox，已在使用者電腦實測可用）：12 秒內 Overpass 沒結果就開始，
+        每秒 1 次，密集類別先查 1/4 範圍再查全範圍；先到的先顯示，Overpass 之後成功會換成較完整的資料。
+     ② 大眾運輸 TDX MaaS 回「The depart time before now!」：出發時間改為現在＋3 分鐘。
+     ③ 搜尋「台北車站」得到英文的機捷站：改成先查 Nominatim（zh-TW、限台灣、目前位置附近加權），不足 3 筆才查 Photon。
    v1.0.2 - App v2.6.140，依第二次真機截圖：
      ① 新北市停車場 0 筆：診斷顯示 TDX 的新北市路外停車場是 0 處。新北市改用市府開放資料（data.ntpc.gov.tw，免金鑰）：
         「新北市路外公共停車場資訊」（TWD97 二度分帶座標，前端換算成經緯度，用板橋遠東百貨驗算）＋「公有路外停車場即時賸餘車位數」
@@ -45,7 +52,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.0.2' };
+  var API = { VERSION: '1.0.3' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -212,7 +219,7 @@
       'node["highway"="bus_stop"];' +
       ');out center qt;';
   }
-  var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];   // v1.0.1：拿掉 maps.mail.ru（Android 不信任它的憑證）
+  var OVERPASS = ['https://overpass.kumi.systems/api/interpreter', 'https://z.overpass-api.de/api/interpreter', 'https://lz4.overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass-api.de/api/interpreter'];   // v1.0.3：主站常超載，排最後   // v1.0.1：拿掉 maps.mail.ru（Android 不信任它的憑證）
   function nameOf(t) { return t['name:zh-Hant'] || t['name:zh_hant'] || t['name:zh-TW'] || t.name || t['name:zh'] || t.brand || ''; }
   function addrOf(t) {
     var s = (t['addr:city'] || '') + (t['addr:district'] || '') + (t['addr:street'] || '') + (t['addr:housenumber'] ? t['addr:housenumber'] + (/號$/.test(t['addr:housenumber']) ? '' : '號') : '');
@@ -253,35 +260,81 @@
     });
     return keep;
   }
-  var osmCache = null;   // {lat,lon,r,at,items}
-  async function fetchOsm(lat, lon, r, force) {
+  var osmCache = null;   // {lat,lon,r,at,items,src}
+  // v1.0.3：Overpass（四個鏡像錯開 0／3／6／9／12 秒，單次 25 秒）＋ Nominatim 類別查詢備援（12 秒內 Overpass 沒結果就開始，
+  //   每秒 1 次、符合 Nominatim 使用規範）。onItems(items, src) 會被呼叫一次以上：Nominatim 先到就先顯示，Overpass 之後成功再換成較完整的。
+  var NOMI_Q = [   // [查詢, 半徑倍率]：密集類別先查 1/4 範圍（Nominatim 一次最多 40 筆、不依距離排序），再查全範圍
+    ['[amenity=fuel]', 1], ['[amenity=charging_station]', 1], ['[amenity=hospital]', 1], ['[amenity=clinic]', 0.25], ['[amenity=clinic]', 1], ['[amenity=pharmacy]', 0.25], ['[amenity=pharmacy]', 1],
+    ['[amenity=dentist]', 1], ['[amenity=restaurant]', 0.25], ['[amenity=restaurant]', 1], ['[amenity=cafe]', 0.5], ['[amenity=fast_food]', 0.5],
+    ['[leisure=park]', 1], ['[amenity=cinema]', 1], ['[tourism=museum]', 1], ['[leisure=sports_centre]', 1], ['[tourism=attraction]', 1],
+    ['[shop=convenience]', 0.25], ['[shop=supermarket]', 1], ['[shop=department_store]', 1], ['[shop=mall]', 1],
+    ['[railway=station]', 1], ['[amenity=bus_station]', 1], ['[highway=bus_stop]', 0.25]
+  ];
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  async function nominatimPois(lat, lon, r, isDone, onPart) {
+    var els = [], seen = {}, errs = 0;
+    for (var i = 0; i < NOMI_Q.length; i++) {
+      if (isDone()) return null;
+      var rr = r * NOMI_Q[i][1], dLa = rr / 111320, dLo = rr / (111320 * Math.cos(lat * Math.PI / 180));
+      var vb = (lon - dLo).toFixed(5) + ',' + (lat + dLa).toFixed(5) + ',' + (lon + dLo).toFixed(5) + ',' + (lat - dLa).toFixed(5);
+      try {
+        var d = await httpJson('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=40&bounded=1&extratags=1&addressdetails=1&accept-language=zh-TW&viewbox=' + vb + '&q=' + encodeURIComponent(NOMI_Q[i][0]), { timeout: 10000, what: '周邊設施查詢' });
+        (d || []).forEach(function (x) {
+          var k = x.osm_type + x.osm_id; if (seen[k]) return; seen[k] = 1;
+          var t = Object.assign({}, x.extratags || {}); t[x.category] = x.type; if (x.name) t.name = x.name;
+          var ad = x.address || {}; if (ad.road) { t['addr:street'] = ad.road; if (ad.house_number) t['addr:housenumber'] = ad.house_number; }
+          els.push({ type: x.osm_type, id: x.osm_id, lat: +x.lat, lon: +x.lon, tags: t });
+        });
+      } catch (e) { if (++errs >= 4) throw new Error('Nominatim 備援查詢失敗：' + e.message); }
+      if (onPart && els.length && i % 4 === 3 && i < NOMI_Q.length - 1) { try { onPart(els.slice()); } catch (e2) { /* */ } }   // 每 4 類先更新一次畫面
+      await sleep(1100);
+    }
+    return els;
+  }
+  async function fetchOsm(lat, lon, r, force, onItems) {
     if (!force && osmCache && osmCache.r >= r && dist(osmCache.lat, osmCache.lon, lat, lon) < 200 && Date.now() - osmCache.at < 600000) {
-      return osmCache.items.map(function (it) { return Object.assign({}, it, { d: Math.round(dist(lat, lon, it.lat, it.lon)) }); }).filter(function (it) { return it.d <= r; });
+      var c = osmCache.items.map(function (it) { return Object.assign({}, it, { d: Math.round(dist(lat, lon, it.lat, it.lon)) }); }).filter(function (it) { return it.d <= r; });
+      onItems && onItems(c, osmCache.src); return c;
     }
     var q = overpassQuery(lat, lon, r), errs = [];
-    // v1.0.2：三個鏡像錯開 0／5／10 秒同時查，取最先成功的（原本一個逾時才換下一個，最壞要等 90 秒）
-    var res = await new Promise(function (resolve) {
-      var left = OVERPASS.length, done = false;
+    var state = { op: false, nomi: false, best: null };
+    function deliver(els, src) {
+      var items = parseOsm(els, lat, lon).filter(function (it) { return it.d <= r; });
+      if (src === 'Nominatim' && state.op) return;
+      state.best = items; osmCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items, src: src };
+      try { onItems && onItems(items, src); } catch (e) { /* */ }
+    }
+    var pOp = new Promise(function (resolve) {
+      var left = OVERPASS.length;
       OVERPASS.forEach(function (host, i) {
         setTimeout(async function () {
-          if (done) { left--; return; }
+          if (state.op) { if (--left === 0) resolve(); return; }
           try {
             var d = nativeHttp()
-              ? await httpJson(host + '?data=' + encodeURIComponent(q), { timeout: 35000, accept: '*/*', what: '周邊設施查詢' })
-              : await httpJson(host, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 35000, what: '周邊設施查詢' });
-            if (!done) { done = true; resolve(d); }
+              ? await httpJson(host + '?data=' + encodeURIComponent(q), { timeout: 25000, accept: '*/*', what: '周邊設施查詢' })
+              : await httpJson(host, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 25000, what: '周邊設施查詢' });
+            if (!state.op && d && Array.isArray(d.elements)) { state.op = true; deliver(d.elements, 'Overpass'); }
           } catch (e) { errs.push(host.split('/')[2] + '：' + ((e && e.message) || e)); }
-          if (--left === 0 && !done) resolve(null);
-        }, i * 5000);
+          if (--left === 0) resolve();
+        }, i * 3000);
       });
     });
-    if (res) {
-      var items = parseOsm(res.elements, lat, lon).filter(function (it) { return it.d <= r; });
-      osmCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items };
-      return items;
-    }
+    var pNomi = sleep(12000).then(function () {
+      if (state.op) return;
+      return nominatimPois(lat, lon, r, function () { return state.op; }, function (part) { if (!state.op) deliver(part, 'Nominatim'); }).then(function (els) { if (els && !state.op) { state.nomi = true; deliver(els, 'Nominatim'); } }, function (e) { errs.push(e.message); });
+    });
+    // 任一來源先交出資料就返回（之後 Overpass 若成功，會再經 onItems 更新畫面）；兩邊都結束仍沒資料才算失敗
+    await new Promise(function (resolve) {
+      var opEnd = false, nomiEnd = false;
+      var iv = null; function check() { if (state.best || (opEnd && nomiEnd)) { clearInterval(iv); resolve(); } }
+      pOp.then(function () { opEnd = true; check(); });
+      pNomi.then(function () { nomiEnd = true; check(); });
+      iv = setInterval(check, 300);
+    });
+    if (state.best) return state.best;
     throw new Error('周邊設施查詢失敗（' + errs.join('；') + '）');
   }
+  API._nominatimPois = nominatimPois;
 
   // ───────────────────────── TDX：停車、YouBike、MaaS ─────────────────────────
   function NT() { return root.NovaTransit; }
@@ -486,7 +539,7 @@
     var pAddr = API.reverse(pos.lat, pos.lon).then(function (a) { res.addr = a; part('addr'); return a; }, function (e) { res.notes.push('地址查詢失敗：' + e.message); return null; });
     var pWx = API.weather(pos.lat, pos.lon).then(function (w) { res.wx = w; part('wx'); }, function (e) { res.notes.push('天氣查詢失敗：' + e.message); res.wxErr = e.message; part('wx'); });
     var osm = [], tdxPark = [], bikes = null;
-    var pOsm = fetchOsm(pos.lat, pos.lon, r, !!opts.force).then(function (x) { osm = x; merge(); part('items'); }, function (e) { res.notes.push(e.message); res.osmErr = e.message; part('items'); });
+    var pOsm = fetchOsm(pos.lat, pos.lon, r, !!opts.force, function (x, src) { osm = x; res.osmSrc = src; merge(); part('items'); }).then(function (x) { osm = x; merge(); }, function (e) { res.notes.push(e.message); res.osmErr = e.message; part('items'); });
     var pPark = pAddr.then(function (a) { return fetchParking(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { tdxPark = x.items; if (x.note) res.parkNote = x.note; merge(); part('items'); }, function (e) { res.parkNote = '停車剩餘車位查詢失敗：' + e.message; part('items'); });
     var pBike = pAddr.then(function (a) { return fetchBikes(pos.lat, pos.lon, r, a && a.city); }).then(function (x) { bikes = x.items; merge(); part('items'); }, function (e) { res.bikeNote = 'YouBike 查詢失敗：' + e.message; });
     function merge() {
@@ -514,21 +567,25 @@
     var ql = q.toLowerCase();
     if (lastScan) lastScan.items.forEach(function (it) { if (it.name.toLowerCase().indexOf(ql) >= 0) add({ name: it.name, lat: it.lat, lon: it.lon, addr: (it.sub || '') + (it.addr ? ' · ' + it.addr : ''), src: 'nearby' }); });
     var errs = [];
+    // v1.0.3：先查 Nominatim（中文名稱、zh-TW；以目前位置附近 ±0.5° 加權但不限制），不足 3 筆再查 Photon（Photon 常回英文名稱與地址）
     try {
-      var u = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(q) + '&limit=8' + (near ? '&lat=' + near.lat.toFixed(5) + '&lon=' + near.lon.toFixed(5) : '');
-      var d = await httpJson(u, { timeout: 10000, what: '地點搜尋' });
-      (d.features || []).forEach(function (f) {
-        var p = f.properties || {}, c = (f.geometry || {}).coordinates || []; if (c.length < 2) return;
-        var ad = [p.city || p.county, p.district, p.locality, p.street, p.housenumber ? p.housenumber + (/^\d+(-\d+)?$/.test(p.housenumber) ? '號' : '') : ''].filter(Boolean).join('');
-        add({ name: p.name || ad || q, lat: c[1], lon: c[0], addr: ad || p.state || '', src: 'photon' });
+      var vb = near ? '&viewbox=' + (near.lon - 0.5).toFixed(3) + ',' + (near.lat + 0.5).toFixed(3) + ',' + (near.lon + 0.5).toFixed(3) + ',' + (near.lat - 0.5).toFixed(3) : '';
+      var n = await httpJson('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&addressdetails=1&accept-language=zh-TW&countrycodes=tw&q=' + encodeURIComponent(q) + vb, { timeout: 10000, what: '地點搜尋' });
+      (n || []).forEach(function (x) {
+        var a = x.address || {}, ad = [a.city || a.county, a.suburb || a.city_district || a.town, a.road, a.house_number ? a.house_number + (/號$/.test(a.house_number) ? '' : '號') : ''].filter(Boolean).join('');
+        add({ name: x.name || String(x.display_name || '').split(',')[0], lat: +x.lat, lon: +x.lon, addr: ad || String(x.display_name || '').split(',').slice(1, 4).reverse().join('').replace(/\s+/g, ''), src: 'nominatim' });
       });
-    } catch (e) { errs.push('Photon：' + e.message); }
+    } catch (e) { errs.push('Nominatim：' + e.message); }
     if (out.length < 3) {
       try {
-        var vb = near ? '&viewbox=' + (near.lon - 0.5).toFixed(3) + ',' + (near.lat + 0.5).toFixed(3) + ',' + (near.lon + 0.5).toFixed(3) + ',' + (near.lat - 0.5).toFixed(3) : '';
-        var n = await httpJson('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=zh-TW&q=' + encodeURIComponent(q) + vb, { timeout: 10000, what: '地點搜尋' });
-        (n || []).forEach(function (x) { add({ name: x.name || String(x.display_name || '').split(',')[0], lat: +x.lat, lon: +x.lon, addr: String(x.display_name || '').split(',').slice(1, 4).reverse().join('').replace(/\s+/g, ''), src: 'nominatim' }); });
-      } catch (e) { errs.push('Nominatim：' + e.message); }
+        var u = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(q) + '&limit=8' + (near ? '&lat=' + near.lat.toFixed(5) + '&lon=' + near.lon.toFixed(5) : '');
+        var d = await httpJson(u, { timeout: 10000, what: '地點搜尋' });
+        (d.features || []).forEach(function (f) {
+          var p = f.properties || {}, c = (f.geometry || {}).coordinates || []; if (c.length < 2) return;
+          var ad = [p.city || p.county, p.district, p.locality, p.street, p.housenumber ? p.housenumber + (/^\d+(-\d+)?$/.test(p.housenumber) ? '號' : '') : ''].filter(Boolean).join('');
+          add({ name: p.name || ad || q, lat: c[1], lon: c[0], addr: ad || p.state || '', src: 'photon' });
+        });
+      } catch (e) { errs.push('Photon：' + e.message); }
     }
     if (!out.length && errs.length) throw new Error('找不到「' + q + '」（' + errs.join('；') + '）');
     // 排序：名稱完全相同 → 名稱開頭相同 → 周邊清單裡的 → 其餘依距離
@@ -583,7 +640,7 @@
     var now = Date.now(); maasCalls = maasCalls.filter(function (t) { return now - t < 60000; });
     if (maasCalls.length >= 5) throw new Error('TDX 路徑規劃每分鐘最多 5 次，請稍後再試');
     maasCalls.push(now);
-    var tw = new Date(now + 8 * 3600000), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+    var tw = new Date(now + 3 * 60000 + 8 * 3600000), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
     var depart = tw.getUTCFullYear() + '-' + p2(tw.getUTCMonth() + 1) + '-' + p2(tw.getUTCDate()) + 'T' + p2(tw.getUTCHours()) + ':' + p2(tw.getUTCMinutes()) + ':00';
     var j = await NT()._tdxGet('https://tdx.transportdata.tw/api/maas/routing', { origin: o.lat.toFixed(6) + ',' + o.lon.toFixed(6), destination: d.lat.toFixed(6) + ',' + d.lon.toFixed(6),
       gc: 1, top: 3, transit: '3,4,5,6,7', depart: depart, first_mile_mode: 0, last_mile_mode: 0 }, 300);

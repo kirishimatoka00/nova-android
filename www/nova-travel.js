@@ -1,10 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.0.2（2026-11-15，App v2.6.140）
+   版本：v1.0.3（2026-11-15，App v2.6.141）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.3 - App v2.6.141：周邊設施暫用 Nominatim 備援資料時，清單上方加一行說明（完整資料到了會自動更新）。其他沒改。
    v1.0.2 - App v2.6.140：頁尾資料來源多列「新北市政府開放資料（停車）」（停車場改用市府資料時）。其他沒改。
    v1.0.1 - App v2.6.139：底圖修正。CARTO 現在要 API 金鑰（真機看到滿版「API KEY REQUIRED」，而且那是正常載入的圖磚、不會觸發錯誤，原本的自動退回沒作用）。
             改成台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰；白晝彩色 EMAP、黑夜灰階 EMAP01 反色），境外預設 OpenStreetMap；
@@ -278,6 +279,7 @@
     if ((S.cat === 'all' || S.cat === 'parking') && S.res.parkNote) notes.push('🅿️ ' + S.res.parkNote);
     if ((S.cat === 'all' || S.cat === 'transit') && S.res.bikeNote) notes.push('🚲 ' + S.res.bikeNote);
     if (S.res.osmErr) notes.push('⚠️ ' + S.res.osmErr);
+    if (S.res.osmSrc === 'Nominatim') notes.push('ℹ️ 周邊設施暫用備援資料（OSM 類別搜尋，每類最多 40 筆，沒有公車站以外的小站點）；完整資料查到後會自動更新。');
     (S.res.pos.warn ? [S.res.pos.warn] : []).forEach(function (n) { notes.push('📍 ' + n); });
     h += notes.map(function (n) { return '<div class="note">' + esc(n) + '</div>'; }).join('');
     if (!list.length) h += '<div class="empty">' + (S.scanning ? '正在查詢周邊 ' + C.fmtDist(S.res.radius) + ' 內的設施…' : '這個範圍內沒有找到這類設施') + '</div>';
@@ -428,5 +430,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.0.2', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
+  W.NovaTravel = { version: '1.0.3', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
 })(window);

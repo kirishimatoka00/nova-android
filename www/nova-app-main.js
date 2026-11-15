@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.4.9
+   目前版本：v1.5.0
    最後更新：2026-11-15
 
    版本紀錄：
+   v1.5.0 - App v2.6.141：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.3、nova-travel.js v1.0.3）；本檔程式沒有其他改動。
    v1.4.9 - App v2.6.140：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.0.2、nova-travel.js v1.0.2）；本檔程式沒有其他改動。
    v1.4.8 - App v2.6.139：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent 真機修正：nova-travel-core.js v1.0.1、nova-travel.js v1.0.1）；本檔程式沒有其他改動。
    v1.4.7 - App v2.6.138。接上 TravelAgent（nova-travel-core.js v1.0.0＋nova-travel.js v1.0.0）：
@@ -82,10 +83,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.140';
+        const NOVA_APP_VERSION = '2.6.141';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.141', date: '2026-11-15', notes: [
+                'TravelAgent：周邊設施改用較不擁擠的 Overpass 伺服器，12 秒內沒有結果就改用 OSM 類別搜尋（Nominatim）備援，邊查邊顯示；完整資料到了會自動更新。',
+                'TravelAgent：大眾運輸路線修正「出發時間早於現在」錯誤；搜尋目的地改成優先中文結果（例如「台北車站」不再跳到英文的機捷站）。'
+            ] },
             { v: '2.6.140', date: '2026-11-15', notes: [
                 'TravelAgent：新北市停車場改用新北市政府開放資料（TDX 沒有新北市的路外停車場），免金鑰，汽車剩餘車位每 3 分鐘更新；其他縣市照舊用 TDX。',
                 'TravelAgent：周邊設施查詢改用較輕的範圍查詢，三個伺服器同時嘗試、取最快的，避免密集市區全部逾時；地址不再出現「號號」。'
