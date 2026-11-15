@@ -1,9 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.0.1（2026-11-15，App v2.6.139）
+   版本：v1.0.2（2026-11-15，App v2.6.140）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.2 - App v2.6.140，依第二次真機截圖：
+     ① 新北市停車場 0 筆：診斷顯示 TDX 的新北市路外停車場是 0 處。新北市改用市府開放資料（data.ntpc.gov.tw，免金鑰）：
+        「新北市路外公共停車場資訊」（TWD97 二度分帶座標，前端換算成經緯度，用板橋遠東百貨驗算）＋「公有路外停車場即時賸餘車位數」
+        （AVAILABLECAR，-9＝沒有即時資料），沒有設定 TDX 金鑰也能用。其他縣市照舊走 TDX。
+     ② 周邊設施三個鏡像都逾時：查詢改用整體 bbox、只查 node／way（原本每類各一個 around 半徑查詢，密集市區很重），
+        距離在前端篩；三個鏡像錯開 0／5／10 秒同時查、取最先成功的，單次等待上限 35 秒。
    v1.0.1 - App v2.6.139，依真機截圖修三個問題：
      ① 周邊設施全部查不到：overpass-api.de 回 406、private.coffee 回 429「請帶有意義的 User-Agent」、maps.mail.ru 憑證不被 Android 信任。
         原因是 App 內 fetch 走 CapacitorHttp 原生請求，User-Agent 是系統預設值。改成 App 裡的 GET 直接呼叫 CapacitorHttp 外掛並帶
@@ -39,7 +45,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 (function (root) {
   'use strict';
-  var API = { VERSION: '1.0.1' };
+  var API = { VERSION: '1.0.2' };
   var LS = (function () { try { return root.localStorage; } catch (e) { return null; } })();
 
   // ───────────────────────── 共用 ─────────────────────────
@@ -137,7 +143,7 @@
     var d = await httpJson('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat.toFixed(6) + '&lon=' + lon.toFixed(6) + '&zoom=18&addressdetails=1&accept-language=zh-TW', { timeout: 8000, what: '地址查詢' });
     var a = d.address || {};
     var city = a.city || a.county || a.state || '', district = a.suburb || a.city_district || a.town || a.district || a.village || '';
-    var road = (a.road || a.pedestrian || '') + (a.house_number ? a.house_number + '號' : '');
+    var road = (a.road || a.pedestrian || '') + (a.house_number ? a.house_number + (/號$/.test(a.house_number) ? '' : '號') : '');   // v1.0.2：門牌本身可能已含「號」
     var text = (city + district + road) || (d.display_name || '').split(',').reverse().map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^\d{3,6}$/.test(x) && x !== '臺灣' && x !== '台灣'; }).join('');
     var out = { text: text || '目前位置', city: city, district: district, road: road, poi: d.name || '' };
     addrCache[k] = out; return out;
@@ -185,23 +191,26 @@
     return null;
   }
   function overpassQuery(lat, lon, r) {
-    var a = '(around:' + r + ',' + lat.toFixed(6) + ',' + lon.toFixed(6) + ')';
+    // v1.0.2：改用整體 bbox（比每條 around 快很多，密集市區 2 公里 around 常常 25 秒逾時），只查 node／way，距離在前端再篩
+    var dLa = r / 111320, dLo = r / (111320 * Math.cos(lat * Math.PI / 180));
+    var bb = (lat - dLa).toFixed(6) + ',' + (lon - dLo).toFixed(6) + ',' + (lat + dLa).toFixed(6) + ',' + (lon + dLo).toFixed(6);
+    var a = '';
     function rx(vals) { return '"^(' + vals.join('|') + ')$"'; }
     var am = ['fuel', 'charging_station', 'parking', 'motorcycle_parking', 'hospital', 'clinic', 'doctors', 'dentist', 'pharmacy', 'restaurant', 'cafe', 'fast_food', 'food_court', 'bar', 'pub', 'ice_cream',
       'cinema', 'theatre', 'arts_centre', 'karaoke_box', 'library', 'marketplace', 'bus_station', 'bicycle_rental', 'taxi'];
     var shop = ['supermarket', 'hypermarket', 'wholesale', 'department_store', 'mall', 'convenience', 'chemist', 'cosmetics', 'electronics', 'mobile_phone', 'books', 'variety_store', 'doityourself', 'hardware', 'bakery', 'pastry'];
     var lei = ['sports_centre', 'fitness_centre', 'bowling_alley', 'amusement_arcade', 'escape_game', 'ice_rink', 'indoor_play', 'park', 'playground', 'garden', 'nature_reserve', 'stadium', 'water_park', 'swimming_pool'];
     var tour = ['museum', 'gallery', 'aquarium', 'attraction', 'theme_park', 'zoo', 'viewpoint', 'picnic_site'];
-    return '[out:json][timeout:25];(' +
-      'nwr["amenity"~' + rx(am) + ']' + a + ';' +
-      'nwr["healthcare"~' + rx(['hospital', 'clinic', 'doctor', 'dentist', 'pharmacy']) + ']' + a + ';' +
-      'nwr["shop"~' + rx(shop) + ']' + a + ';' +
-      'nwr["leisure"~' + rx(lei) + ']' + a + ';' +
-      'nwr["tourism"~' + rx(tour) + ']' + a + ';' +
-      'nwr["railway"~"^(station|halt|subway_entrance)$"]' + a + ';' +
-      'nwr["public_transport"="station"]' + a + ';' +
-      'node["highway"="bus_stop"]' + a + ';' +
-      ');out center tags;';
+    return '[out:json][timeout:25][bbox:' + bb + '];(' +
+      'nw["amenity"~' + rx(am) + '];' +
+      'nw["healthcare"~' + rx(['hospital', 'clinic', 'doctor', 'dentist', 'pharmacy']) + '];' +
+      'nw["shop"~' + rx(shop) + '];' +
+      'nw["leisure"~' + rx(lei) + '];' +
+      'nw["tourism"~' + rx(tour) + '];' +
+      'nw["railway"~"^(station|halt|subway_entrance)$"];' +
+      'nw["public_transport"="station"];' +
+      'node["highway"="bus_stop"];' +
+      ');out center qt;';
   }
   var OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];   // v1.0.1：拿掉 maps.mail.ru（Android 不信任它的憑證）
   function nameOf(t) { return t['name:zh-Hant'] || t['name:zh_hant'] || t['name:zh-TW'] || t.name || t['name:zh'] || t.brand || ''; }
@@ -250,15 +259,26 @@
       return osmCache.items.map(function (it) { return Object.assign({}, it, { d: Math.round(dist(lat, lon, it.lat, it.lon)) }); }).filter(function (it) { return it.d <= r; });
     }
     var q = overpassQuery(lat, lon, r), errs = [];
-    for (var i = 0; i < OVERPASS.length; i++) {
-      try {
-        var d = nativeHttp()
-          ? await httpJson(OVERPASS[i] + '?data=' + encodeURIComponent(q), { timeout: 30000, accept: '*/*', what: '周邊設施查詢' })   // App 內：GET＋自訂 UA
-          : await httpJson(OVERPASS[i], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 25000, what: '周邊設施查詢' });
-        var items = parseOsm(d.elements, lat, lon);
-        osmCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items };
-        return items;
-      } catch (e) { errs.push(OVERPASS[i].split('/')[2] + '：' + e.message); }
+    // v1.0.2：三個鏡像錯開 0／5／10 秒同時查，取最先成功的（原本一個逾時才換下一個，最壞要等 90 秒）
+    var res = await new Promise(function (resolve) {
+      var left = OVERPASS.length, done = false;
+      OVERPASS.forEach(function (host, i) {
+        setTimeout(async function () {
+          if (done) { left--; return; }
+          try {
+            var d = nativeHttp()
+              ? await httpJson(host + '?data=' + encodeURIComponent(q), { timeout: 35000, accept: '*/*', what: '周邊設施查詢' })
+              : await httpJson(host, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: 'data=' + encodeURIComponent(q), timeout: 35000, what: '周邊設施查詢' });
+            if (!done) { done = true; resolve(d); }
+          } catch (e) { errs.push(host.split('/')[2] + '：' + ((e && e.message) || e)); }
+          if (--left === 0 && !done) resolve(null);
+        }, i * 5000);
+      });
+    });
+    if (res) {
+      var items = parseOsm(res.elements, lat, lon).filter(function (it) { return it.d <= r; });
+      osmCache = { lat: lat, lon: lon, r: r, at: Date.now(), items: items };
+      return items;
     }
     throw new Error('周邊設施查詢失敗（' + errs.join('；') + '）');
   }
@@ -289,13 +309,75 @@
   API._citiesFor = citiesFor;
   function zh(x) { return x && typeof x === 'object' ? (x.Zh_tw || x.En || '') : (x || ''); }
   function lst(x) { return Array.isArray(x) ? x : (x && (x.ParkingAvailabilities || x.CarParks || x.Stations || x.BikeStations || x.Availabilities)) || []; }
+  /** TWD97 二度分帶（TM2，中央經線 121°）→ WGS84 經緯度（新北市開放資料用） */
+  function tm2ToWgs(x, y) {
+    var a = 6378137, f = 1 / 298.257222101, b = a * (1 - f), k0 = 0.9999, lon0 = 121 * Math.PI / 180;
+    var e2 = 1 - (b * b) / (a * a), ep2 = e2 / (1 - e2);
+    x -= 250000;
+    var mu = (y / k0) / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256));
+    var e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    var fp = mu + (3 * e1 / 2 - 27 * Math.pow(e1, 3) / 32) * Math.sin(2 * mu) + (21 * e1 * e1 / 16 - 55 * Math.pow(e1, 4) / 32) * Math.sin(4 * mu) + (151 * Math.pow(e1, 3) / 96) * Math.sin(6 * mu) + (1097 * Math.pow(e1, 4) / 512) * Math.sin(8 * mu);
+    var s = Math.sin(fp), c = Math.cos(fp), t = Math.tan(fp);
+    var C1 = ep2 * c * c, T1 = t * t, N1 = a / Math.sqrt(1 - e2 * s * s), R1 = a * (1 - e2) / Math.pow(1 - e2 * s * s, 1.5), D = x / (N1 * k0);
+    var lat = fp - (N1 * t / R1) * (D * D / 2 - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * ep2) * Math.pow(D, 4) / 24 + (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * ep2 - 3 * C1 * C1) * Math.pow(D, 6) / 720);
+    var lon = lon0 + (D - (1 + 2 * T1 + C1) * Math.pow(D, 3) / 6 + (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * ep2 + 24 * T1 * T1) * Math.pow(D, 5) / 120) / c;
+    return [lat * 180 / Math.PI, lon * 180 / Math.PI];
+  }
+  API._tm2ToWgs = tm2ToWgs;
+  // v1.0.2：新北市自己的開放資料（TDX 的新北市路外停車場是 0 筆）。免金鑰。
+  //   靜態：新北市路外公共停車場資訊（ID、NAME、ADDRESS、PAYEX、SERVICETIME、TW97X／TW97Y、TOTALCAR、TOTALMOTOR），快取 12 小時
+  //   即時：新北市公有路外停車場即時賸餘車位數（ID、AVAILABLECAR；-9＝沒有即時資料），每 3 分鐘更新，快取 60 秒
+  var NTPC_STATIC = 'https://data.ntpc.gov.tw/api/datasets/b1464ef0-9c7c-4a6f-abf7-6bdf32847e68/json';
+  var NTPC_AVAIL = 'https://data.ntpc.gov.tw/api/datasets/e09b35a5-a738-48cc-b0f5-570b67ad9c78/json';
+  var ntpcCache = { st: null, stAt: 0, av: null, avAt: 0 };
+  async function ntpcAll(url) {
+    var out = [];
+    for (var pg = 0; pg < 10; pg++) {
+      var d = await httpJson(url + '?page=' + pg + '&size=1000', { timeout: 20000, what: '新北市停車資料' });
+      if (!Array.isArray(d) || !d.length) break;
+      out = out.concat(d); if (d.length < 1000) break;
+    }
+    return out;
+  }
+  async function fetchNtpcParking(lat, lon, r) {
+    if (!ntpcCache.st || Date.now() - ntpcCache.stAt > 43200000) {
+      ntpcCache.st = (await ntpcAll(NTPC_STATIC)).map(function (p) {
+        var x = parseFloat(p.TW97X), y = parseFloat(p.TW97Y); if (!(x > 100000 && y > 2000000)) return null;
+        var ll = tm2ToWgs(x, y);
+        return { pid: p.ID, name: p.NAME, lat: ll[0], lon: ll[1], addr: (p.ADDRESS || '').indexOf('新北') === 0 ? p.ADDRESS : '新北市' + (p.ADDRESS || ''), fare: p.PAYEX || '', hours: p.SERVICETIME || '', total: +p.TOTALCAR || undefined, totalMoto: +p.TOTALMOTOR || undefined };
+      }).filter(Boolean);
+      ntpcCache.stAt = Date.now();
+    }
+    var near = ntpcCache.st.map(function (p) { var d = dist(lat, lon, p.lat, p.lon); return d <= r ? Object.assign({ id: 'ntpc:' + p.pid, cat: 'parking', sub: '停車場', d: Math.round(d), src: '新北市' }, p) : null; }).filter(Boolean);
+    var note = '';
+    if (near.length) {
+      try {
+        if (!ntpcCache.av || Date.now() - ntpcCache.avAt > 60000) {
+          var m = {}; (await ntpcAll(NTPC_AVAIL)).forEach(function (a) { m[a.ID] = parseInt(a.AVAILABLECAR, 10); });
+          ntpcCache.av = m; ntpcCache.avAt = Date.now();
+        }
+        near.forEach(function (it) { var v = ntpcCache.av[it.pid]; if (isFinite(v) && v >= 0) { it.avail = v; it.car = v; if (v === 0) it.full = true; } });
+      } catch (e) { note = '新北市剩餘車位查詢失敗：' + e.message; }
+    }
+    return { items: near, stat: '新北市開放資料：停車場 ' + ntpcCache.st.length + ' 處，範圍內 ' + near.length + ' 處', note: note };
+  }
   /** 半徑內 TDX 停車場（含剩餘車位） */
   async function fetchParking(lat, lon, r, addrCity) {
-    var t = NT(); if (!API.hasTdx()) return { items: [], note: '沒有設定 TDX 金鑰，停車場沒有剩餘車位資訊（設定 → 專家與 Bot → 交通 API）' };
-    var cities = citiesFor(addrCity, lat, lon); if (!cities.length) return { items: [], note: '這個位置不在 TDX 停車資料涵蓋的縣市' };
+    var t = NT(), hasTdx = API.hasTdx();
+    var cities = citiesFor(addrCity, lat, lon);
     var items = [], notes = [], stats = [];
+    if (cities.indexOf('NewTaipei') >= 0) {   // v1.0.2：新北市用市府開放資料（TDX 沒有新北市路外停車場）
+      try { var np = await fetchNtpcParking(lat, lon, r); items = items.concat(np.items); stats.push(np.stat); if (np.note) notes.push(np.note); }
+      catch (e) { notes.push('新北市停車資料查詢失敗：' + e.message); }
+    }
+    if (!hasTdx) {
+      if (!items.length) notes.push(cities.indexOf('NewTaipei') >= 0 ? '範圍內沒有新北市公有停車場資料' : '沒有設定 TDX 金鑰，停車場沒有剩餘車位資訊（設定 → 專家與 Bot → 交通 API）');
+      return { items: items, note: notes.join('；') };
+    }
+    if (!cities.length) return { items: items, note: '這個位置不在 TDX 停車資料涵蓋的縣市' };
     for (var i = 0; i < cities.length; i++) {
       var city = cities[i];
+      if (city === 'NewTaipei') continue;   // 新北市已用市府資料
       try {
         var parks = lst(await t._tdxGet('/v1/Parking/OffStreet/CarPark/City/' + city, { $select: 'CarParkID,CarParkName,CarParkPosition,Address,FareDescription' }, 43200));
         var withPos = parks.filter(function (p) { var q = p.CarParkPosition || {}; return isFinite(q.PositionLat) && isFinite(q.PositionLon) && q.PositionLat; }).length;
@@ -326,7 +408,7 @@
         items = items.concat(near);
       } catch (e) { notes.push(city + '：' + e.message); }
     }
-    if (!items.length && stats.length) notes.push('範圍內沒有 TDX 停車場資料（' + stats.join('；') + '）');
+    if (!items.length && stats.length) notes.push('範圍內沒有停車場即時資料（' + stats.join('；') + '）');
     return { items: items, note: notes.join('；') };
   }
   var CITY_ZH = {}; CITY.forEach(function (c) { if (!CITY_ZH[c[1]]) CITY_ZH[c[1]] = c[0]; });

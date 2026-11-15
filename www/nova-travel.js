@@ -1,10 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel.js — NOVA Android「TravelAgent」介面（全螢幕頁，入口在＋選單，和 Project Insight 一樣）
-   版本：v1.0.1（2026-11-15，App v2.6.139）
+   版本：v1.0.2（2026-11-15，App v2.6.140）
    資料全部來自 nova-travel-core.js（NovaTravelCore）；地圖用 Leaflet 1.9.4（www/vendor/leaflet/，打開時才載入），底圖 CARTO（白晝 Voyager／黑夜 Dark Matter，
    連續載入失敗改用 OpenStreetMap 標準圖）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.2 - App v2.6.140：頁尾資料來源多列「新北市政府開放資料（停車）」（停車場改用市府資料時）。其他沒改。
    v1.0.1 - App v2.6.139：底圖修正。CARTO 現在要 API 金鑰（真機看到滿版「API KEY REQUIRED」，而且那是正常載入的圖磚、不會觸發錯誤，原本的自動退回沒作用）。
             改成台灣境內預設國土測繪中心「臺灣通用電子地圖」（中文、免金鑰；白晝彩色 EMAP、黑夜灰階 EMAP01 反色），境外預設 OpenStreetMap；
             地圖右側新增「🗺」鈕在 國土測繪／OpenStreetMap／Esri 間切換（記在 nova_travel_tiles）；沒手動選過時，連續 10 張圖磚載入失敗會自動換下一個。
@@ -291,7 +292,7 @@
         }).join('');
       } else h += shown.map(itemCard).join('') + (list.length > shown.length ? '<div class="note">只列最近 ' + shown.length + ' 個（共 ' + list.length + ' 個）</div>' : '');
     }
-    h += '<div class="note">資料：OpenStreetMap' + (C.hasTdx() ? '、交通部 TDX（停車、YouBike）' : '') + '、Open-Meteo。距離為直線距離。' + (S.res.at ? ' 更新於 ' + new Date(S.res.at).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '') + '</div>';
+    h += '<div class="note">資料：OpenStreetMap' + (C.hasTdx() ? '、交通部 TDX（停車、YouBike）' : '') + (S.res.items.some(function (x) { return x.src === '新北市'; }) ? '、新北市政府開放資料（停車）' : '') + '、Open-Meteo。距離為直線距離。' + (S.res.at ? ' 更新於 ' + new Date(S.res.at).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '') + '</div>';
     el.innerHTML = h;
   }
   function findItem(id) { return S.res && S.res.items.filter(function (x) { return x.id === id; })[0]; }
@@ -427,5 +428,5 @@
   }
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaTravel = { version: '1.0.1', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
+  W.NovaTravel = { version: '1.0.2', init: function (h) { H = h || {}; }, open: open, close: close, showRoute: showRoute, _S: S, _map: function () { return map; } };
 })(window);
