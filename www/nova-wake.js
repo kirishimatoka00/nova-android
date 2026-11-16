@@ -1,10 +1,11 @@
 /* ════════════════════════════════════════════════════════════
    nova-wake.js — NOVA Android「常駐背景＋語音喚醒（嘿 小希）」的設定介面與喚醒後的動作
-   版本：v1.0.0（2026-11-16，App v2.6.145）
+   版本：v1.0.1（2026-11-16，App v2.6.146）
    原生端：android/…/NovaWake.java、NovaWakeService.java、NovaWakePlugin.java（Capacitor 外掛名稱 NovaWake）。
    需要含這些原生檔的新版 APK；舊 APK 或瀏覽器裡這張卡片只會顯示「需要新版 App」。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.0.1 - App v2.6.146：靈敏度說明改成新的判斷方式（原生 NovaWakeService v1.0.1 修「嘿 小希認不出來」）；程式邏輯沒改。
    v1.0.0 - App v2.6.145 新增（使用者要求：①NOVA 不容易被關掉，要從通知列另外按關閉才會關、不會因「全部關閉」被關；
             ②沒關閉時對手機喊就打開 NOVA 並自動開新對話）。
      ・設定 → 語音 最上方加一張卡片：常駐背景 開關、語音喚醒 開關、靈敏度（低／中／高）、語音模型下載（Vosk 中文小模型，約 42MB，
@@ -18,7 +19,7 @@
    ════════════════════════════════════════════════════════════ */
 (function () {
     'use strict';
-    var VERSION = '1.0.0';
+    var VERSION = '1.0.1';
     var LS_KEEP = 'nova_wake_keep', LS_ON = 'nova_wake_on', LS_SENS = 'nova_wake_sens';
 
     function plugin() {
@@ -143,7 +144,7 @@
             ['低', '中', '高'].forEach(function (t, i) {
                 h += '<button type="button" data-nw="sens' + i + '" class="px-3 py-1 rounded-md border ' + (c.sens === i ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-300') + '">' + t + '</button>';
             });
-            h += '</div><div class="text-[11px] text-slate-500 leading-relaxed">低：要完整聽到「嘿 小希」，最不容易誤觸發。高：只要聽到「小希」就觸發，較容易被電視或交談聲誤觸。</div>';
+            h += '</div><div class="text-[11px] text-slate-500 leading-relaxed">低：安靜時單獨說「嘿 小希」才觸發。中：說完「嘿 小希」就觸發，前面有雜音也可以。高：前後有雜音都可以，單獨說「小希」也會觸發，較容易誤觸。請在說完後停一下。</div>';
 
             // 語音模型
             if (s.downloading || (dl && (dl.phase === 'download' || dl.phase === 'unzip'))) {

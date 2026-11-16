@@ -57,11 +57,17 @@ import java.util.Set;
  *       開新對話／暫停聆聽（恢復聆聽）／關閉 NOVA。「關閉 NOVA」結束畫面並結束程序（正在原生錄音時只關畫面與本服務，不中斷錄音）。
  *     ・聆聽：AudioRecord 16kHz 單聲道 → 簡單音量門檻（安靜時不送辨識、省電；開門時補送前 0.3 秒）→ Vosk 中文小模型，
  *       文法限定在喚醒詞與同音字（嘿 小希／小西／小溪／曉希）＋[unk]，只保留模型詞彙表裡有的寫法。
- *       靈敏度：低＝要完整聽到「嘿 小希」且信心 ≥0.90；中＝「小希」信心 ≥0.80；高＝「小希」信心 ≥0.60。觸發後 4 秒內不重複。
+ *       靈敏度（v1.0.1 起）：見下方 v1.0.1。觸發後 4 秒內不重複。
  *     ・讓麥克風：NOVA 畫面在前景（App 自己的語音輸入）、原生錄音中、等待解鎖時都會關掉麥克風；回到背景再恢復。
  *     ・喚醒後：嗶一聲。螢幕亮著且已解鎖 → 直接打開 NOVA；鎖定或螢幕關 → 點亮螢幕並顯示提示通知，等使用者解鎖（USER_PRESENT，
  *       30 秒內）才打開，對話內容不會出現在鎖定畫面上（使用者選的做法）。從背景叫出畫面需要「顯示在其他應用程式上層」或
  *       NOVA 無障礙服務執行中；兩者都沒有時改發高優先通知讓使用者點開。打開時帶 EXTRA_WAKE，JS 取走後開新對話並開始語音輸入。
+ *   v1.0.1 2026-11-16  App v2.6.146。修「嘿 小希認不出來」。用 GitHub Actions 拿同一個模型實測（5 種台灣／大陸口音合成語音＋espeak，
+ *                      24 句喚醒、60 句一般句子）：字其實都辨識對了（「嘿 小 希」），但限定文法下的信心值只有 0.24～0.43，
+ *                      v1.0.0 的門檻（0.60／0.80／0.90）永遠過不了 → 完全不會觸發。改成不看信心值、看整段辨識結果的樣式：
+ *                      低＝整段只有「嘿小希」；中＝以「嘿小希」結尾（前面可有雜音）；高＝前後都可有雜音，或單獨一句「小希」。
+ *                      同一批樣本：「嘿小希」18/18 觸發、一般句子 0/60 誤觸發（「小心一點」「這個消息」「休息一下」等都不會）。
+ *                      文法精簡為實測最穩定的一組（拿掉模型沒有的「曉」）；「最後聽到」不再被純雜音蓋掉。真人聲音與手機麥克風仍待真機確認。
  *     ・Android 14 以上從背景重啟服務時不能用麥克風類型，會改用 specialUse 常駐並在通知提示「打開 NOVA 一次」才恢復聆聽。
  */
 public class NovaWakeService extends Service {
@@ -307,8 +313,26 @@ public class NovaWakeService extends Service {
         try { if (recog != null && recog.acceptWaveForm(b, n)) handle(recog.getResult()); } catch (Exception e) { /* */ }
     }
 
-    private static final String[] FULL = { "嘿小希", "嘿小西", "黑小希", "嘿小溪", "嘿曉希" };
-    private static final String[] CORE = { "小希", "小西", "小溪", "曉希" };
+    // v1.0.1：改用「整句樣式」判斷，不再看信心值（實測限定文法下正確的「嘿 小 希」信心只有 0.24～0.43，舊門檻 0.6～0.9 永遠不會過）
+    private static final java.util.regex.Pattern P_FULL = java.util.regex.Pattern.compile("(?:嘿|黑|嗨)+小+(?:希|西|溪)");
+    private static final java.util.regex.Pattern P_CORE = java.util.regex.Pattern.compile("小+(?:希|西|溪)");
+
+    /** 判斷一段辨識結果是不是喚醒詞。sens：0 低＝整段只有「嘿小希」；1 中＝以「嘿小希」結尾（前面可有雜音）；2 高＝再加上前後可有雜音、或單獨一句「小希」 */
+    static boolean isWake(String text, int sens) {
+        String[] toks = text.trim().split("\\s+");
+        int lead = 0, n = toks.length;
+        while (lead < n && "[unk]".equals(toks[lead])) lead++;
+        int trail = 0;
+        while (trail < n - lead && "[unk]".equals(toks[n - 1 - trail])) trail++;
+        StringBuilder sb = new StringBuilder();
+        for (int i = lead; i < n - trail; i++) { if ("[unk]".equals(toks[i])) return false; sb.append(toks[i]); }
+        String core = sb.toString();
+        if (core.isEmpty()) return false;
+        boolean full = P_FULL.matcher(core).matches();
+        if (sens <= 0) return full && lead == 0 && trail == 0;
+        if (sens == 1) return full && trail == 0;
+        return full || (P_CORE.matcher(core).matches() && lead == 0 && trail == 0);
+    }
 
     private void handle(String json) {
         if (json == null) return;
@@ -316,33 +340,17 @@ public class NovaWakeService extends Service {
             JSONObject o = new JSONObject(json);
             String text = o.optString("text", "").trim();
             if (text.isEmpty()) return;
-            lastHeard = text;
-            String t = text.replace(" ", "");
-            double minConf = 1.0;
-            JSONArray ws = o.optJSONArray("result");
-            if (ws != null) for (int i = 0; i < ws.length(); i++) {
-                JSONObject w = ws.optJSONObject(i); if (w == null) continue;
-                String word = w.optString("word", "");
-                if (word.equals("嘿") || word.equals("黑") || word.equals("[unk]")) continue;
-                minConf = Math.min(minConf, w.optDouble("conf", 1.0));
-            }
-            int sens = NovaWake.sens(this);
-            boolean hit;
-            if (sens == 0) hit = containsAny(t, FULL) && minConf >= 0.90;
-            else if (sens == 1) hit = containsAny(t, CORE) && minConf >= 0.80;
-            else hit = containsAny(t, CORE) && minConf >= 0.60;
-            if (hit) onWake(text);
+            if (!text.replace("[unk]", "").trim().isEmpty()) lastHeard = text.replace("[unk]", "…");   // 只有雜音／聽不懂的不顯示
+            if (isWake(text, NovaWake.sens(this))) onWake(text.replace("[unk]", "").trim());
         } catch (Exception e) { /* */ }
     }
 
-    private static boolean containsAny(String t, String[] arr) { for (String s : arr) if (t.contains(s)) return true; return false; }
-
     /** 文法：喚醒詞與同音字的幾種寫法，只留模型詞彙表裡有的（沒讀到詞彙表就全留，Vosk 會忽略不認得的） */
     private String buildGrammar(String md) {
+        // v1.0.1：實測（vosk-model-small-cn-0.22）這組寫法最穩定，正確的喚醒一律辨識成「嘿 小 希」；模型是簡體詞彙，沒有「曉」，拿掉
         String[][] cand = {
-            { "嘿", "小", "希" }, { "嘿", "小", "西" }, { "黑", "小", "希" }, { "嘿", "小", "溪" }, { "嘿", "曉", "希" },
-            { "小", "希" }, { "小", "西" }, { "小", "溪" }, { "曉", "希" },
-            { "嘿", "小希" }, { "嘿", "小西" }, { "小希" }, { "小西" }
+            { "嘿", "小", "希" }, { "嘿", "小", "西" }, { "黑", "小", "希" }, { "嘿", "小", "溪" }, { "嗨", "小", "希" }, { "嗨", "小", "西" },
+            { "小", "希" }, { "小", "西" }, { "小", "溪" }
         };
         Set<String> need = new HashSet<>();
         for (String[] c : cand) for (String w : c) need.add(w);
