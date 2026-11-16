@@ -1,9 +1,16 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.5
-   最後更新：2026-11-16
+   目前版本：v1.5.6
+   最後更新：2026-11-17
 
    版本紀錄：
+   v1.5.6 - App v2.6.147：接上 DeepSeek 五項進階功能（新檔 nova-deepseek.js v1.0.0；對標桌面 nova-app-main.js v1.21.0）。
+            ① fetchAIResponse 的 deepseek 分支：聯網搜尋＋讀網頁（內建工具 deepseek_web_search／deepseek_read_url，自動嘗試工具格式，V4 Pro 不支援就改 V4.1 Flash，
+               都不行照常回答並註明；來源清單取自 annotations／server_tool_calls，回覆末尾註明搜尋／讀網頁次數）。呼叫端明確 enableSearch:false 或分析類內部呼叫不搜尋（按次計費）。
+               附檔：PDF／Word／PPT（以及送給 V4 Pro 的圖片）→ DeepSeek OCR；EPUB／MOBI 等 → 文件解析（固定 V4.1 Flash）。原本 deepseek 分支會忽略文件附檔。
+               有來源時回傳 {text, sources}，其餘仍回傳字串。
+            ② runChunkedTranscription 與 summarizeAudioRecord：逐字稿引擎可選 DeepSeek 語音識別；摘要有 Gemini 金鑰用 Gemini，沒有就用 DeepSeek；選 DeepSeek 時不再強制切到 Gemini。
+            NOVA_APP_VERSION 2.6.147、NOVA_CHANGELOG 一筆。沒有用真的 DeepSeek 金鑰實測。
    v1.5.5 - App v2.6.146：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（修語音喚醒認不出來：原生 NovaWakeService v1.0.1、nova-wake.js v1.0.1）；本檔程式沒有其他改動。
    v1.5.4 - App v2.6.145：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（常駐背景＋語音喚醒：新檔 nova-wake.js v1.0.0 與原生 NovaWake／NovaWakeService／NovaWakePlugin）；本檔程式沒有其他改動。
    v1.5.3 - App v2.6.144：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent 子分類：nova-travel-core.js v1.1.2、nova-travel.js v1.1.2；右上角天氣區：nova-ui.css v1.20.1）；本檔程式沒有其他改動。
@@ -88,10 +95,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.146';
+        const NOVA_APP_VERSION = '2.6.147';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.147', date: '2026-11-17', notes: [
+                'DeepSeek 進階功能（設定 → DeepSeek API Key 下方）：①聯網搜尋 ②讀網頁——對話用 DeepSeek 且搜尋開關打開時由 DeepSeek 自己搜尋、讀你貼的網址，回覆附來源；③OCR——PDF、Word、PPT 與圖片附檔轉文字；④文件解析——EPUB、MOBI 等；⑤語音識別——錄音逐字稿可改用 DeepSeek。',
+                '誠實說明：依官方文件與桌面版實作，沒有用真的 DeepSeek 金鑰實測；聯網工具格式會自動嘗試，失敗時照常回答並註明。這些功能按次／按頁／按時數另外計費。'
+            ] },
             { v: '2.6.146', date: '2026-11-16', notes: [
                 '修正語音喚醒「嘿 小希」完全認不出來：原本用的信心門檻設得太高，正確的喚醒也過不了；改成比對整句辨識結果。靈敏度的意義也跟著調整（設定 → 語音 有說明）。需安裝新的 APK。'
             ] },
@@ -13937,7 +13948,11 @@ try {
         async function runChunkedTranscription(audioBlob, mimeType, itemType, itemId, itemTitle) {
             const CHUNK_SECS = (appState.recSettings?.analysisChunkMins || 5) * 60; // 由設定決定，預設 5 分鐘
             const key = appState.keys.gemini;
-            if (!key) { addMessage('⚠️ 請先設定 Gemini API Key！', 'system'); return; }
+            // v1.5.6（App v2.6.147）：逐字稿引擎可選 DeepSeek 語音識別（設定 → DeepSeek 進階功能；nova-deepseek.js 轉 16kHz WAV、每 110 秒一段逐段送）
+            const _dsAsr = !!(window.NovaDeepSeek && window.NovaDeepSeek.transcribeEngine() === 'deepseek' && window.NovaDeepSeek.key());
+            const _sumModel = key ? 'gemini' : 'deepseek';   // 摘要：有 Gemini 金鑰用 Gemini，否則（只可能在 DeepSeek 引擎時）用 DeepSeek
+            if (!key && !_dsAsr) { addMessage('⚠️ 請先設定 Gemini API Key！', 'system'); return; }
+            if (_dsAsr) addMessage('🎧 逐字稿引擎：DeepSeek 語音識別（摘要由 ' + (key ? 'Gemini' : 'DeepSeek') + ' 產生）', 'system');
 
             switchTab('dashboard');
 
@@ -13973,6 +13988,23 @@ try {
                 renderMessages();
                 const chatEl = document.getElementById('chat-container');
                 if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
+
+                if (_dsAsr) {   // v1.5.6：DeepSeek 語音識別
+                    try {
+                        const partText = await window.NovaDeepSeek.asrRange(audioBuffer, startSec, endSec, function (k, n) {
+                            const pm0 = appState.messages.find(x => x.id === progressId);
+                            if (pm0) { pm0.text = `⏳ [${i+1}/${totalChunks}] 正在轉錄 ${startLabel} – ${endLabel}…（DeepSeek 語音識別 ${k}/${n}）`; renderMessages(); }
+                        });
+                        transcriptParts.push(`【${startLabel} – ${endLabel}】\n${partText}`);
+                        const pm = appState.messages.find(x => x.id === progressId);
+                        if (pm) { pm.text = `✅ [${i+1}/${totalChunks}] ${startLabel} – ${endLabel} 轉錄完成（DeepSeek，${partText.length} 字）`; renderMessages(); }
+                    } catch (e) {
+                        const pm = appState.messages.find(x => x.id === progressId);
+                        if (pm) { pm.text = `⚠️ [${i+1}/${totalChunks}] ${startLabel} – ${endLabel} 轉錄失敗：${e.message}`; renderMessages(); }
+                        transcriptParts.push(`[第 ${i+1} 段：DeepSeek 語音識別錯誤 - ${e.message}]`);
+                    }
+                    continue;
+                }
 
                 let base64Chunk;
                 try {
@@ -14012,7 +14044,7 @@ try {
 
             // 3. 合併完整逐字稿
             const fullTranscript = transcriptParts.join('\n\n');
-            addMessage(`📝 **完整逐字稿（共 ${totalChunks} 段合併，${fullTranscript.length} 字）**\n\n${fullTranscript}`, 'ai', 'gemini');
+            addMessage(`📝 **完整逐字稿（共 ${totalChunks} 段合併，${fullTranscript.length} 字）**\n\n${fullTranscript}`, 'ai', _dsAsr ? 'deepseek' : 'gemini');
 
             // 4. 根據完整逐字稿，送 AI 做摘要/會議紀錄
             addMessage(`🔍 逐字稿完成，正在根據全文產生摘要與重點整理…`, 'system');
@@ -14022,9 +14054,9 @@ try {
 
             let summaryText = '';
             try {
-                const summaryRes = await fetchAIResponse(summaryPrompt, 'gemini', { isAnalysis: true });
+                const summaryRes = await fetchAIResponse(summaryPrompt, _sumModel, { isAnalysis: true, enableSearch: false });
                 summaryText = typeof summaryRes === 'string' ? summaryRes : (summaryRes.text || '');
-                addMessage(summaryText, 'ai', 'gemini');
+                addMessage(summaryText, 'ai', _sumModel);
             } catch(e) {
                 addMessage(`⚠️ 摘要產生失敗：${e.message}`, 'system');
             }
@@ -14050,7 +14082,10 @@ try {
         async function summarizeAudioRecord(id) {
             const r = appState.audioRecords.find(x => String(x.id) === String(id));
             if (!r) return;
-            if (appState.currentModel !== 'gemini') { showToast("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
+            // v1.5.6（App v2.6.147）：逐字稿引擎可選 DeepSeek 語音識別（同 runChunkedTranscription）；選 DeepSeek 時不強制切到 Gemini
+            const _dsAsr = !!(window.NovaDeepSeek && window.NovaDeepSeek.transcribeEngine() === 'deepseek' && window.NovaDeepSeek.key());
+            const _sumModel = appState.keys.gemini ? 'gemini' : 'deepseek';
+            if (!_dsAsr && appState.currentModel !== 'gemini') { showToast("音檔轉錄與分析強烈建議使用 Gemini 模型，系統已自動為您切換。"); setModel('gemini'); }
 
             // 找出同 groupId 的所有分段（按時間先後排序）
             const groupId = r.groupId || r.id;
@@ -14070,11 +14105,12 @@ try {
             if (!await showConfirm(confirmMsg)) return;
 
             const key = appState.keys.gemini;
-            if (!key) { addMessage('⚠️ 請先設定 Gemini API Key！', 'system'); return; }
+            if (!key && !_dsAsr) { addMessage('⚠️ 請先設定 Gemini API Key！', 'system'); return; }
 
             (async () => {
                 switchTab('dashboard');
                 addMessage(`🎙️ **AI 深度分析啟動**｜共 ${segCount} 個錄音段，開始逐段轉錄…`, 'system');
+                if (_dsAsr) addMessage('🎧 逐字稿引擎：DeepSeek 語音識別（摘要由 ' + (key ? 'Gemini' : 'DeepSeek') + ' 產生）', 'system');
 
                 const allTranscriptParts = [];
                 const CHUNK_SECS = chunkMins * 60;
@@ -14117,6 +14153,23 @@ try {
                         const chatEl = document.getElementById('chat-container');
                         if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
 
+                        if (_dsAsr) {   // v1.5.6：DeepSeek 語音識別
+                            try {
+                                const partText = await window.NovaDeepSeek.asrRange(audioBuffer, startSec, endSec, function (k, n) {
+                                    const pm0 = appState.messages.find(x => x.id === progressId);
+                                    if (pm0) { pm0.text = `⏳ ${segPrefix}[${i+1}/${segChunks}] 轉錄 ${startLabel}–${endLabel}…（DeepSeek 語音識別 ${k}/${n}）`; renderMessages(); }
+                                });
+                                allTranscriptParts.push(`${segPrefix}【${startLabel}–${endLabel}】\n${partText}`);
+                                const pm = appState.messages.find(x => x.id === progressId);
+                                if (pm) { pm.text = `✅ ${segPrefix}[${i+1}/${segChunks}] ${startLabel}–${endLabel} 完成（DeepSeek，${partText.length} 字）`; renderMessages(); }
+                            } catch (e) {
+                                const pm = appState.messages.find(x => x.id === progressId);
+                                if (pm) { pm.text = `⚠️ ${segPrefix}[${i+1}/${segChunks}] 失敗：${e.message}`; renderMessages(); }
+                                allTranscriptParts.push(`${segPrefix}【${startLabel}–${endLabel}】\n[DeepSeek 語音識別錯誤: ${e.message}]`);
+                            }
+                            continue;
+                        }
+
                         let base64Chunk;
                         try {
                             base64Chunk = await sliceAudioToBase64(audioBuffer, startSec, endSec);
@@ -14158,16 +14211,16 @@ try {
 
                 // 3. 顯示合併完整逐字稿
                 const fullTranscript = allTranscriptParts.join('\n\n');
-                addMessage(`📝 **完整逐字稿（${segCount > 1 ? segCount + ' 個錄音段合併，' : ''}共 ${allTranscriptParts.length} 小段，${fullTranscript.length} 字）**\n\n${fullTranscript}`, 'ai', 'gemini');
+                addMessage(`📝 **完整逐字稿（${segCount > 1 ? segCount + ' 個錄音段合併，' : ''}共 ${allTranscriptParts.length} 小段，${fullTranscript.length} 字）**\n\n${fullTranscript}`, 'ai', _dsAsr ? 'deepseek' : 'gemini');
 
                 // 4. 根據完整逐字稿產生摘要
                 addMessage(`🔍 逐字稿完成，正在根據全文產生摘要與重點整理…`, 'system');
                 const summaryPrompt = `以下是一段錄音的完整逐字稿，請根據此逐字稿整理出【重點摘要】與【結構化會議紀錄】（含主題、決議、待辦事項）。\n\n【嚴格約束】：僅根據逐字稿內容摘要，不可自行補充或腦補任何外部資訊。\n\n完整逐字稿如下：\n\n${fullTranscript}`;
                 let summaryText = '';
                 try {
-                    const summaryRes = await fetchAIResponse(summaryPrompt, 'gemini', { isAnalysis: true });
+                    const summaryRes = await fetchAIResponse(summaryPrompt, _sumModel, { isAnalysis: true, enableSearch: false });
                     summaryText = typeof summaryRes === 'string' ? summaryRes : (summaryRes.text || '');
-                    addMessage(summaryText, 'ai', 'gemini');
+                    addMessage(summaryText, 'ai', _sumModel);
                 } catch(e) {
                     addMessage(`⚠️ 摘要產生失敗：${e.message}`, 'system');
                 }
@@ -17915,30 +17968,101 @@ if (appState.pendingAnalyzeContextId) {
                     //   手機沒有 sidecar：直接連 api.deepseek.com（Android 上 CapacitorHttp 走原生請求，沒有瀏覽器 CORS 問題）。
                     //   型號：deepseek-v4-pro（預設，不支援圖片）／deepseek-flash（V4.1 Flash，支援圖片）。思考模式官方預設開：
                     //   thinkingLevel 'minimal'／'none' 或 options.deepseekThinking===false → 關；low → reasoning_effort low，其餘指定等級 → high（max 照傳）。
-                    const dsModel = window._novaMigrateDeepseekId(options.deepseekModelOverride || appState.deepseekModel || 'deepseek-v4-pro');
+                    // v1.5.6（App v2.6.147）：接上 DeepSeek 五項進階功能（nova-deepseek.js；對標桌面 nova-app-main.js v1.21.0）：
+                    //   ①② 聯網搜尋＋讀網頁：options.enableSearch 為 true（一般對話由搜尋開關決定），或沒指定且搜尋開關開著的非分析呼叫；且沒有 disableSearch／jsonMode、
+                    //      設定 nova_ds_web 沒關 → 帶內建工具 deepseek_web_search／deepseek_read_url，依 NovaDeepSeek.webPlan 依序嘗試（4xx 換下一種、Pro 不支援就改 Flash），
+                    //      都不行就不帶工具照常回答；來源從 annotations／server_tool_calls 取出。
+                    //   ③④ 附檔（設定 nova_ds_docs 沒關）：PDF／Word／PPT（以及 V4 Pro 收到的圖片）→ OCR 轉文字附在提示詞後面；EPUB／MOBI 等 → Files API 解析後以 Anthropic 格式提問（deepseek-flash）。
+                    //   ⑤ 語音識別在 runChunkedTranscription／summarizeAudioRecord。有來源或附註時回傳物件 {text, sources}，否則維持原本回傳字串。
+                    const DS = window.NovaDeepSeek || null;
+                    let dsModel = window._novaMigrateDeepseekId(options.deepseekModelOverride || appState.deepseekModel || 'deepseek-v4-pro');
                     const messagesPayload = chatHistory.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text || "[附檔]" }));
                     let finalUserContent = finalPrompt;
-                    const dsFiles = Array.isArray(options.files) ? options.files : (options.files ? [options.files] : (options.file ? [options.file] : []));
-                    const dsImgs = dsFiles.filter(f => f && f.category === 'image' && f.data && String(f.data).includes(','));
+                    const dsNotes = [];
+                    const dsFiles = (Array.isArray(options.files) ? options.files : (options.files ? [options.files] : (options.file ? [options.file] : []))).filter(f => f && f.data && String(f.data).startsWith('data:') && String(f.data).includes(','));
+                    let dsImgs = dsFiles.filter(f => f.category === 'image');
+                    const dsDocs = dsFiles.filter(f => f.category === 'document');
+                    const _docsOn = !!(DS && DS.docsOn());
+                    const _ocrTargets = _docsOn ? dsDocs.filter(f => DS.kindOf(f) === 'ocr').concat(/flash/i.test(dsModel) ? [] : dsImgs) : [];
+                    const _parseTargets = _docsOn ? dsDocs.filter(f => DS.kindOf(f) === 'parse') : [];
+                    const _skipped = _docsOn ? dsDocs.filter(f => !DS.kindOf(f)) : [];
+                    if (_skipped.length) dsNotes.push('DeepSeek 不支援的附檔格式，沒有送出：' + _skipped.map(f => f.name || '檔案').join('、'));
+                    if (_ocrTargets.length) {
+                        const _ocrTexts = [], _ocrOkImgs = [];
+                        for (const f of _ocrTargets) {
+                            try {
+                                const r = await DS.ocr(f, 'text_recognition');
+                                _ocrTexts.push('【附檔「' + (f.name || '檔案') + '」的文字（DeepSeek OCR，' + r.pageCount + ' 頁' + (r.cutPages.length ? '；第 ' + r.cutPages.join('、') + ' 頁可能不完整' : '') + '）】\n' + r.text);
+                                if (f.category === 'image') _ocrOkImgs.push(f);
+                            } catch (e) { dsNotes.push('附檔「' + (f.name || '檔案') + '」OCR 失敗：' + String(e && e.message || e).slice(0, 160)); }
+                        }
+                        if (_ocrTexts.length) finalUserContent = finalPrompt + '\n\n' + _ocrTexts.join('\n\n');
+                        if (!/flash/i.test(dsModel)) dsImgs = dsImgs.filter(f => _ocrOkImgs.indexOf(f) === -1);   // Pro 收到的圖片已轉成文字（OCR 失敗的留著，下面會註明沒送出）
+                    }
+                    if (_parseTargets.length) {
+                        try {
+                            const ids = [];
+                            for (const f of _parseTargets) ids.push(await DS.uploadFile(f));
+                            const hist = messagesPayload.slice(-12).map(m => ({ role: m.role, content: String(m.content || '') })).filter(m => m.content);
+                            const r = await DS.askWithFiles(typeof finalUserContent === 'string' ? finalUserContent : finalPrompt, ids, { history: hist, thinking: !(options.deepseekThinking === false) });
+                            let t = r.text || '(無回傳文字)';
+                            if (!options.jsonMode && !options.noChatDecor) t += '\n\n*（' + ['附檔由 DeepSeek 文件解析，以 DeepSeek V4.1 Flash 回答'].concat(dsNotes).join('；') + '）*';
+                            return { text: t, sources: [], provider: 'deepseek', model: 'deepseek-flash' };
+                        } catch (e) { dsNotes.push('附檔文件解析失敗（' + _parseTargets.map(f => f.name).join('、') + '）：' + String(e && e.message || e).slice(0, 160)); }
+                    }
+                    if (!_docsOn && dsDocs.length) dsNotes.push((DS ? '已關閉「附檔用 DeepSeek OCR／文件解析」，' : '') + dsDocs.length + ' 個文件附檔沒有送出');
                     if (dsImgs.length) {
-                        if (/flash/i.test(dsModel)) {   // 官方：只有 Flash 支援圖片
-                            finalUserContent = [{ type: 'text', text: finalPrompt }].concat(dsImgs.map(f => ({ type: 'image_url', image_url: { url: `data:${f.mime};base64,${String(f.data).split(',')[1]}` } })));
+                        if (/flash/i.test(dsModel)) {   // 官方：只有 Flash 支援圖片理解
+                            finalUserContent = [{ type: 'text', text: typeof finalUserContent === 'string' ? finalUserContent : finalPrompt }].concat(dsImgs.map(f => ({ type: 'image_url', image_url: { url: `data:${f.mime || 'image/png'};base64,${String(f.data).split(',')[1]}` } })));
                         } else {
-                            finalUserContent = finalPrompt + '\n\n（系統註記：DeepSeek V4 Pro 不支援圖片，附加的 ' + dsImgs.length + ' 張圖片沒有送出；要看圖請改用 DeepSeek V4.1 Flash 或其他模型。）';
+                            finalUserContent = finalUserContent + '\n\n（系統註記：DeepSeek V4 Pro 不支援圖片，附加的 ' + dsImgs.length + ' 張圖片沒有送出；可在設定打開「附檔用 DeepSeek OCR／文件解析」讀圖中文字，或改用 DeepSeek V4.1 Flash。）';
                         }
                     }
                     messagesPayload.push({ role: 'user', content: finalUserContent });
-                    const dsBody = { model: dsModel, messages: messagesPayload, stream: false };
                     const _lvl = String(options.thinkingLevel || '').toLowerCase();
-                    if (options.deepseekThinking === false || _lvl === 'minimal' || _lvl === 'none') dsBody.thinking = { type: 'disabled' };
-                    else { dsBody.thinking = { type: 'enabled' }; if (_lvl) dsBody.reasoning_effort = (_lvl === 'low' ? 'low' : (_lvl === 'max' ? 'max' : 'high')); }
-                    if (options.jsonMode) dsBody.response_format = { type: 'json_object' };
-                    const res = await fetchWithTimeout('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify(dsBody) }, options.isAnalysis ? 300000 : 180000);
-                    const resText = await res.text(); let data; try { data = JSON.parse(resText); } catch (e) { throw new Error(`DeepSeek 回應異常：${resText.substring(0, 80)}`); }
-                    if (!res.ok) throw new Error(`DeepSeek API 錯誤（模型：${dsModel}）：${(data.error && data.error.message) || res.status}`);
+                    const _mkBody = function (m, tools) {
+                        const b = { model: m, messages: messagesPayload, stream: false };
+                        if (options.deepseekThinking === false || _lvl === 'minimal' || _lvl === 'none') b.thinking = { type: 'disabled' };
+                        else { b.thinking = { type: 'enabled' }; if (_lvl) b.reasoning_effort = (_lvl === 'low' ? 'low' : (_lvl === 'max' ? 'max' : 'high')); }
+                        if (options.jsonMode && !tools) b.response_format = { type: 'json_object' };
+                        if (tools) b.tools = tools;
+                        return b;
+                    };
+                    const dsTimeout = options.isAnalysis ? 300000 : 180000;
+                    const _post = function (body) { return fetchWithTimeout('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` }, body: JSON.stringify(body) }, dsTimeout); };
+                    const _parse = async function (res, m) {
+                        const resText = await res.text(); let d; try { d = JSON.parse(resText); } catch (e) { const er = new Error(`DeepSeek 回應異常：${resText.substring(0, 80)}`); er.status = res.status; throw er; }
+                        if (!res.ok) { const er = new Error(`DeepSeek API 錯誤（模型：${m}）：${(d.error && d.error.message) || res.status}`); er.status = res.status; throw er; }
+                        return d;
+                    };
+                    let data = null, usedWeb = false;
+                    // 搜尋按次計費：呼叫端明確 enableSearch:false 就不搜；沒指定時只有一般對話（非分析）跟著搜尋開關
+                    const wantWeb = !!(DS && DS.webOn() && (options.enableSearch === true || (options.enableSearch === undefined && appState.isSearchEnabled && !options.isAnalysis)) && !options.disableSearch && !options.jsonMode);
+                    if (wantWeb) {
+                        for (const pl of DS.webPlan(dsModel)) {
+                            try {
+                                data = await _parse(await _post(_mkBody(pl.model, pl.tools)), pl.model);
+                                DS.rememberWeb(pl.model, pl.vid); usedWeb = true;
+                                if (pl.model !== dsModel) dsNotes.push('DeepSeek V4 Pro 不支援聯網工具，這次改用 V4.1 Flash 搜尋回答');
+                                dsModel = pl.model;
+                                break;
+                            } catch (e) {
+                                if (!(e && e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 402 && e.status !== 429)) throw e;   // 金鑰／餘額／限流／網路錯誤直接回報
+                                console.warn('[NOVA][DeepSeek] 聯網工具組合 ' + pl.vid + '@' + pl.model + ' 不被接受：', e.message);
+                            }
+                        }
+                        if (!data) dsNotes.push('DeepSeek 聯網工具這次沒有啟用成功，改為不搜尋直接回答');
+                    }
+                    if (!data) data = await _parse(await _post(_mkBody(dsModel, null)), dsModel);
                     try { window._novaLastDeepSeekUsage = data.usage || null; } catch (e) { /* */ }   // 含 prompt_cache_hit_tokens（自動前綴快取）與 reasoning_tokens
                     const dsMsg = (data.choices && data.choices[0] && data.choices[0].message) || {};
-                    return dsMsg.content || '(無回傳文字)';   // 思考內容（reasoning_content）不顯示在對話裡
+                    const dsSources = usedWeb && DS ? DS.webSources(dsMsg) : [];
+                    let dsText = dsMsg.content || '(無回傳文字)';   // 思考內容（reasoning_content）不顯示在對話裡
+                    if (usedWeb && DS) { const st = DS.webSteps(dsMsg); if (st.search || st.read) dsNotes.unshift('DeepSeek 聯網：搜尋 ' + st.search + ' 次、讀取網頁 ' + st.read + ' 次'); }
+                    if (dsNotes.length && !options.jsonMode && !options.noChatDecor) dsText += '\n\n*（' + dsNotes.join('；') + '）*';
+                    else if (dsNotes.length) console.info('[NOVA][DeepSeek] ' + dsNotes.join('；'));
+                    if (!dsSources.length) return dsText;
+                    return { text: dsText, sources: dsSources, provider: 'deepseek', model: dsModel };
                 }
                 else if (model === 'local') {
                     const messagesPayload = chatHistory.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text || "[附檔]" }));
