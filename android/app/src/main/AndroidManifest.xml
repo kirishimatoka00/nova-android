@@ -41,6 +41,18 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- v2.6.145：常駐背景＋語音喚醒「嘿 小希」。stopWithTask=false：從最近使用清單滑掉／全部關閉時服務不跟著結束 -->
+        <service
+            android:name=".NovaWakeService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="microphone|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="使用者自行開啟的常駐助理：維持背景執行並離線聆聽喚醒詞，由通知列按鈕關閉" />
+        </service>
+
         <!-- v2.6.24（批次 5b）：NOVA 無障礙服務（自主任務的眼睛與手；使用者需在系統「無障礙」手動開啟） -->
         <service
             android:name=".NovaAccessibilityService"
@@ -121,6 +133,10 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- v2.6.103：自主任務結束時把 NOVA 叫回前景（全螢幕通知） -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- v2.6.145：常駐背景（specialUse 前景服務）、喚醒後從背景叫出畫面（顯示在其他應用程式上層）、請使用者把 NOVA 排除在電池最佳化之外 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

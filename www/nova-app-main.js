@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.3
-   最後更新：2026-11-15
+   目前版本：v1.5.4
+   最後更新：2026-11-16
 
    版本紀錄：
+   v1.5.4 - App v2.6.145：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（常駐背景＋語音喚醒：新檔 nova-wake.js v1.0.0 與原生 NovaWake／NovaWakeService／NovaWakePlugin）；本檔程式沒有其他改動。
    v1.5.3 - App v2.6.144：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent 子分類：nova-travel-core.js v1.1.2、nova-travel.js v1.1.2；右上角天氣區：nova-ui.css v1.20.1）；本檔程式沒有其他改動。
    v1.5.2 - App v2.6.143：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent：nova-travel-core.js v1.1.1、nova-travel.js v1.1.1）；本檔程式沒有其他改動。
    v1.5.1 - App v2.6.142：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（TravelAgent Google 模式：nova-travel-core.js v1.1.0、nova-travel.js v1.1.0）；本檔程式沒有其他改動。
@@ -86,10 +87,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.144';
+        const NOVA_APP_VERSION = '2.6.145';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.145', date: '2026-11-16', notes: [
+                '常駐背景（設定 → 語音）：開啟後通知列固定顯示「NOVA 執行中」，從最近使用清單滑掉或按「全部關閉」只會收起畫面，要按通知上的「關閉 NOVA」才會真的關閉。',
+                '語音喚醒「嘿 小希」（設定 → 語音）：NOVA 在背景時對手機說「嘿 小希」，會打開 NOVA、開新對話並自動開始聽。離線辨識（第一次需下載約 42MB 語音模型），螢幕鎖定時解鎖後才打開；可調靈敏度、可從通知暫停聆聽。',
+                '這一版需要安裝新的 APK 才有以上功能。'
+            ] },
             { v: '2.6.144', date: '2026-11-15', notes: [
                 'TravelAgent 子分類：醫療分成 醫院／診所／中醫／牙醫／藥局，購物分成 便利商店／購物中心／超市，運輸分成 捷運／公車／YouBike，點進類別後可再篩選；問 AI「附近的中醫」「最近的捷運站」也會依子分類找。',
                 '黑夜模式右上角的天氣溫度區不再有外框與底色。',

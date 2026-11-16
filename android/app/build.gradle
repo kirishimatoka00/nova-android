@@ -38,6 +38,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // v2.6.145：語音喚醒「嘿 小希」用的離線辨識 Vosk（Apache 2.0）；jna 必須用 aar 版才帶 Android 的原生函式庫
+    implementation 'net.java.dev.jna:jna:5.13.0@aar'
+    implementation 'com.alphacephei:vosk-android:0.3.47@aar'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

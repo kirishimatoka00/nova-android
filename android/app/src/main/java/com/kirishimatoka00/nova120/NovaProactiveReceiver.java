@@ -8,6 +8,8 @@ import android.content.Intent;
  * v2.6.101：AI 主動說話——鬧鐘到點／開機後的接收器。
  * 到點：goAsync() 後在背景執行緒呼叫 Gemini 並發通知（廣播約 10 秒內必須結束，所以 deadline 設 9 秒）；做完再排下一個。
  * 開機／App 更新：只重新排程。
+ * v2.6.145（2026-11-16）：開機／App 更新後，若使用者開了常駐背景或語音喚醒就重新啟動 NovaWakeService
+ *   （Android 14 以上此時拿不到背景麥克風，服務會先常駐並在通知提示「打開 NOVA 一次」才恢復聆聽）。
  */
 public class NovaProactiveReceiver extends BroadcastReceiver {
     @Override
@@ -31,6 +33,7 @@ public class NovaProactiveReceiver extends BroadcastReceiver {
         } else {
             // BOOT_COMPLETED／MY_PACKAGE_REPLACED
             try { NovaProactive.schedule(app); } catch (Throwable t) { /* ignore */ }
+            try { if (NovaWake.wanted(app)) NovaWake.startService(app, NovaWakeService.ACT_START); } catch (Throwable t) { /* ignore */ }   // v2.6.145
         }
     }
 }
