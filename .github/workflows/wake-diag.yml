@@ -1,0 +1,16 @@
+name: wake-diag
+on:
+  push:
+    branches: [wake-diag]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng ffmpeg unzip >/dev/null
+          pip install -q vosk edge-tts
+          cd diag
+          curl -sSL -o m.zip https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip && unzip -q m.zip
+          python t.py 2> err.txt | tee out.txt
+          echo ---- STDERR; grep -i "ignor\|missing\|vocab\|error\|Traceback" -A3 err.txt | head -80
