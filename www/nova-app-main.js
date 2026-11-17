@@ -1,9 +1,17 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.6
+   目前版本：v1.5.7
    最後更新：2026-11-17
 
    版本紀錄：
+   v1.5.7 - App v2.6.148：移植桌面最新一輪（nova-app-main.js v1.22.0）——draw.io 圖表＋借鏡 microsoft/UFO 的元素編號。
+            ① 指令 /draw（空白＝開空白圖；/draw 描述＝開編輯器並用目前模型產生；聊天附件裡的圖片／PDF 一併送去看圖重建）。編輯器與「+」選單按鈕在新檔 nova-drawio.js v1.0.0，
+               模型呼叫的接線在 index.html。
+            ② 自主任務（提示詞＋元件清單判斷器）：新增 dedupeElements（去掉幾乎重疊的父子元件）與 drawElementMarksOnImage（把元件列表的編號畫在每回合的截圖上，彩色框＋數字）；
+               提示詞說明框上的數字就是 index；long_press 也可以用 index 指定。設定「在截圖上標示元件編號」（localStorage nova_autotask_marks，預設開）可關。
+               Computer Use 判斷器不受影響。用編號長按的步驟不存進技能（編號只在那一回合有效）；tap_element 照舊存元件特徵。
+            桌面這一輪的 Office COM 直接操作（Excel／Word／PowerPoint）是 Windows 專用，手機沒有對應的東西，沒有移植。
+            NOVA_APP_VERSION 2.6.148、NOVA_CHANGELOG 一筆。
    v1.5.6 - App v2.6.147：接上 DeepSeek 五項進階功能（新檔 nova-deepseek.js v1.0.0；對標桌面 nova-app-main.js v1.21.0）。
             ① fetchAIResponse 的 deepseek 分支：聯網搜尋＋讀網頁（內建工具 deepseek_web_search／deepseek_read_url，自動嘗試工具格式，V4 Pro 不支援就改 V4.1 Flash，
                都不行照常回答並註明；來源清單取自 annotations／server_tool_calls，回覆末尾註明搜尋／讀網頁次數）。呼叫端明確 enableSearch:false 或分析類內部呼叫不搜尋（按次計費）。
@@ -95,10 +103,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.147';
+        const NOVA_APP_VERSION = '2.6.148';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.148', date: '2026-11-17', notes: [
+                'draw.io 圖表（「+」選單，或輸入 /draw 描述）：在 NOVA 裡內嵌 draw.io 編輯器，用目前的模型依描述或圖片產生可拖拉修改的流程圖／架構圖；可請 AI 修改目前的圖、切換版本、匯出 .drawio／PNG／SVG 到 Documents/NOVA_Drawio/。編輯器需要網路。',
+                '自主任務操作畫面時，截圖上會把可操作的元件框起來並標上編號（和元件列表同一組編號），讓 AI 更容易點對目標；長按也可以用編號指定。可在 設定 → AI 自主任務 關閉。',
+                '誠實說明：draw.io 編輯器在手機裡的觸控與匯出、以及編號截圖對點擊準確度的實際效果，都還沒在真機驗證。'
+            ] },
             { v: '2.6.147', date: '2026-11-17', notes: [
                 'DeepSeek 進階功能（設定 → DeepSeek API Key 下方）：①聯網搜尋 ②讀網頁——對話用 DeepSeek 且搜尋開關打開時由 DeepSeek 自己搜尋、讀你貼的網址，回覆附來源；③OCR——PDF、Word、PPT 與圖片附檔轉文字；④文件解析——EPUB、MOBI 等；⑤語音識別——錄音逐字稿可改用 DeepSeek。',
                 '誠實說明：依官方文件與桌面版實作，沒有用真的 DeepSeek 金鑰實測；聯網工具格式會自動嘗試，失敗時照常回答並註明。這些功能按次／按頁／按時數另外計費。'
@@ -6106,6 +6119,72 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
                     img.src = 'data:image/jpeg;base64,' + b64;
                 });
             }
+            // v1.5.7（App v2.6.148）：借鏡 microsoft/UFO（MIT）的「元素編號」（Set-of-Mark），對標桌面 nova_desktop.py v1.4.0。
+            //   手機原本就有文字版的元件列表（[編號] text／desc／id）與 tap_element；這裡補上「把同一組編號畫在截圖上」，讓模型能把清單裡的編號和畫面位置對起來。
+            //   ① dedupeElements：去掉幾乎完全重疊的父子元件（留可點擊的那個，文字／描述互補），編號才不會疊在一起。
+            //   ② drawElementMarksOnImage：在截圖上畫彩色框＋編號；座標由裝置真實解析度換算成截圖像素。
+            function dedupeElements(els) {
+                const out = [];
+                const iou = (a, b) => {
+                    const ix = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1)), iy = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+                    const inter = ix * iy, ua = (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter;
+                    return ua > 0 ? inter / ua : 0;
+                };
+                for (const e of els) {
+                    const dup = out.find(o => iou(o, e) > 0.9);
+                    if (!dup) { out.push(Object.assign({}, e)); continue; }
+                    if (!dup.text && e.text) dup.text = e.text;
+                    if (!dup.desc && e.desc) dup.desc = e.desc;
+                    if (!dup.rid && e.rid) dup.rid = e.rid;
+                    if (e.clickable) dup.clickable = true;
+                }
+                return out;
+            }
+            async function drawElementMarksOnImage(b64, els, devW, devH) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        try {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = img.width; canvas.height = img.height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0);
+                            const sx = img.width / devW, sy = img.height / devH;
+                            const COLORS = ['#ef4444', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#4d7c0f'];
+                            const fs = Math.max(11, Math.round(img.width * 0.026));
+                            ctx.font = 'bold ' + fs + 'px sans-serif'; ctx.textBaseline = 'top';
+                            ctx.lineWidth = Math.max(2, Math.round(img.width * 0.004));
+                            const labels = [];
+                            let drawn = 0;
+                            els.forEach((e, i) => {
+                                const x = e.x1 * sx, y = e.y1 * sy, w = (e.x2 - e.x1) * sx, h = (e.y2 - e.y1) * sy;
+                                if (w < 4 || h < 4 || x >= img.width || y >= img.height || x + w <= 0 || y + h <= 0) return;
+                                if (w * h > img.width * img.height * 0.6) return;   // 幾乎整個畫面的容器不畫（清單裡還是有它）
+                                const col = COLORS[i % COLORS.length];
+                                ctx.strokeStyle = col; ctx.strokeRect(x, y, w, h);
+                                labels.push({ t: String(i), x, y, w, h, col }); drawn++;
+                            });
+                            const used = [];
+                            labels.forEach(L => {   // 編號標籤：預設貼在框的左上角內側；跟別的標籤撞到就換到其他角落
+                                const tw = ctx.measureText(L.t).width + 6, th = fs + 4;
+                                const cands = [[L.x, L.y], [L.x + L.w - tw, L.y], [L.x, L.y + L.h - th], [L.x + L.w - tw, L.y + L.h - th], [L.x, L.y - th]];
+                                let pos = cands[0];
+                                for (const c of cands) {
+                                    const cx = Math.max(0, Math.min(img.width - tw, c[0])), cy = Math.max(0, Math.min(img.height - th, c[1]));
+                                    if (!used.some(u => cx < u.x + u.w && cx + tw > u.x && cy < u.y + u.h && cy + th > u.y)) { pos = [cx, cy]; break; }
+                                }
+                                const px = Math.max(0, Math.min(img.width - tw, pos[0])), py = Math.max(0, Math.min(img.height - th, pos[1]));
+                                used.push({ x: px, y: py, w: tw, h: th });
+                                ctx.fillStyle = L.col; ctx.fillRect(px, py, tw, th);
+                                ctx.fillStyle = '#ffffff'; ctx.fillText(L.t, px + 3, py + 2);
+                            });
+                            resolve({ b64: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], drawn });
+                        } catch (e) { reject(e); }
+                    };
+                    img.onerror = () => reject(new Error('標示元件編號失敗：圖片解碼錯誤'));
+                    img.src = 'data:image/jpeg;base64,' + b64;
+                });
+            }
             function hashDiff(h1, h2) {
                 if (!h1 || !h2 || h1.length !== h2.length) return 64; // 無法比對就當作完全不同，不誤判
                 let diff = 0;
@@ -6556,6 +6635,7 @@ appState.currentModel, time: getTime(), sources, files: filesArr, actionData };
 {"type":"tap_element","index":元件列表中的編號,"say":"這一步在做什麼（給使用者看的一句話）"}
 {"type":"tap","x":0.000～1.000之間的小數,"y":0.000～1.000之間的小數,"say":"..."}
 {"type":"long_press","x":0.000～1.000之間的小數,"y":0.000～1.000之間的小數,"say":"..."}
+{"type":"long_press","index":元件列表中的編號,"say":"..."}（長按列表裡的元件時優先用這個寫法）
 {"type":"swipe","x1":0.000～1.000之間的小數,"y1":0.000～1.000之間的小數,"x2":0.000～1.000之間的小數,"y2":0.000～1.000之間的小數,"say":"..."}
 {"type":"text","text":"要輸入的文字","say":"..."}
 {"type":"key","key":"back|home|enter","say":"..."}
@@ -6730,7 +6810,8 @@ ${elementsText ? '\n' + elementsText : ''}`;
                         if (r.rx !== undefined) { st.rx = r.rx; st.ry = r.ry; }
                         return st;
                     }
-                    case 'tap': case 'long_press': return { type: a.type, x: a.x, y: a.y, say };
+                    case 'tap': case 'long_press': if (typeof a.x !== 'number' || typeof a.y !== 'number') return null;   // v1.5.7：用元件編號長按的步驟不存（編號只在那一回合有效）
+                        return { type: a.type, x: a.x, y: a.y, say };
                     case 'swipe': return { type: 'swipe', x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, duration_ms: a.duration_ms || 300, say };
                     case 'text': return { type: 'text', text: a.text || '', say };
                     case 'key': return { type: 'key', key: a.key, say };
@@ -7033,8 +7114,19 @@ ${elementsText ? '\n' + elementsText : ''}`;
                                 elementsText = '';   // v2.6.74：純文字模式沒有畫面元件清單
                             } else try {
                                 hierarchyXml = await getHierarchyDump();
-                                currentElements = parseHierarchyElements(hierarchyXml);
+                                currentElements = dedupeElements(parseHierarchyElements(hierarchyXml, 90)).slice(0, 60);   // v1.5.7：去掉幾乎重疊的父子元件
                                 elementsText = formatElementsForPrompt(currentElements);
+                                // v1.5.7：把同一組編號畫在這回合的截圖上（設定「在截圖上標示元件編號」可關；Computer Use 判斷器不用清單，不畫）
+                                if (decisionShotB64 && currentElements.length && settings.judge !== 'cu' && localStorage.getItem('nova_autotask_marks') !== '0') {
+                                    try {
+                                        const _md = await getDeviceDisplaySize(hierarchyXml);
+                                        const _mk = await drawElementMarksOnImage(decisionShotB64, currentElements, _md.width, _md.height);
+                                        if (_mk.drawn > 0) {
+                                            decisionShotB64 = _mk.b64;
+                                            elementsText = '【截圖上的彩色框＋數字就是下面元件列表的編號（index）：先在截圖上找到要操作的東西，看它框上的數字，再用 tap_element 或 long_press 的 index 指定；沒有框的東西代表不在列表裡，才用相對座標。】\n' + elementsText;
+                                        }
+                                    } catch (markErr) { console.warn('[NOVA][autotask] 標示元件編號失敗（照常用原截圖）：', markErr); }
+                                }
                             } catch (hierErr) {
                                 elementsText = `（讀取畫面元件清單失敗：${hierErr.message}，AI 只能靠截圖自行估計座標）`;
                             }
@@ -7113,6 +7205,12 @@ ${elementsText ? '\n' + elementsText : ''}`;
                                         say: rawAction.say
                                     };
                                     scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標精準點擊，未經任何縮放換算）`;
+                                } else if (rawAction.type === 'long_press' && Number.isInteger(rawAction.index) && typeof rawAction.x !== 'number') {
+                                    // v1.5.7：長按也可以用元件編號指定（座標由元件的真實位置算出）
+                                    const el = currentElements[rawAction.index];
+                                    if (!el) throw new Error(`long_press 指定的 index ${rawAction.index} 找不到對應的畫面元件（這一回合共有 ${currentElements.length} 個元件）`);
+                                    action = { type: 'long_press', x: Math.round((el.x1 + el.x2) / 2), y: Math.round((el.y1 + el.y2) / 2), say: rawAction.say };
+                                    scaleNote = `（依 UI 階層元件 [${rawAction.index}] text="${el.text}" desc="${el.desc}" 的真實座標長按）`;
                                 } else if (['tap', 'long_press', 'swipe'].includes(rawAction.type)) {
                                     // 安全檢查：AI 現在回傳的是 0.0～1.0 的相對比例座標，不是截圖像素座標了。
                                     // 偶爾還是可能算錯（例如不小心回傳成百分比 0～100，或誤植了像素座標），
@@ -15742,6 +15840,28 @@ window.startMultiAgentResearch = async function() {
                     window.novaAutoTask.run(taskGoal);
                 } else {
                     addMessage('⚠️ 自主任務引擎尚未載入，請重新整理 App 後再試。', 'system');
+                }
+                return;
+            }
+
+            // v1.5.7（App v2.6.148）：/draw——draw.io 圖表（nova-drawio.js；對標桌面 nova-app-main.js v1.22.0）
+            //   /draw            → 開空白編輯器
+            //   /draw 描述       → 開編輯器並用目前模型產生；聊天附件裡的圖片／PDF 一併送去「看圖重建」
+            if (/^\/draw(\s|$)/i.test(text)) {
+                const drawDesc = text.replace(/^\/draw/i, '').trim();
+                input.value = ''; autoResizeInput(input); chatInitialInput = '';
+                if (!window.NovaDrawio) { addMessage('⚠️ draw.io 圖表模組沒有載入（缺少 nova-drawio.js）', 'system'); return; }
+                const _drawImgs = (appState.chatFiles || []).filter(function (f) { return f && f.data && String(f.data).startsWith('data:') && (f.category === 'image' || /pdf/i.test(f.mime || '')); })
+                    .map(function (f) { const d = String(f.data); return { name: f.name, mime: f.mime || 'image/png', b64: d.slice(d.indexOf(',') + 1) }; });
+                if (_drawImgs.length) { try { appState.chatFiles = []; renderChatFilePreview(); } catch (e) { /* */ } }
+                window.openDrawio({});
+                if (drawDesc || _drawImgs.length) {
+                    setTimeout(function () {
+                        const pEl = document.getElementById('ndio-prompt');
+                        if (pEl) pEl.value = drawDesc;
+                        if (_drawImgs.length && window.NovaDrawio._setImages) window.NovaDrawio._setImages(_drawImgs);
+                        const g = document.getElementById('ndio-gen'); if (g) g.click();
+                    }, 80);
                 }
                 return;
             }
