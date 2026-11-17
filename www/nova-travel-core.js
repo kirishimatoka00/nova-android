@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════
    nova-travel-core.js — NOVA Android「TravelAgent」資料引擎（定位、周邊 2 公里設施、停車剩餘車位、天氣、路線規劃）
-   版本：v1.1.2（2026-11-15，App v2.6.144）
+   版本：v1.1.3（2026-11-18，App v2.6.149）
    介面在 nova-travel.js；本檔不碰畫面，只負責抓資料與給 AI 用的工具（travel_where_am_i／travel_nearby／travel_route）。
 
    版本紀錄（只記這個檔案自己的變更）：
+   v1.1.3 - App v2.6.149：定位優先用原生 NovaLoc 外掛（LocationManager，見 NovaLocPlugin.java）；WebView 的 navigator.geolocation 在權限轉接卡住時
+            不會回呼也不會逾時。舊 APK（沒有 NovaLoc）照舊用 navigator.geolocation，但外層加硬逾時，保證會走到後面的退路。錯誤訊息依原因（沒權限／定位沒開／逾時）。
    v1.1.2 - App v2.6.144：子分類（使用者要求）。grpOf() 給每個設施 grp：醫療＝醫院／診所／中醫／牙醫／藥局（中醫靠名稱「中醫／國醫／漢醫」或 OSM
             healthcare:speciality，Google 和 OSM 都沒有中醫專屬類別）；購物＝便利商店／購物中心（含百貨）／超市（含量販）／其他；
             運輸＝捷運（OSM station=subway／light_rail 或名稱含捷運、捷運出入口、輕軌）／公車（公車站、轉運站）／YouBike／其他（火車、計程車）。
@@ -129,7 +131,26 @@
 
   // ───────────────────────── 定位 ─────────────────────────
   var lastPos = null;   // {lat,lon,acc,src,at}
+  function hardTimeout(ms) { return new Promise(function (_, rej) { setTimeout(function () { rej(new Error('定位逾時')); }, ms); }); }
+  function nativeLoc() {
+    try { var C = root.Capacitor; if (C && C.Plugins && C.Plugins.NovaLoc && (!C.isPluginAvailable || C.isPluginAvailable('NovaLoc'))) return C.Plugins.NovaLoc; } catch (e) { /* */ }
+    return null;
+  }
+  // v1.1.3：原生定位（回傳跟 getCurrentPosition 一樣的 {coords:{…}} 形狀）
+  function nativeOnce(timeout, maxAge) {
+    var P = nativeLoc();
+    return Promise.race([P.get({ timeoutMs: timeout, maxAgeMs: maxAge, prompt: true }), hardTimeout(timeout + 8000)]).then(function (r) {
+      return { coords: { latitude: r.lat, longitude: r.lon, accuracy: r.acc || 0 } };
+    }, function (e) {
+      var c = e && e.code;
+      throw new Error(c === 'denied' ? '定位權限被拒絕（請到系統設定允許 NOVA 使用位置）' : c === 'off' ? '目前取不到位置（手機的定位服務沒開）' : c === 'timeout' ? '定位逾時' : ((e && e.message) || '定位失敗'));
+    });
+  }
   function geoOnce(opt) {
+    if (nativeLoc()) return nativeOnce(opt.timeout || 15000, opt.maximumAge || 0);
+    return Promise.race([geoOnceWeb(opt), hardTimeout((opt.timeout || 15000) + 5000)]);   // 權限詢問卡住時 timeout 不生效，外層補一層
+  }
+  function geoOnceWeb(opt) {
     return new Promise(function (res, rej) {
       if (!root.navigator || !root.navigator.geolocation) return rej(new Error('這台裝置不支援定位'));
       root.navigator.geolocation.getCurrentPosition(function (p) { res(p); }, function (e) {

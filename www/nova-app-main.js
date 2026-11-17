@@ -1,9 +1,20 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.7
-   最後更新：2026-11-17
+   目前版本：v1.5.8
+   最後更新：2026-11-18
 
    版本紀錄：
+   v1.5.8 - App v2.6.149：修「右上方的定位跟天氣一直沒有反應」（參考桌面 nova-app-main.js v1.20.0；手機上 v1.4.6 已移植過同樣做法但仍會卡住）：
+            ① 定位改走原生 NovaLoc 外掛（新檔 NovaLocPlugin.java，LocationManager）。根因推斷：WebView 的 navigator.geolocation 要經過 Capacitor 的權限轉接
+               （BridgeWebChromeClient.onGeolocationPermissionsShowPrompt），那裡用單一 permissionListener 欄位，跟其他權限請求同時發生時定位的回呼被蓋掉、
+               永遠不回來；getCurrentPosition 的 timeout 不含等權限的時間，所以整個卡住。舊 APK 仍用 navigator.geolocation，外層加硬逾時。
+            ② 啟動時有上次的位置（6 小時內）就先顯示它的地名與天氣；看門狗：10 秒內沒定位結果先用上次的位置或台北把天氣顯示出來，真實位置回來再換上。
+            ③ fetchWeather：10 秒逾時、失敗自動重試（3 秒、10 秒後）、還是失敗 3 分鐘後再試；每 30 分鐘自動更新、切回 App 超過 15 分鐘也更新
+               （常駐背景後原本只在啟動時抓一次）。換位置時舊的請求結果作廢。
+            ④ 點一下＝重新定位並跳提示說結果（成功顯示地名＋溫度；失敗說原因：沒權限／定位服務沒開／逾時）；長按＝切換手動城市（原本點一下就切到台北，
+               手機膠囊只顯示溫度看不出來，還會停掉背景重新定位）。renderWeather：手機膠囊改成「地名 溫度°」，天氣抓不到時顯示雲朵斜線圖示。
+            ⑤ 地名優先用 NovaTravelCore.reverse（原生請求帶 NOVA 的 User-Agent），失敗再用原本的 getCityName。
+            NOVA_APP_VERSION 2.6.149、NOVA_CHANGELOG 一筆。
    v1.5.7 - App v2.6.148：移植桌面最新一輪（nova-app-main.js v1.22.0）——draw.io 圖表＋借鏡 microsoft/UFO 的元素編號。
             ① 指令 /draw（空白＝開空白圖；/draw 描述＝開編輯器並用目前模型產生；聊天附件裡的圖片／PDF 一併送去看圖重建）。編輯器與「+」選單按鈕在新檔 nova-drawio.js v1.0.0，
                模型呼叫的接線在 index.html。
@@ -103,10 +114,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.148';
+        const NOVA_APP_VERSION = '2.6.149';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.149', date: '2026-11-18', notes: [
+                '修正右上方的定位與天氣一直沒有反應：定位改用手機原生定位（不再經過容易卡住的網頁定位）；10 秒內沒定位先用上次的位置顯示天氣；天氣抓不到會自動重試，之後每 30 分鐘自動更新。',
+                '右上角改成顯示「地名 溫度°」。點一下＝重新定位（會跳提示說結果或失敗原因）；長按＝切換手動城市。',
+                '這一版需要安裝新的 APK 才會用原生定位；舊 APK 仍有逾時保底與天氣重試。'
+            ] },
             { v: '2.6.148', date: '2026-11-17', notes: [
                 'draw.io 圖表（「+」選單，或輸入 /draw 描述）：在 NOVA 裡內嵌 draw.io 編輯器，用目前的模型依描述或圖片產生可拖拉修改的流程圖／架構圖；可請 AI 修改目前的圖、切換版本、匯出 .drawio／PNG／SVG 到 Documents/NOVA_Drawio/。編輯器需要網路。',
                 '自主任務操作畫面時，截圖上會把可操作的元件框起來並標上編號（和元件列表同一組編號），讓 AI 更容易點對目標；長按也可以用編號指定。可在 設定 → AI 自主任務 關閉。',
@@ -5658,15 +5674,58 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
         }
 
         // ★ v1.4.6（對標桌面 nova-app-main.js v1.20.0「NOVA 剛開時系統定位還沒準備好，8 秒逾時就退回台北、之後一直停在錯的地點」）：
-        //   手機沒有「引擎就緒」可等，改成：①第一次取位失敗時，先用上次成功的真實位置（6 小時內、存在 localStorage）頂著，沒有才用手動城市；
-        //   ②背景用高精度再取一次（逾時 30 秒、可用 10 分鐘內的快取），之後每次切回 App 也會再試（間隔至少 60 秒），成功就換成真實位置；
-        //   ③使用者自己點地點切到手動城市（window._novaLocUserPicked）就不覆蓋；④取得座標後先抓天氣，地名另外查（8 秒逾時），不再卡「定位中...」。
+        //   第一次取位失敗時先用上次成功的真實位置（6 小時內、localStorage nova_last_loc_v1）頂著，背景再定位；使用者手動選的城市（window._novaLocUserPicked）不覆蓋；
+        //   取得座標後先抓天氣、地名另外查。
+        // ★ v1.5.8（App v2.6.149）修「右上方的定位跟天氣一直沒有反應」：
+        //   ① 定位改走原生（NovaLoc 外掛，LocationManager）：WebView 的 navigator.geolocation 要經過 Capacitor 的權限轉接，那裡用單一監聽欄位，
+        //      跟其他權限請求同時發生時定位的回呼會被蓋掉、永遠不回來；而 timeout 不含等權限的時間 → 整個卡住、右上角停在「更新／定位中」。
+        //      舊 APK（沒有 NovaLoc）才用 navigator.geolocation，而且外面再包一層硬逾時。
+        //   ② 看門狗：開始定位 10 秒內沒有結果，先用上次的位置（或台北）把天氣顯示出來，真實位置之後回來再換上。
+        //   ③ 天氣：每次請求 10 秒逾時、失敗自動重試（3 秒、10 秒後），還是失敗就 3 分鐘後再試；之後每 30 分鐘自動更新，切回 App 時超過 15 分鐘也會更新
+        //      （App 常駐背景後只在啟動時抓一次，天氣會一直停在舊的）。
+        //   ④ 點一下＝重新定位（不吃快取）並跳提示告訴你結果；長按＝切換手動城市（原本點一下就會切到台北，而手機膠囊只顯示溫度、看不出切了城市，
+        //      還會讓背景重新定位停掉，看起來就是「沒反應」）。膠囊改成「地名 溫度°」。
+        //   ⑤ 地名優先用 TravelAgent 的反查（原生請求帶 NOVA 的 User-Agent，Nominatim 才不會擋），失敗再用原本的。
         const NOVA_LAST_LOC_KEY = 'nova_last_loc_v1';
-        let _novaLocRetryBusy = false, _novaLocRetryAt = 0;
+        let _novaLocRetryBusy = false, _novaLocRetryAt = 0, _novaLocSeq = 0, _novaLocAsk = false;
         function _novaReadLastLoc() {
             try { const o = JSON.parse(localStorage.getItem(NOVA_LAST_LOC_KEY) || 'null'); if (o && isFinite(o.lat) && isFinite(o.lon)) return o; } catch (e) {}
             return null;
         }
+        function _novaLocPlugin() {
+            try { const C = window.Capacitor; if (C && C.Plugins && C.Plugins.NovaLoc && (!C.isPluginAvailable || C.isPluginAvailable('NovaLoc'))) return C.Plugins.NovaLoc; } catch (e) {}
+            return null;
+        }
+        // 取得目前位置：{lat, lon, acc, src}；失敗丟 Error（.code：denied／off／timeout／unavailable）
+        async function _novaLocateAny(opts) {
+            opts = opts || {};
+            const timeout = opts.timeout || 15000;
+            const P = _novaLocPlugin();
+            const hard = (ms, what) => new Promise((_, rej) => setTimeout(() => { const e = new Error(what || '定位逾時'); e.code = 'timeout'; rej(e); }, ms));
+            if (P) {
+                const r = await Promise.race([P.get({ timeoutMs: timeout, maxAgeMs: opts.fresh ? 0 : 120000, prompt: opts.prompt !== false }), hard(timeout + 8000)]);
+                return { lat: r.lat, lon: r.lon, acc: r.acc, src: 'native:' + (r.src || '') + (r.stale ? '(舊)' : '') };
+            }
+            if (!navigator.geolocation) { const e = new Error('這台裝置不支援定位'); e.code = 'unavailable'; throw e; }
+            const once = (hi, to, age) => new Promise((res, rej) => navigator.geolocation.getCurrentPosition(
+                p => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Math.round(p.coords.accuracy || 0), src: 'web' }),
+                err => { const e = new Error(err && err.code === 1 ? '定位權限被拒絕' : err && err.code === 2 ? '取不到位置（定位服務可能沒開）' : '定位逾時'); e.code = err && err.code === 1 ? 'denied' : err && err.code === 2 ? 'off' : 'timeout'; rej(e); },
+                { enableHighAccuracy: hi, timeout: to, maximumAge: age }));
+            // 外層硬逾時：權限詢問卡住時 getCurrentPosition 的 timeout 不會生效
+            try { return await Promise.race([once(false, 8000, opts.fresh ? 0 : 30000), hard(12000)]); }
+            catch (e) { if (e.code === 'denied') throw e; return await Promise.race([once(true, timeout, opts.fresh ? 0 : 600000), hard(timeout + 4000)]); }
+        }
+        async function _novaLookupName(lat, lon) {
+            try {
+                if (window.NovaTravelCore && typeof NovaTravelCore.reverse === 'function') {
+                    const a = await Promise.race([NovaTravelCore.reverse(lat, lon), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 9000))]);
+                    const name = a && (a.district || a.city);
+                    if (name) { appState.weather.fullLoc = `緯度: ${lat}, 經度: ${lon}, 縣市: ${a.city || ''}, 區: ${a.district || ''}`; return name; }
+                }
+            } catch (e) { /* 改用原本的 */ }
+            return await getCityName(lat, lon);
+        }
+        function _novaLocToast(m, ms) { if (_novaLocAsk) { try { showToast(m, ms || 3500); } catch (e) {} } }
         async function _novaApplyPosition(lat, lon) {
             appState.lastLat = lat;
             appState.lastLon = lon;
@@ -5676,109 +5735,180 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
             const near = last && last.name && last.name !== '目前位置' && Math.abs(last.lat - lat) < 0.02 && Math.abs(last.lon - lon) < 0.02;
             appState.weather.loc = near ? last.name : "定位中...";
             renderWeather();
-            fetchWeather(lat, lon);   // 先抓天氣，不等地名
-            const cityName = await getCityName(lat, lon);
+            const wx = fetchWeather(lat, lon);   // 先抓天氣，不等地名
+            const cityName = await _novaLookupName(lat, lon);
             if (appState.manualLocIndex !== 0 || appState.lastLat !== lat || appState.lastLon !== lon) return;   // 期間使用者切了城市或位置已更新
             const name = (cityName === '目前位置' && near) ? last.name : cityName;
             appState.weather.loc = name;
             renderWeather();
             try { localStorage.setItem(NOVA_LAST_LOC_KEY, JSON.stringify({ lat: lat, lon: lon, name: name, at: Date.now() })); } catch (e) {}
+            if (_novaLocAsk) { const ok = await wx; _novaLocToast('📍 ' + name + (ok ? '　' + appState.weather.temp + '°' : '　（天氣暫時抓不到，稍後自動重試）'), 3000); _novaLocAsk = false; }
+        }
+        // 用上次成功的位置（6 小時內）或第一個手動城市頂著，讓天氣先出來
+        function _novaApplyFallback(reason) {
+            appState._locFallback = true;
+            const last = _novaReadLastLoc();
+            if (last && Date.now() - (last.at || 0) < 6 * 3600 * 1000) {
+                appState.lastLat = last.lat;
+                appState.lastLon = last.lon;
+                appState.weather.loc = last.name || '目前位置';
+                appState.manualLocIndex = 0;
+                renderWeather();
+                fetchWeather(last.lat, last.lon);
+                _novaLocToast('⚠️ 這次定位沒成功（' + reason + '），暫時用上次的位置「' + (last.name || '目前位置') + '」，背景繼續定位', 4500);
+            } else {
+                appState.lastLat = appState.manualLocs[0].lat;
+                appState.lastLon = appState.manualLocs[0].lon;
+                appState.weather.loc = appState.manualLocs[0].name;
+                renderWeather();
+                fetchWeather(appState.manualLocs[0].lat, appState.manualLocs[0].lon);
+                appState.manualLocIndex = 1;
+                _novaLocToast('⚠️ 這次定位沒成功（' + reason + '），暫時顯示「' + appState.manualLocs[0].name + '」，背景繼續定位', 4500);
+            }
+        }
+        function _novaLocReason(e) {
+            const c = e && e.code;
+            if (c === 'denied') return '沒有位置權限：設定 → 應用程式 → NOVA → 權限 → 位置';
+            if (c === 'off') return '手機的定位服務沒有開';
+            if (c === 'timeout') return '定位逾時';
+            return (e && e.message) || '原因不明';
         }
         // 背景重新定位（第一次失敗後、或切回 App 時）
         function _novaRetryLocation(reason) {
-            if (!navigator.geolocation || _novaLocRetryBusy || window._novaLocUserPicked || !appState._locFallback) return;
+            if (_novaLocRetryBusy || window._novaLocUserPicked || !appState._locFallback) return;
             if (Date.now() - _novaLocRetryAt < 60000 && reason !== 'first') return;
             _novaLocRetryBusy = true; _novaLocRetryAt = Date.now();
-            navigator.geolocation.getCurrentPosition(
-                (pos) => { _novaLocRetryBusy = false; if (window._novaLocUserPicked || !appState._locFallback) return; _novaApplyPosition(pos.coords.latitude, pos.coords.longitude); },
-                (err) => { _novaLocRetryBusy = false; console.warn('Location retry (' + reason + ') failed:', err && err.code, err && err.message); },
-                { enableHighAccuracy: true, maximumAge: 600000, timeout: 30000 }
-            );
+            const seq = _novaLocSeq;
+            _novaLocateAny({ fresh: false, timeout: 30000, prompt: false })
+                .then(p => { _novaLocRetryBusy = false; if (seq !== _novaLocSeq || window._novaLocUserPicked || !appState._locFallback) return; _novaApplyPosition(p.lat, p.lon); })
+                .catch(err => { _novaLocRetryBusy = false; console.warn('Location retry (' + reason + ') failed:', err && err.code, err && err.message); });
         }
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') setTimeout(() => _novaRetryLocation('resume'), 1200); });
 
         function tryGetLocation(isInit = false, fresh = false) {
-            if (navigator.geolocation && appState.manualLocIndex === 0) {
-                // 先用低精度快速取得初始位置
-                navigator.geolocation.getCurrentPosition(
-                    async (pos) => {
-                        await _novaApplyPosition(pos.coords.latitude, pos.coords.longitude);
-
-                        // ✅ 取得初位後，再啟動高精度監聽，等到 accuracy < 50m 才更新
-                        const watchId = navigator.geolocation.watchPosition(
-                            async (refinedPos) => {
-                                if (refinedPos.coords.accuracy < 50) { // 精確度 < 50 公尺才採用
-                                    if (appState.manualLocIndex === 0) { appState.lastLat = refinedPos.coords.latitude; appState.lastLon = refinedPos.coords.longitude; }
-                                    navigator.geolocation.clearWatch(watchId); // 達標後停止監聽
-                                }
-                            },
-                            null,
-                            { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
-                        );
-                        // 最多監聽 20 秒後自動停止，避免耗電
-                        setTimeout(() => navigator.geolocation.clearWatch(watchId), 20000);
-                    },
-                    (err) => {
-                        console.warn("Location error:", err && err.code, err && err.message);
-                        appState._locFallback = true;
-                        const last = _novaReadLastLoc();
-                        if (last && Date.now() - (last.at || 0) < 6 * 3600 * 1000) {
-                            // 用上次成功的真實位置頂著（標示為暫用），背景繼續定位
-                            appState.lastLat = last.lat;
-                            appState.lastLon = last.lon;
-                            appState.weather.loc = last.name || '目前位置';
-                            appState.manualLocIndex = 0;
-                            renderWeather();
-                            fetchWeather(last.lat, last.lon);
-                        } else {
-                            appState.lastLat = appState.manualLocs[0].lat;
-                            appState.lastLon = appState.manualLocs[0].lon;
-                            appState.weather.loc = appState.manualLocs[0].name;
-                            renderWeather();
-                            fetchWeather(appState.manualLocs[0].lat, appState.manualLocs[0].lon);
-                            appState.manualLocIndex = 1;
-                        }
-                        _novaRetryLocation('first');
-                    },
-                    { enableHighAccuracy: false, maximumAge: fresh ? 0 : 30000, timeout: 8000 } // ✅ 第一次快速低精度取位
-                );
-            } else if (isInit) {
-                cycleManualLocation();
+            if (appState.manualLocIndex !== 0) { if (isInit) cycleManualLocation(); return; }
+            const seq = ++_novaLocSeq;
+            let settled = false, fellBack = false;
+            // 啟動時：有上次的位置（6 小時內）就先顯示它的地名與天氣，不用乾等定位
+            if (isInit) {
+                const last = _novaReadLastLoc();
+                if (last && Date.now() - (last.at || 0) < 6 * 3600 * 1000) {
+                    appState.lastLat = last.lat; appState.lastLon = last.lon;
+                    appState.weather.loc = last.name || '目前位置';
+                    renderWeather();
+                    fetchWeather(last.lat, last.lon);
+                }
             }
+            // ② 看門狗：10 秒內沒有結果就先顯示上次的位置／台北的天氣
+            const wd = setTimeout(() => { if (!settled && seq === _novaLocSeq && appState.manualLocIndex === 0) { fellBack = true; _novaApplyFallback('定位還沒回應'); } }, 10000);
+            _novaLocateAny({ fresh: fresh, timeout: 15000 }).then(p => {
+                settled = true; clearTimeout(wd);
+                if (seq !== _novaLocSeq || window._novaLocUserPicked) return;
+                console.info('[NOVA] 定位成功：', p.src, p.lat.toFixed(4), p.lon.toFixed(4), '±' + p.acc + 'm');
+                _novaApplyPosition(p.lat, p.lon);
+            }).catch(err => {
+                settled = true; clearTimeout(wd);
+                if (seq !== _novaLocSeq) return;
+                console.warn("Location error:", err && err.code, err && err.message);
+                if (!fellBack) _novaApplyFallback(_novaLocReason(err));
+                else _novaLocToast('⚠️ 定位沒成功：' + _novaLocReason(err), 4500);
+                _novaLocAsk = false;
+                if (err && err.code !== 'denied') _novaRetryLocation('first');
+            });
         }
 
-        // v1.4.6：點地點＝循環切換（目前位置 → 手動城市…）。使用者手動切到城市就記下 _novaLocUserPicked，背景重新定位不覆蓋；切回「目前位置」時不吃快取重抓。
+        // ④ 點一下＝重新定位（不吃快取）；長按（或程式內部呼叫）＝循環切換手動城市。手動選了城市就記下 _novaLocUserPicked，背景重新定位不覆蓋。
         window.cycleManualLocation = function(ev) {
+            if (ev && ev.type === 'click') {
+                if (window._novaLocLongPressAt && Date.now() - window._novaLocLongPressAt < 800) return;   // 長按放開時的那一下點擊不算
+                window._novaLocUserPicked = false;
+                appState.manualLocIndex = 0;
+                appState.weather.loc = '定位中...';
+                try { renderWeather(); } catch (e) {}
+                _novaLocAsk = true;
+                try { showToast('📍 重新定位中…（長按可以改選城市）', 2000); } catch (e) {}
+                tryGetLocation(false, true);
+                return;
+            }
             appState.manualLocIndex = (appState.manualLocIndex + 1) % (appState.manualLocs.length + 1);
-            if (ev && ev.type === 'click') window._novaLocUserPicked = appState.manualLocIndex !== 0;
+            const byUser = !!(ev && ev.type === 'longpress');
+            if (byUser) window._novaLocUserPicked = appState.manualLocIndex !== 0;
             if (appState.manualLocIndex === 0) {
                 window._novaLocUserPicked = false;
                 appState.weather.loc = '定位中...';
                 try { renderWeather(); } catch (e) {}
+                if (byUser) { _novaLocAsk = true; try { showToast('📍 改回目前位置，定位中…', 2000); } catch (e) {} }
                 tryGetLocation(false, true);
             } else {
+                _novaLocSeq++;   // 讓還在跑的定位結果作廢
                 const loc = appState.manualLocs[appState.manualLocIndex - 1];
                 appState.lastLat = loc.lat;
                 appState.lastLon = loc.lon;
                 appState.weather.loc = loc.name;
+                try { renderWeather(); } catch (e) {}
                 fetchWeather(loc.lat, loc.lon);
+                if (byUser) { try { showToast('🏙️ 已切換到「' + loc.name + '」（手動城市）。再長按切下一個，點一下回到目前位置', 3500); } catch (e) {} }
             }
         };
+        // 長按右上角／側欄的地點＝切換手動城市
+        (function _novaLocLongPress() {
+            const bind = (el) => {
+                if (!el || el._novaLp) return; el._novaLp = 1;
+                let t = null, sx = 0, sy = 0;
+                const clear = () => { if (t) { clearTimeout(t); t = null; } };
+                el.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; clear(); t = setTimeout(() => { t = null; window._novaLocLongPressAt = Date.now(); try { navigator.vibrate && navigator.vibrate(15); } catch (x) {} cycleManualLocation({ type: 'longpress' }); }, 550); });
+                el.addEventListener('pointermove', (e) => { if (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10) clear(); });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => el.addEventListener(n, clear));
+                el.addEventListener('contextmenu', (e) => e.preventDefault());
+            };
+            const go = () => { bind(document.getElementById('nv-top-weather')); const ln = document.getElementById('location-name'); bind(ln && ln.parentElement); };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+        })();
 
+        // ③ 天氣：逾時＋重試＋定期更新
+        let _novaWxSeq = 0, _novaWxRetryTimer = null;
         async function fetchWeather(lat, lon) {
-            try {
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-                const data = await res.json();
-                if(data.current_weather) {
+            const seq = ++_novaWxSeq;
+            clearTimeout(_novaWxRetryTimer);
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${(+lat).toFixed(4)}&longitude=${(+lon).toFixed(4)}&current_weather=true`;
+            const waits = [0, 3000, 10000];
+            for (let i = 0; i < waits.length; i++) {
+                if (waits[i]) await new Promise(r => setTimeout(r, waits[i]));
+                if (seq !== _novaWxSeq) return false;   // 期間又換了位置
+                try {
+                    const res = await Promise.race([fetch(url), new Promise((_, rej) => setTimeout(() => rej(new Error('天氣逾時')), 10000))]);
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    if (!data.current_weather) throw new Error('沒有 current_weather');
+                    if (seq !== _novaWxSeq) return false;
                     appState.weather.temp = Math.round(data.current_weather.temperature);
                     const code = data.current_weather.weathercode;
                     if(code <= 3) appState.weather.condition = 'sunny';
                     else if(code <= 60) appState.weather.condition = 'cloudy';
                     else appState.weather.condition = 'rainy';
+                    appState._wxAt = Date.now(); appState._wxFail = false;
                     renderWeather();
-                }
-            } catch(e) { console.warn("Weather API error", e); }
+                    return true;
+                } catch(e) { console.warn('Weather API error (第 ' + (i + 1) + ' 次)', e && e.message); }
+            }
+            if (seq !== _novaWxSeq) return false;
+            appState._wxFail = true;
+            renderWeather();
+            _novaWxRetryTimer = setTimeout(() => { if (seq === _novaWxSeq) fetchWeather(lat, lon); }, 180000);   // 3 分鐘後再試
+            return false;
         }
+        function _novaRefreshWeatherIfStale(maxAgeMs, why) {
+            if (!appState._wxAt && !appState._wxFail) return;   // 還在第一次載入
+            if (appState._wxAt && Date.now() - appState._wxAt < maxAgeMs) return;
+            if (appState.manualLocIndex === 0 && !window._novaLocUserPicked) tryGetLocation(false, false);
+            else if (isFinite(appState.lastLat) && isFinite(appState.lastLon)) fetchWeather(appState.lastLat, appState.lastLon);
+            console.info('[NOVA] 更新天氣（' + why + '）');
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            setTimeout(() => _novaRetryLocation('resume'), 1200);
+            setTimeout(() => _novaRefreshWeatherIfStale(15 * 60000, '切回 App'), 1500);
+        });
+        setInterval(() => { if (document.visibilityState === 'visible') _novaRefreshWeatherIfStale(30 * 60000, '定時'); }, 60000);
 
         // 【資料保護修復】單調遞增 ID 計數器，避免短時間連續呼叫 addMessage 產生重複 id
         // （Date.now() 在同一毫秒內多次呼叫會回傳相同值，導致 IndexedDB 的 put() 互相覆蓋）
@@ -12506,8 +12636,12 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             const tempEl = document.getElementById('weather-temp'); if(tempEl) tempEl.innerText=`${temp}°`; 
             const descEl = document.getElementById('weather-desc'); if(descEl) descEl.innerText=desc; 
             const iconEl = document.getElementById('weather-icon'); if(iconEl) iconEl.className=`ph-fill ${icon} text-4xl ${color}`; 
-            const mTemp = document.getElementById('mobile-weather-temp'); if(mTemp) mTemp.innerText=loc==='定位中...'?'定位中...':`${temp}°`; 
-            const mIcon = document.getElementById('mobile-weather-icon'); if(mIcon) mIcon.className=`ph-fill ${loc==='定位中...'?'ph-navigation-arrow animate-pulse':icon} ${color}`; 
+            // v1.5.8：手機膠囊顯示「地名 溫度°」（原本只有溫度，切了城市看不出來）；天氣抓不到時顯示雲朵斜線
+            const _shortLoc = (loc && loc !== '未定位' && loc !== '目前位置' && loc !== '定位中...') ? String(loc).replace(/^(臺|台)(灣|湾)/, '').slice(0, 6) : '';
+            const _wxBad = appState._wxFail && (temp === '--' || temp == null);
+            const mTemp = document.getElementById('mobile-weather-temp'); if(mTemp) { mTemp.innerText = loc==='定位中...' ? '定位中...' : ((_shortLoc ? _shortLoc + ' ' : '') + (temp == null ? '--' : temp) + '°'); mTemp.style.maxWidth = '9.5em'; mTemp.style.overflow = 'hidden'; mTemp.style.textOverflow = 'ellipsis'; mTemp.style.display = 'inline-block'; mTemp.style.verticalAlign = 'middle'; }
+            const mIcon = document.getElementById('mobile-weather-icon'); if(mIcon) mIcon.className=`ph-fill ${loc==='定位中...'?'ph-navigation-arrow animate-pulse':(_wxBad?'ph-cloud-slash':icon)} ${_wxBad?'text-slate-500':color}`; 
+            const _pill = document.getElementById('nv-top-weather'); if (_pill) _pill.title = (loc || '') + (appState._wxFail ? '（天氣暫時抓不到，稍後自動重試）' : '') + '｜點一下重新定位，長按切換城市';
         }
 
         function updateModelUI(){ 

@@ -14,6 +14,7 @@ import com.getcapacitor.BridgeWebChromeClient;
 
 /*
  * 版本紀錄（本檔）
+ *   v2.6.149 2026-11-18  註冊 NovaLocPlugin（原生定位，修右上角定位／天氣一直沒反應）。需重新打包 APK 才生效。
  *   v2.6.145 2026-11-16  常駐背景＋語音喚醒：註冊 NovaWakePlugin；onStart／onStop 告訴 NovaWakeService 畫面是否在前景（前景時服務讓出麥克風）；
  *                        回到前景時若有開常駐／喚醒就（重新）啟動服務（Android 14+ 需在前景啟動才拿得到背景麥克風）；
  *                        被喚醒或從通知「開新對話」打開時（Intent 帶 nova_wake）記下並通知 JS 開新對話。需重新打包 APK 才生效。
@@ -41,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(NovaAccessibilityPlugin.class);   // v2.6.24：無障礙服務外掛（批次 5b）
         registerPlugin(NovaProactivePlugin.class);   // v2.6.101：AI 主動說話
         registerPlugin(NovaWakePlugin.class);   // v2.6.145：常駐背景＋語音喚醒
+        registerPlugin(NovaLocPlugin.class);   // v2.6.149：原生定位（右上角地點／天氣、TravelAgent）
         super.onCreate(savedInstanceState);
         NovaWake.activity = new java.lang.ref.WeakReference<>(this);   // v2.6.145
         handleWakeIntent(getIntent());   // v2.6.145
