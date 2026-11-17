@@ -1,4 +1,4 @@
-/* nova-google.js — v1.7.0 (2026-11-09)
+/* nova-google.js — v1.8.0 (2026-11-18)
  * 手機版 Google 整合（階段 1~3）：App 內 OAuth（PKCE，系統瀏覽器＋GitHub Pages 轉址頁＋nova120://oauth 深度連結）、
  *   ① Drive 雙向同步：檔名 NOVA_Sync_Bundle.json，與桌面版同格式（todos／notes／deletedIds 做 last-write-wins 合併，
  *      其餘欄位 documents／folders／chunks 原封不動保留，不會被手機覆蓋）。
@@ -8,6 +8,8 @@
  *   需要「Web 應用程式」類型的 OAuth 用戶端，並把轉址 URI（預設 https://kirishimatoka00.github.io/nova-android/oauth.html）加進該用戶端。
  * 介面：+選單「Google」鈕、設定頁「Google 整合」鈕 → #nova-google-modal。
  * 版本紀錄
+ *   v1.8.0 2026-11-18  App v2.6.150：「Drive 同步」分頁新增「其他資料同步」：列出 NovaDataSync 中研發／Insight／金鑰以外的供應者——draw.io 圖表（NOVA_Drawio_Sync.json）、之後的 Canvas 作品庫，以及原本就有同步、但沒有開關介面的生圖歷史、專家與 Bot，
+ *                      每個一個子開關（nova_dsync_<id>_on，預設開）與上次同步結果；跟著「立即同步」一起跑（對標桌面設定頁「跨裝置同步」的子開關）。
  *   v1.7.0 2026-11-09  App v2.6.125：「Drive 同步」分頁新增「🔐 同步密語」（設定／更換／移除，顯示金鑰加密同步的最後結果）；搭配 nova-datasync.js v1.4.0，與桌面 v3.121.0 同一把密語即可互通。
  *   v1.6.0 2026-11-08  App v2.6.124：新增授權項目「行事曆」（calendar.events：讀、新增、修改事件；不能刪事件、不碰行事曆本身）與 calendarList／calendarCreate／calendarUpdate；新增 docsWrite（Google 文件附加／取代全文，用既有的 Docs 授權）。給多 Bot 的 calendar_list／calendar_create／calendar_update／docs_write 用。Google Cloud 要先「啟用 Google Calendar API」並在「資料存取權」加 calendar.events，之後在『連接』分頁勾選「行事曆」並重新連接。
  *   v1.5.0 2026-11-07  App v2.6.122：新增授權項目「Gmail 寫入」（gmail.modify：建草稿、寄信、移到垃圾桶；不能永久刪除）。選了它就不必再勾「Gmail 唯讀」（has('gmail') 兩者任一都算）；新增 gmailDraft／gmailSend／gmailTrash（RFC822＋UTF-8 base64，標頭擋換行注入、收件者驗證格式）；『連接』分頁新增「目前實際拿到的授權」清單（讀 token 裡的 scope，不用去 Google 後台猜）。舊 token 不會自動升級，要勾選後重新按「連接 Google」。
@@ -510,6 +512,17 @@
     try { localStorage.removeItem('nova_sync_passphrase'); } catch (e) { /* */ }
     render();
   }
+  // v1.8.0：其他資料同步（draw.io 圖表、Canvas 作品庫…）的子開關。研發／Insight 的開關在各自的設定裡，金鑰走同步密語，這裡不重複列。
+  function dsBlock() {
+    var ds = W.NovaDataSync; if (!ds || !ds.providers) return '';
+    var list = ds.providers().filter(function (p) { return ['research', 'insight', 'secrets'].indexOf(p.id) < 0; });
+    if (!list.length) return '';
+    return '<div class="p-2 rounded-lg border border-slate-700 text-xs space-y-1"><div><b>🧩 其他資料同步</b>（與桌面版共用同名檔案）</div>' + list.map(function (p) {
+      var li = null; try { li = ds.lastInfo(p.id); } catch (e) { li = null; }
+      return '<label class="flex items-center gap-2"><input type="checkbox" ' + (ds.isEnabled(p.id) ? 'checked' : '') + ' onchange="NovaDataSync.setEnabled(\'' + p.id + '\',this.checked)"> ' + esc(p.label || p.id) + '</label>' +
+        (li ? '<div class="text-slate-500" style="margin-left:22px">' + esc(new Date(li.at).toLocaleString('zh-TW')) + '　' + esc(li.text || '') + '</div>' : '');
+    }).join('') + '</div>';
+  }
   function render() {
     var m = D.getElementById('nova-google-modal'); if (!m || m.style.display === 'none') return;
     var tabs = [['main', '連接'], ['drive', '☁️ Drive 同步'], ['gmail', '✉️ Gmail'], ['docs', '📁 雲端硬碟']];
@@ -532,7 +545,7 @@
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" id="ng-auto" ' + (syncOn() ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_enabled\',this.checked?\'1\':\'0\')"> 變更後自動同步（約 4 秒後）</label>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_gsync_kb', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_gsync_kb\',this.checked?\'1\':\'0\')"> 同步知識庫（向量資料庫：文件／資料夾／片段；向量由收到端重算）</label>' +
         '<label class="flex items-center gap-2 text-xs"><input type="checkbox" ' + (g('nova_mem_sync_enabled', '1') !== '0' ? 'checked' : '') + ' onchange="localStorage.setItem(\'nova_mem_sync_enabled\',this.checked?\'1\':\'0\')"> 同步 AI 記憶（長期事實／對話摘要，檔案 NOVA_Memory_Sync.json，與桌面版共用）</label>' +
-        passBlock() +
+        passBlock() + dsBlock() +
         '<button class="' + BTN + 'ng-green" onclick="NovaGoogle.sync(true)">立即同步</button>' +
         '<div id="ng-mem-status" class="text-xs text-slate-400">' + esc(g('nova_gmem_status', '')) + '</div>' +
         '<div id="ng-sync-status" class="text-xs text-slate-400">' + esc(g('nova_gsync_status', g('nova_gsync_last', '尚未同步'))) + '</div>';

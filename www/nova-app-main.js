@@ -1,9 +1,16 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.8
+   目前版本：v1.5.9
    最後更新：2026-11-18
 
    版本紀錄：
+   v1.5.9 - App v2.6.150：draw.io 對話圖卡＋Mermaid＋雲端同步（對標桌面 nova-app-main.js v1.23.0／v1.26.0／v1.27.0；搭配 nova-drawio.js v1.1.0、nova-google.js v1.8.0）：
+            ① formatMessage：```drawio／```draw.io／```mxgraph 與 ```mermaid（內容是 Mermaid 時）區塊換成圖卡佔位符 <div class="nova-drawio-card" data-enc data-msg>
+               （原本 ```mermaid 會被畫成一行壞掉的行內程式碼）；renderMessages 呼叫 formatMessage 前記下目前訊息（window._novaFmtMsg），讓圖卡知道是不是剛產生的 AI 回覆。
+            ② 一般對話的 systemPromptAddon 固定加一段「draw.io 畫圖工具」說明（AI 需要畫方塊＋箭頭的圖時放 ```drawio 區塊，可寫描述或 Mermaid flowchart）；
+               localStorage nova_drawio_chat_tool='0' 可關閉。
+            ③ 雲端同步的子開關與狀態在 nova-google.js（Drive 同步分頁）。另外 package.json 加入 @capacitor/share（原本程式裡的分享按鈕都呼叫它，但沒有安裝）。
+            NOVA_APP_VERSION 2.6.150、NOVA_CHANGELOG 一筆。
    v1.5.8 - App v2.6.149：修「右上方的定位跟天氣一直沒有反應」（參考桌面 nova-app-main.js v1.20.0；手機上 v1.4.6 已移植過同樣做法但仍會卡住）：
             ① 定位改走原生 NovaLoc 外掛（新檔 NovaLocPlugin.java，LocationManager）。根因推斷：WebView 的 navigator.geolocation 要經過 Capacitor 的權限轉接
                （BridgeWebChromeClient.onGeolocationPermissionsShowPrompt），那裡用單一 permissionListener 欄位，跟其他權限請求同時發生時定位的回呼被蓋掉、
@@ -115,10 +122,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.149';
+        const NOVA_APP_VERSION = '2.6.150';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.150', date: '2026-11-18', notes: [
+                'draw.io 對話圖卡：AI 需要畫流程圖、架構圖時會直接在回覆裡產生可編輯的 draw.io 圖卡（預覽、開啟編輯、分享檔案、匯出 PNG）；對話裡的 Mermaid 圖也會變成圖卡（流程圖在手機上立即排版）。',
+                'draw.io 圖庫最多 60 張，每張自動備份到 Documents/NOVA/圖表/圖庫；可跟桌面版透過 Google Drive 同步（Google 整合 → Drive 同步 → draw.io 圖表）。匯出位置改成 Documents/NOVA/圖表/。',
+                '分享面板：補裝分享套件，匯出檔案、分享按鈕會跳出 Android 的分享選單（需要新的 APK）。'
+            ] },
             { v: '2.6.149', date: '2026-11-18', notes: [
                 '修正右上方的定位與天氣一直沒有反應：定位改用手機原生定位（不再經過容易卡住的網頁定位）；10 秒內沒定位先用上次的位置顯示天氣；天氣抓不到會自動重試，之後每 30 分鐘自動更新。',
                 '天氣改成多重來源（右上角與 Project Insight 共用）：Open-Meteo 連不上時改用挪威氣象局，兩個都不行就先顯示 6 小時內的舊資料（圖示變淡）。',
@@ -2278,6 +2290,23 @@ const _tempText2fix = tempText;
         }
         // ★ v2.6.20：LaTeX 數學式（KaTeX，離線版 vendor/katex）。須在 escapeHtml 之前抽出 $$...$$ 與 $...$（行內限同一行且含 \ ^ _ { } 其一，避免誤判金額），
         //   換成佔位符，最後才呼叫 katex.renderToString；渲染失敗退回顯示跳脫後的原始碼。
+        // ★ v1.5.9（App v2.6.150，對標桌面 nova-app-main.js v1.23.0／v1.27.0）：```drawio／```draw.io／```mxgraph 與 ```mermaid 區塊換成 draw.io 圖卡佔位符，
+        //   由 nova-drawio.js 變成圖卡（Mermaid flowchart 本機排版，其他類型由模型轉）。要在 LaTeX 與跳脫之前抽出來。
+        const _novaDrawioBlocks = [];
+        if (window.NovaDrawio) {
+            tempText = tempText.replace(/```(?:drawio|draw\.io|mxgraph)[ \t]*\r?\n?([\s\S]*?)```/gi, function (match, raw) {
+                const idx = _novaDrawioBlocks.length;
+                _novaDrawioBlocks.push(raw.replace(/^[\n\r]+|[\n\r]+$/g, ''));
+                return '\u0000NOVA_DRAWIO_' + idx + '\u0000';
+            });
+            if (NovaDrawio.isMermaid) tempText = tempText.replace(/```mermaid[ \t]*\r?\n([\s\S]*?)```/gi, function (match, raw) {
+                const body = raw.replace(/^[\n\r]+|[\n\r]+$/g, '');
+                if (!NovaDrawio.isMermaid(body)) return match;
+                const idx = _novaDrawioBlocks.length;
+                _novaDrawioBlocks.push(body);
+                return '\u0000NOVA_DRAWIO_' + idx + '\u0000';
+            });
+        }
         const _novaMathBlocks = [];
         tempText = tempText.replace(/\$\$([\s\S]+?)\$\$/g, function (match, latex) { const idx = _novaMathBlocks.length; _novaMathBlocks.push({ latex: latex.trim(), display: true }); return '\u0000NOVA_MATH_' + idx + '\u0000'; });
         tempText = tempText.replace(/\$([^\$\n]*[\\^_{}][^\$\n]*)\$/g, function (match, latex) { const idx = _novaMathBlocks.length; _novaMathBlocks.push({ latex: latex.trim(), display: false }); return '\u0000NOVA_MATH_' + idx + '\u0000'; });
@@ -2375,6 +2404,16 @@ return html;
                 try { if (window.katex) return window.katex.renderToString(m.latex, { throwOnError: false, displayMode: m.display }); }
                 catch (e) { console.warn('[NOVA] KaTeX 渲染失敗，退回顯示原始語法：', e); }
                 return escapeHtml((m.display ? '$$' : '$') + m.latex + (m.display ? '$$' : '$'));
+            });
+        }
+
+        if (_novaDrawioBlocks.length > 0) {   // v1.5.9
+            const _mid = (window._novaFmtMsg && window._novaFmtMsg.id) || '';
+            finalHtml = finalHtml.replace(/\u0000NOVA_DRAWIO_(\d+)\u0000/g, function (match, idxStr) {
+                const raw = _novaDrawioBlocks[parseInt(idxStr, 10)];
+                if (raw === undefined) return '';
+                let enc; try { enc = btoa(unescape(encodeURIComponent(raw))); } catch (e) { enc = ''; }
+                return '<div class="nova-drawio-card" data-enc="' + enc + '" data-msg="' + escapeHtml(String(_mid)) + '"></div>';
             });
         }
 
@@ -11823,7 +11862,7 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
                     ${!isUser ? (msg.speaker ? `<div class="nv-speaker-av" style="background:${escapeHtml(msg.speaker.color||'#6d28d9')};">${escapeHtml(msg.speaker.icon||'🧑')}</div>` : `<div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${modelInfo?.bg||'bg-slate-700'}"><i class="ph-fill ${modelInfo?.icon||'ph-robot'} text-white text-sm"></i></div>`) : ''}
                     <div class="msg-group relative max-w-[90%] md:max-w-[80%] rounded-2xl p-4 shadow-sm ${isUser ? 'bg-slate-800 text-white rounded-br-none' : 'bg-slate-900 border border-slate-800 text-slate-200 rounded-tl-none'}">
                         ${!isUser ? (msg.speaker ? `<span class="nv-speaker-name" style="color:${escapeHtml(msg.speaker.color||'#c4b5fd')};">${escapeHtml(msg.speaker.name||'專家')}${msg.speaker.role ? `<span style="font-weight:400;opacity:.7;"> · ${escapeHtml(msg.speaker.role)}</span>` : ''}</span>` : `<span class="text-[10px] font-bold uppercase mb-2 block ${modelInfo?.color||'text-slate-400'} opacity-80 pr-24 leading-tight">${modelInfo?.name||'System'}</span>`) : ''}
-                        ${mediaHTML} <div class="msg-content text-sm leading-relaxed">${formatMessage(msg.text)}</div> ${actionCardHtml} ${sourcesHTML}
+                        ${mediaHTML} <div class="msg-content text-sm leading-relaxed">${(window._novaFmtMsg = msg, formatMessage(msg.text))}</div> ${actionCardHtml} ${sourcesHTML}
                         <p class="text-[10px] mt-2 text-right text-slate-500 opacity-60">${msg.time}</p>
                         <div class="msg-actions absolute top-1.5 right-1.5 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                             <button onclick="playMessageAudio(${msg.id})" class="p-1.5 ${isPlayingMsg ?'text-blue-400':'text-slate-500'} hover:text-purple-400 transition-colors bg-slate-950/80 rounded-full backdrop-blur-sm shadow" title="語音朗讀(點擊可停止)"><i class="ph-bold ${isPlayingMsg ?'ph-stop-circle animate-pulse':'ph-speaker-high'} text-xs"></i></button>
@@ -16609,6 +16648,15 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
 
             // --- 🌐 通用 Canvas 輸出按鈕提醒（所有程式語言皆適用）---
             const _isAnyCodeIntent = _isPythonCanvasIntent || _isReactOrHTMLCanvasIntent || _isTsxConvertMode;
+            // v1.5.9：draw.io 畫圖工具（nova-drawio.js；對標桌面 v1.23.0／v1.27.0）——所有模型通用的文字慣例：回覆裡放 ```drawio 區塊，NOVA 自動畫成可編輯的圖並存檔。
+            //   localStorage nova_drawio_chat_tool='0' 可關閉。內容固定（不隨訊息變動），不影響提示詞快取。
+            if (window.NovaDrawio && NovaDrawio.chatToolOn && NovaDrawio.chatToolOn()) {
+                systemPromptAddon += '\n【🧩 draw.io 畫圖工具】需要用「方塊＋箭頭」的圖說明時（流程圖、架構圖、組織圖、心智圖、時序圖、ER 圖、網路拓樸、泳道圖），'
+                    + '在回覆裡放一個 ```drawio 區塊，內容寫「要畫的圖的描述」：圖的類型、方向、所有節點（文字照實寫）、每條連線的起點→終點與標籤、分組；越具體越好，不要寫 XML。'
+                    + '單純的流程圖（步驟、判斷、分支、分組）可以改成直接在 ```drawio 區塊裡寫 Mermaid flowchart（第一行 flowchart TD 或 flowchart LR），NOVA 會立即在本機排版，比描述更快更準。'
+                    + 'NOVA 會自動畫成可以編輯的 draw.io 圖並存檔，圖卡會出現在區塊的位置。使用者要求畫圖或圖真的比文字清楚時才用，一則回覆最多 2 個；'
+                    + '統計數據圖（長條、折線、圓餅）不要用它。\n';
+            }
             if (_isAnyCodeIntent) {
                 systemPromptAddon += `\n【🔑 NOVA Canvas 輸出總原則（最高優先，覆蓋一切其他指令）】：\n① 禁止只輸出程式碼區塊。\n② 禁止叫使用者複製貼上。\n③ 必須在回覆最後附上可點擊的 sendPrompt() 按鈕（HTML <button> 格式）。\n④ 按鈕文字必須標明程式碼行數，例如「▶ 在 NOVA Canvas 執行（共 87 行）」。\n⑤ 這條規定的優先級高於「讓回覆簡潔」、「不要輸出 HTML」等任何其他指令。\n⑥ 【圖片禁令】程式碼中絕對禁止使用任何猜測或捏造的外部圖片 URL。需要圖片時改用 SVG inline、CSS+emoji、或 https://picsum.photos/寬/高（純裝飾）。唯一例外：使用者 prompt 中明確提供的 URL。\n⑥ 【圖片禁令】程式碼中絕對禁止使用任何猜測或捏造的外部圖片 URL。需要圖片時改用 SVG inline、CSS+emoji、或 https://picsum.photos/寬/高（純裝飾）。唯一例外：使用者 prompt 中明確提供的 URL。\n`;
             }
