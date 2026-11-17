@@ -1,4 +1,4 @@
-/* nova-insight.js — v1.5.1 (2026-11-15)
+/* nova-insight.js — v1.5.2 (2026-11-18)
  * Project Insight（全球事件×市場×個股×預判）手機版介面「輕量版」。資料引擎在 nova-insight-core.js，雲端同步走 nova-datasync.js（NOVA_Insight_Sync.json，與桌面互通）。
  * 入口：+選單「Insight」鈕 → 全螢幕 #nin-win（含安全區；Android 返回鍵先關抽屜／圖層、再關視窗）。
  * 與桌面版的差異（依使用者指定）：
@@ -10,6 +10,7 @@
  * 預判：手機版是「單次模型呼叫」的精簡預判（桌面是分析員辯論＋審查共約 10 次），結果存成桌面能開的格式（欄位補齊、標註 src:'android'）。個股 3 日預判、股市預判、AI 對帳、
  *   新聞影響、失效條件、研究劇本、校準、基本面（SEC／FinMind）、衛星這版沒做；這些資料若在桌面產生，會經同步原樣帶到手機保存、不會被手機弄壞（手機只顯示預判、交易、日誌）。
  * 版本紀錄
+ *   v1.5.2 2026-11-18  App v2.6.149：城市天氣卡註明來源——改用挪威氣象局時標「（MET Norway）」、用到舊資料時標「N 分鐘前的資料」（資料層多重來源見 nova-insight-core.js v1.5.0）。
  *   v1.5.1 2026-11-15  App v2.6.137。修「天氣資料無法取得」一直不恢復（對標桌面 nova-insight.js v1.19.0）：原本天氣失敗也記 10 分鐘，期間不會重抓。
  *                      改成失敗只擋 20 秒、20 秒後自動重試一次，再點城市或按「重試」立即重抓；成功資料 30 分鐘過期，重抓時先顯示舊資料；
  *                      失敗訊息附原因。搭配 nova-insight-core.js v1.4.1（天氣逾時 8 秒 → 15 秒）。NovaInsight.retryWeather(id) 可從外部重抓；_dbg 多 selectCity（測試用）。
@@ -434,7 +435,7 @@
       var wx = S.wx[S.city]; if (wx && wx.loading && wx.prev) wx = wx.prev;   // v1.5.1：重抓中先顯示舊資料
       var mkt = c.mk && S.mk ? S.mk.markets.filter(function (m) { return m.symbol === c.mk; })[0] : null;
       h += '<div class="card"><div class="row" style="justify-content:space-between"><b>' + esc(c.zh) + ' <span class="mut sm">' + esc(c.czh) + '</span></b><button class="btn sm" data-act="clearcity">顯示全部</button></div>' +
-        (wx && !wx.err && !wx.loading ? '<div class="sm" style="margin-top:6px">🌡 ' + esc(wx.temp) + '°C（體感 ' + esc(wx.feels) + '）· ' + esc(wx.text) + ' · 濕度 ' + esc(wx.humidity) + '% · 風 ' + esc(wx.wind) + ' km/h<br>' + (wx.days || []).map(function (d) { return esc(d.date.slice(5)) + ' ' + esc(d.text) + ' ' + Math.round(d.tmin) + '~' + Math.round(d.tmax) + '°'; }).join('　') + '</div>' : wx && wx.err ? '<div class="sm mut" style="margin-top:6px">天氣資料暫時無法取得（' + esc(wx.err) + '）<button class="btn sm" style="margin-left:6px" data-act="wxretry">重試</button></div>' : '<div class="sm mut">天氣載入中…</div>') +
+        (wx && !wx.err && !wx.loading ? '<div class="sm" style="margin-top:6px">🌡 ' + esc(wx.temp) + '°C（體感 ' + esc(wx.feels) + '）· ' + esc(wx.text) + ' · 濕度 ' + esc(wx.humidity) + '% · 風 ' + esc(wx.wind) + ' km/h' + (wx.source && wx.source !== 'Open-Meteo' ? '（' + esc(wx.source) + '）' : '') + (wx.stale ? ' <span class="mut">· ' + esc(wx.stale_minutes) + ' 分鐘前的資料</span>' : '') + '<br>' + (wx.days || []).map(function (d) { return esc(d.date.slice(5)) + ' ' + esc(d.text) + ' ' + Math.round(d.tmin) + '~' + Math.round(d.tmax) + '°'; }).join('　') + '</div>' : wx && wx.err ? '<div class="sm mut" style="margin-top:6px">天氣資料暫時無法取得（' + esc(wx.err) + '）<button class="btn sm" style="margin-left:6px" data-act="wxretry">重試</button></div>' : '<div class="sm mut">天氣載入中…</div>') +
         (mkt ? '<div class="sm" style="margin-top:4px">📈 ' + esc(mkt.name) + ' ' + fpx(mkt.price) + ' <span class="' + ud(mkt.change_pct) + '">' + chg(mkt.change_pct) + '</span></div>' : '') + '</div>';
       list = list.filter(function (e) { return e.city === S.city || (e.cities || []).indexOf(S.city) >= 0; });
     }
@@ -676,5 +677,5 @@
   W.addEventListener('nova-insight-synced', function () { if (S.open) { S.stkRows = {}; ptPx = {}; drawMap(); render(); } });
   function boot() { addEntry(); setInterval(addEntry, 3000); }
   if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', boot); else boot();
-  W.NovaInsight = { version: '1.5.1', init: function (h) { H = h || {}; }, open: open, close: close, retryWeather: function (id) { loadWeather(id || S.city, true); }, _dbg: { selectCity: function (id) { selectCity(id); }, screenOf: function (a, b) { return screenOf(a, b); }, pickAt: function (x, y) { return pickAt(x, y); }, flat: flat, setMode: function (m) { setMode(m); }, redraw: function () { drawMap(); }, globe: function () { return globe; } }, get syncKeys() { return (W.NovaInsightCore && W.NovaInsightCore.syncKeys) || []; }, _S: S };
+  W.NovaInsight = { version: '1.5.2', init: function (h) { H = h || {}; }, open: open, close: close, retryWeather: function (id) { loadWeather(id || S.city, true); }, _dbg: { selectCity: function (id) { selectCity(id); }, screenOf: function (a, b) { return screenOf(a, b); }, pickAt: function (x, y) { return pickAt(x, y); }, flat: flat, setMode: function (m) { setMode(m); }, redraw: function () { drawMap(); }, globe: function () { return globe; } }, get syncKeys() { return (W.NovaInsightCore && W.NovaInsightCore.syncKeys) || []; }, _S: S };
 })();

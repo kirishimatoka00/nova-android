@@ -9,7 +9,8 @@
                （BridgeWebChromeClient.onGeolocationPermissionsShowPrompt），那裡用單一 permissionListener 欄位，跟其他權限請求同時發生時定位的回呼被蓋掉、
                永遠不回來；getCurrentPosition 的 timeout 不含等權限的時間，所以整個卡住。舊 APK 仍用 navigator.geolocation，外層加硬逾時。
             ② 啟動時有上次的位置（6 小時內）就先顯示它的地名與天氣；看門狗：10 秒內沒定位結果先用上次的位置或台北把天氣顯示出來，真實位置回來再換上。
-            ③ fetchWeather：10 秒逾時、失敗自動重試（3 秒、10 秒後）、還是失敗 3 分鐘後再試；每 30 分鐘自動更新、切回 App 超過 15 分鐘也更新
+            ③ fetchWeather：改用 NovaInsightCore.weather（nova-insight-core.js v1.5.0：Open-Meteo → 挪威氣象局 MET Norway → 6 小時內的舊資料，對標桌面 nova_insight.py v1.15.0）；
+               舊資料時圖示變淡、3 分鐘後再試新的。逾時、失敗自動重試（3 秒、10 秒後）、還是失敗 3 分鐘後再試；每 30 分鐘自動更新、切回 App 超過 15 分鐘也更新
                （常駐背景後原本只在啟動時抓一次）。換位置時舊的請求結果作廢。
             ④ 點一下＝重新定位並跳提示說結果（成功顯示地名＋溫度；失敗說原因：沒權限／定位服務沒開／逾時）；長按＝切換手動城市（原本點一下就切到台北，
                手機膠囊只顯示溫度看不出來，還會停掉背景重新定位）。renderWeather：手機膠囊改成「地名 溫度°」，天氣抓不到時顯示雲朵斜線圖示。
@@ -120,6 +121,7 @@
         const NOVA_CHANGELOG = [
             { v: '2.6.149', date: '2026-11-18', notes: [
                 '修正右上方的定位與天氣一直沒有反應：定位改用手機原生定位（不再經過容易卡住的網頁定位）；10 秒內沒定位先用上次的位置顯示天氣；天氣抓不到會自動重試，之後每 30 分鐘自動更新。',
+                '天氣改成多重來源（右上角與 Project Insight 共用）：Open-Meteo 連不上時改用挪威氣象局，兩個都不行就先顯示 6 小時內的舊資料（圖示變淡）。',
                 '右上角改成顯示「地名 溫度°」。點一下＝重新定位（會跳提示說結果或失敗原因）；長按＝切換手動城市。',
                 '這一版需要安裝新的 APK 才會用原生定位；舊 APK 仍有逾時保底與天氣重試。'
             ] },
@@ -5875,18 +5877,29 @@ localStorage.setItem('nova_drive_url', data.drive); const el = document.getEleme
                 if (waits[i]) await new Promise(r => setTimeout(r, waits[i]));
                 if (seq !== _novaWxSeq) return false;   // 期間又換了位置
                 try {
-                    const res = await Promise.race([fetch(url), new Promise((_, rej) => setTimeout(() => rej(new Error('天氣逾時')), 10000))]);
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    const data = await res.json();
-                    if (!data.current_weather) throw new Error('沒有 current_weather');
+                    let temp, cond, stale = 0, src = 'Open-Meteo';
+                    const IC = window.NovaInsightCore;
+                    if (IC && typeof IC.weather === 'function') {
+                        // 多重來源（Open-Meteo → MET Norway → 6 小時內的舊資料；nova-insight-core.js v1.5.0，對標桌面 nova_insight.py v1.15.0）
+                        const w = await Promise.race([IC.weather(+lat, +lon, { force: i > 0 }), new Promise((_, rej) => setTimeout(() => rej(new Error('天氣逾時')), 30000))]);
+                        if (w == null || w.temp == null) throw new Error('沒有溫度');
+                        temp = w.temp; cond = w.cond || 'cloudy'; stale = w.stale ? (w.stale_minutes || 1) : 0; src = w.source || src;
+                    } else {
+                        const res = await Promise.race([fetch(url), new Promise((_, rej) => setTimeout(() => rej(new Error('天氣逾時')), 10000))]);
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        const data = await res.json();
+                        if (!data.current_weather) throw new Error('沒有 current_weather');
+                        temp = data.current_weather.temperature;
+                        const code = data.current_weather.weathercode;
+                        cond = code <= 3 ? 'sunny' : code <= 60 ? 'cloudy' : 'rainy';
+                    }
                     if (seq !== _novaWxSeq) return false;
-                    appState.weather.temp = Math.round(data.current_weather.temperature);
-                    const code = data.current_weather.weathercode;
-                    if(code <= 3) appState.weather.condition = 'sunny';
-                    else if(code <= 60) appState.weather.condition = 'cloudy';
-                    else appState.weather.condition = 'rainy';
-                    appState._wxAt = Date.now(); appState._wxFail = false;
+                    appState.weather.temp = Math.round(temp);
+                    appState.weather.condition = cond;
+                    appState._wxSrc = src; appState._wxStaleMin = stale; appState._wxFail = false;
+                    if (!stale) appState._wxAt = Date.now();
                     renderWeather();
+                    if (stale) { _novaWxRetryTimer = setTimeout(() => { if (seq === _novaWxSeq) fetchWeather(lat, lon); }, 180000); }   // 舊資料：3 分鐘後再試新的
                     return true;
                 } catch(e) { console.warn('Weather API error (第 ' + (i + 1) + ' 次)', e && e.message); }
             }
@@ -12641,7 +12654,8 @@ msg.text === "請詳細描述畫面中的內容。" || msg.text === `[夾帶檔�
             const _wxBad = appState._wxFail && (temp === '--' || temp == null);
             const mTemp = document.getElementById('mobile-weather-temp'); if(mTemp) { mTemp.innerText = loc==='定位中...' ? '定位中...' : ((_shortLoc ? _shortLoc + ' ' : '') + (temp == null ? '--' : temp) + '°'); mTemp.style.maxWidth = '9.5em'; mTemp.style.overflow = 'hidden'; mTemp.style.textOverflow = 'ellipsis'; mTemp.style.display = 'inline-block'; mTemp.style.verticalAlign = 'middle'; }
             const mIcon = document.getElementById('mobile-weather-icon'); if(mIcon) mIcon.className=`ph-fill ${loc==='定位中...'?'ph-navigation-arrow animate-pulse':(_wxBad?'ph-cloud-slash':icon)} ${_wxBad?'text-slate-500':color}`; 
-            const _pill = document.getElementById('nv-top-weather'); if (_pill) _pill.title = (loc || '') + (appState._wxFail ? '（天氣暫時抓不到，稍後自動重試）' : '') + '｜點一下重新定位，長按切換城市';
+            if (mIcon && appState._wxStaleMin && !_wxBad) mIcon.style.opacity = '0.55'; else if (mIcon) mIcon.style.opacity = '';
+            const _pill = document.getElementById('nv-top-weather'); if (_pill) _pill.title = (loc || '') + (appState._wxFail ? '（天氣暫時抓不到，稍後自動重試）' : appState._wxStaleMin ? '（' + appState._wxStaleMin + ' 分鐘前的天氣，來源暫時連不上）' : (appState._wxSrc ? '（' + appState._wxSrc + '）' : '')) + '｜點一下重新定位，長按切換城市';
         }
 
         function updateModelUI(){ 
