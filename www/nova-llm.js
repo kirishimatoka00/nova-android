@@ -1,7 +1,10 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-llm.js — NOVA Android 的「模型呼叫輔助層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.0.2
+   版本：v1.1.0
    版本紀錄：
+   v1.1.0 - App v2.6.151（對標桌面 nova-app-main.js v1.24.0「DeepSeek 導入各功能的模型選單」）：_novaCallModel 遇到 deepseek- 開頭（也接受 deepseek: 前綴）
+            改走 NovaDeepSeek.chat（nova-deepseek.js v1.1.0；search／json／images／thinking 一併轉過去，回傳多 sources）；_novaDrTextModelOptions 多 'deepseek'
+            （從 DeepSeek 子模型選單取 V4 Pro／V4.1 Flash，同樣尊重「啟用的模型」過濾）。
    v1.0.2 - App v2.6.130（對標桌面 nova-app-main.js v1.8.0／v1.10.0）。_novaDrThinkingConfig：gemini-4-carbon／gemini-4-hydrogen 只收 thinkingLevel
             （LOW／MEDIUM／HIGH，送 thinkingBudget 或 MINIMAL 會 HTTP 400），minimal 一律升成 LOW。API 版本照舊走 v1beta（名稱不含 gemini-3／preview）。
    v1.0.1 - App v2.6.123。_novaDrResolveGeminiModel：舊設定裡的 gemini-2.5-pro／gemini-2.5-flash（已從模型列表移除）自動轉成 gemini-3.1-pro-preview／gemini-3.6-flash。
@@ -101,8 +104,14 @@
     }
 
     // Grok 文字對話（chat/completions）。opts: {model, systemInstruction, userText, timeoutMs}
+    // v1.1.0：deepseek- 開頭（也接受 deepseek: 前綴）改走 NovaDeepSeek.chat（opts.search／json／images 一併轉過去）
     def('_novaCallModel', async function (opts) {
         opts = opts || {};
+        if (/^deepseek[-:]/.test(String(opts.model || ''))) {
+            if (!W.NovaDeepSeek || !NovaDeepSeek.chat) throw new Error('DeepSeek 模組沒有載入（nova-deepseek.js）');
+            var dr = await NovaDeepSeek.chat({ model: opts.model, system: opts.systemInstruction, text: opts.userText || '', images: opts.images, json: opts.json, search: opts.search, thinking: opts.thinking, timeoutMs: opts.timeoutMs || 180000 });
+            return { text: dr.text, sources: dr.sources || [], provider: 'deepseek', raw: dr.raw, notes: dr.notes };
+        }
         var key = (W.appState && appState.keys && appState.keys.grok) || localStorage.getItem('nova_key_grok') || '';
         if (!key) throw new Error('尚未設定 Grok API Key');
         var msgs = [];
@@ -139,7 +148,7 @@
 
     // 從主畫面子模型下拉選單取文字模型（kind: gemini／grok／openai）。
     def('_novaDrTextModelOptions', function (kind) {
-        var sel = document.getElementById(kind === 'gemini' ? 'gemini-sub-model-select' : kind === 'openai' ? 'gpt-sub-model-select' : 'grok-sub-model-select');
+        var sel = document.getElementById(kind === 'gemini' ? 'gemini-sub-model-select' : kind === 'openai' ? 'gpt-sub-model-select' : kind === 'deepseek' ? 'deepseek-sub-model-select' : 'grok-sub-model-select');
         var out = [];
         if (!sel) return out;
         Array.prototype.slice.call(sel.querySelectorAll('option')).forEach(function (op) {
@@ -147,7 +156,8 @@
             var okGem = kind === 'gemini' && v.indexOf('gemini-') === 0 && !/multi|image|imagen|nano-banana|tts|live|audio|embedding|veo|robotics|computer/i.test(v);
             var okGrok = kind === 'grok' && v.indexOf('grok-') === 0 && !/multi|imagine|code/i.test(v);
             var okGpt = kind === 'openai' && v.indexOf('gpt-') === 0 && !/image|tts|audio|realtime|embedding|transcribe/i.test(v);
-            if ((okGem || okGrok || okGpt) && !op.disabled && !op.hidden) out.push({ value: v, label: op.textContent.trim() });
+            var okDs = kind === 'deepseek' && v.indexOf('deepseek-') === 0;   // v1.1.0
+            if ((okGem || okGrok || okGpt || okDs) && !op.disabled && !op.hidden) out.push({ value: v, label: op.textContent.trim() });
         });
         return out;
     });

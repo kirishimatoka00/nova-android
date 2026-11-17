@@ -1,7 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-dr-glue.js — NOVA Android「Pro 深度研究」接線層（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.1
+   版本：v1.2.0
    版本紀錄：
+   v1.2.0 - App v2.6.151（對標桌面 nova-app-main.js v1.24.0 ③「多 AI 深度協同研究控制台」）：Pro 引擎的規劃／撰稿／審稿、專案經理／研究員／審查委員、
+            讀取池與搜尋池的下拉加 DeepSeek 組（有金鑰才算可用；能力標籤：V4 Pro 旗艦推理、V4.1 Flash 均衡便宜）；主模型選 DeepSeek 時預設帶 DeepSeek。
+            新增 callDeepSeek（NovaDeepSeek.chat）：callGemini 遇到 deepseek- 轉過去；搜尋用 DeepSeek 內建聯網工具，附件 PDF／圖片走 OCR（Flash 直接看圖）。
+            智能分配的提示詞改成「Gemini、OpenAI 或 DeepSeek」（分配本身仍固定用 gemini-3.1-pro-preview）。
    v1.1.1 - App v2.6.130（對標桌面 nova-app-main.js v1.8.0／v1.10.0）：模型能力標籤——gemini-4-carbon 標「旗艦」（沒有免費額度、思考時間長），
             gemini-4-hydrogen 標「均衡」（比 3.8 Flash 快、有免費額度）；原本兩者都會落到「均衡」的通用說明。
    v1.1.0 - v2.6.37：設定視窗改版成桌面版「多 AI 深度協同研究控制台」（v3.59.0）：研究深度、Firecrawl／Grok 勾選、進階（規劃／撰稿／審稿／Grok 交叉審查、讀取／搜尋接地／Grok 三個勾選式模型池與快速預設、搜尋策略）、
@@ -61,7 +65,19 @@
         var cut = data && data.status === 'incomplete' && data.incomplete_details && data.incomplete_details.reason === 'max_output_tokens';
         return { text: parsed.text, sources: parsed.sources, finishReason: cut ? 'MAX_TOKENS' : 'STOP', usage: null };
     }
+    // v1.2.0：DeepSeek（NovaDeepSeek.chat）。Gemini 格式的 parts（inlineData：PDF／圖片）轉成附件：PDF 一律 OCR、圖片在 Flash 直接看圖、在 V4 Pro 用 OCR；
+    //   search → DeepSeek 內建聯網工具；json → json_object。回傳格式跟 callGemini 相同。
+    async function callDeepSeek(o) {
+        if (!K('deepseek')) throw new Error('尚未設定 DeepSeek API Key（Pro 深度研究選了 DeepSeek 模型）');
+        if (!W.NovaDeepSeek || !NovaDeepSeek.chat) throw new Error('DeepSeek 模組沒有載入（nova-deepseek.js）');
+        var imgs = [];
+        (o.parts || []).forEach(function (pt, i) { if (pt && pt.inlineData && pt.inlineData.data) imgs.push({ name: '附件' + (i + 1), mime: pt.inlineData.mimeType || 'application/pdf', b64: pt.inlineData.data }); });
+        var r = await NovaDeepSeek.chat({ model: o.model, system: o.system, text: o.text || '', images: imgs, json: !!o.json, search: !!o.search, thinking: o.thinking, maxTokens: o.maxOutputTokens ? Math.min(65536, o.maxOutputTokens * 2) : undefined, timeoutMs: Math.min(300, (o.timeoutSec || 180) + 60) * 1000 });
+        if (!r.text) throw new Error('DeepSeek 沒有回傳內容');
+        return { text: r.text, sources: r.sources || [], finishReason: r.finishReason || 'STOP', usage: null };
+    }
     async function callGemini(o) {
+        if (/^deepseek[-:]/.test(String(o && o.model || ''))) return callDeepSeek(o);   // v1.2.0
         if (String(o && o.model || '').indexOf('gpt-') === 0) return callOpenAI(o);
         var key = K('gemini'); if (!key) throw new Error('尚未在設定頁填入 Gemini API Key');
         var model = o.model, gc = { maxOutputTokens: o.maxOutputTokens || 8192 };
@@ -344,6 +360,10 @@
             if (/mini/.test(v)) return mkc('輕量', '輕量低成本｜讀取', ['read'], 1, '128K', '便宜但脈絡短、推理弱，只適合讀取抽取');
             return mkc('均衡', '均衡快速｜規劃・讀取・搜尋', ['plan', 'read', 'search', 'critic'], 2, '', 'OpenAI 均衡模型；Responses web_search 搜尋');
         }
+        if (/^deepseek-/.test(v)) {   // v1.2.0
+            if (/flash/i.test(v)) return mkc('均衡', '快速便宜・看圖｜規劃・讀取・搜尋・撰稿', ['plan', 'read', 'search', 'write', 'critic'], 1, '1M', 'DeepSeek V4.1 Flash：便宜、速度快，支援看圖與聯網工具');
+            return mkc('旗艦', '深度推理｜規劃・撰稿・審稿', ['plan', 'write', 'critic'], 2, '1M', 'DeepSeek V4 Pro：推理強、單價低；圖片與 PDF 改用 DeepSeek OCR，聯網不支援時改用 Flash');
+        }
         if (/^grok-/.test(v)) {
             if (/multi|imagine|code/i.test(v)) return none;
             if (/non-reasoning/.test(v)) return mkc('快速', '快速｜即時情報', ['grok'], 1, '', 'Grok 無推理版，快、適合大量偵察');
@@ -353,8 +373,8 @@
         return none;
     }
     function modelCatalog(onlyKeyed) {
-        var has = { Gemini: !!K('gemini'), OpenAI: !!K('openai'), Grok: !!K('grok') }, out = [];
-        [['gemini', 'Gemini'], ['openai', 'OpenAI'], ['grok', 'Grok']].forEach(function (kp) {
+        var has = { Gemini: !!K('gemini'), OpenAI: !!K('openai'), Grok: !!K('grok'), DeepSeek: !!K('deepseek') }, out = [];
+        [['gemini', 'Gemini'], ['openai', 'OpenAI'], ['deepseek', 'DeepSeek'], ['grok', 'Grok']].forEach(function (kp) {
             if (onlyKeyed && !has[kp[1]]) return;
             (W._novaDrTextModelOptions(kp[0]) || []).forEach(function (o) { out.push({ value: o.value, label: o.label, provider: kp[1], caps: modelCaps(o.value), available: has[kp[1]] }); });
         });
@@ -445,12 +465,12 @@
         // 進階
         var adv = document.createElement('details'); adv.style.cssText = 'border:1px solid var(--nv-line-strong,#334155);border-radius:10px;padding:8px 12px;margin-top:10px;';
         var sm = mk('summary', 'font-size:12px;font-weight:700;cursor:pointer;min-height:32px;line-height:32px;', '🎛 進階：細部指定每個角色的模型與並行搜尋（可不動，預設沿用下方設定）'); adv.appendChild(sm);
-        var mPlanner = optSel(['Gemini', 'OpenAI'], pf.planner, '（跟下方角色設定相同）'), mWriter = optSel(['Gemini', 'OpenAI'], pf.writer, '（跟下方角色設定相同）'), mCritic = optSel(['Gemini', 'OpenAI'], pf.critic, '（跟下方角色設定相同）'), mGrokRev = optSel(['Grok'], pf.grokReview, '（跟下方角色設定相同）');
+        var mPlanner = optSel(['Gemini', 'OpenAI', 'DeepSeek'], pf.planner, '（跟下方角色設定相同）'), mWriter = optSel(['Gemini', 'OpenAI', 'DeepSeek'], pf.writer, '（跟下方角色設定相同）'), mCritic = optSel(['Gemini', 'OpenAI', 'DeepSeek'], pf.critic, '（跟下方角色設定相同）'), mGrokRev = optSel(['Grok'], pf.grokReview, '（跟下方角色設定相同）');
         adv.append(lab('🧭 規劃 Planner'), mPlanner, lab('✍️ 撰稿 Writer', '決定文章品質'), mWriter, lab('🧐 審稿 Critic／查核'), mCritic, lab('⚖️ Grok 交叉審查'), mGrokRev);
-        var grpsOf = function (provs) { return provs.map(function (p) { return { label: p + (p === 'Gemini' ? '（Google 搜尋接地）' : (p === 'OpenAI' ? '（Responses web_search）' : '（網頁＋X 即時搜尋）')), items: by(p).map(function (m) { return { value: m.value, label: m.label, tag: m.caps.tag }; }) }; }); };
+        var grpsOf = function (provs) { return provs.map(function (p) { return { label: p + (p === 'Gemini' ? '（Google 搜尋接地）' : (p === 'OpenAI' ? '（Responses web_search）' : p === 'DeepSeek' ? '（DeepSeek 聯網工具）' : '（網頁＋X 即時搜尋）')), items: by(p).map(function (m) { return { value: m.value, label: m.label, tag: m.caps.tag }; }) }; }); };
         var preset = function (ms, mode) { ms.set(ms.cbs.filter(function (c) { var v = c.value; return mode === 'all' ? true : mode === 'flash' ? (/^gemini-/.test(v) && /flash/i.test(v) && !/lite/i.test(v)) : mode === 'openai' ? (/^gpt-/.test(v) && !/mini/.test(v)) : false; }).map(function (c) { return c.value; })); onAny(); };
         var presetLinks = function (ms, defs) { var w = mk('span', 'margin-left:6px;'); defs.forEach(function (d) { var a = mk('a', 'color:#c4b5fd;margin-right:10px;text-decoration:underline;display:inline-block;min-height:28px;', d[1]); a.href = 'javascript:void(0)'; a.onclick = function () { preset(ms, d[0]); }; w.appendChild(a); }); return w; };
-        var poolReader = msBuild(grpsOf(['Gemini', 'OpenAI']), pf.readerPool, onAny, ctx), poolSearch = msBuild(grpsOf(['Gemini', 'OpenAI']), pf.searcherPool, onAny, ctx), poolGrok = msBuild(grpsOf(['Grok']), pf.grokPool, onAny, ctx);
+        var poolReader = msBuild(grpsOf(['Gemini', 'OpenAI', 'DeepSeek']), pf.readerPool, onAny, ctx), poolSearch = msBuild(grpsOf(['Gemini', 'OpenAI', 'DeepSeek']), pf.searcherPool, onAny, ctx), poolGrok = msBuild(grpsOf(['Grok']), pf.grokPool, onAny, ctx);
         var lr = lab('🔍 讀取抽取池 Reader', '勾多個＝並行，各模型額度獨立、被限流自動改派；不勾＝只用下方「資料研究員」'); lr.appendChild(presetLinks(poolReader, [['flash', 'Flash 全部'], ['openai', 'OpenAI'], ['all', '全選'], ['none', '清除']]));
         var ls = lab('🌐 搜尋接地池 Searcher', 'Gemini 用 Google 搜尋、OpenAI 用 web_search；不勾＝沿用讀取池'); ls.appendChild(presetLinks(poolSearch, [['flash', 'Flash 全部'], ['none', '清除']]));
         var lg = lab('⚔️ Grok 池', '即時情報與偵察並行、輪流派給勾選的模型；不勾＝審查委員的 Grok 或目前使用的 Grok'); lg.appendChild(presetLinks(poolGrok, [['all', '全選'], ['none', '清除']]));
@@ -499,9 +519,10 @@
         var assignBtn = mk('button', 'min-height:40px;', '🤖 AI 模型智能分配'); assignBtn.type = 'button'; assignBtn.className = 'nova-assign-btn'; assignBtn.title = '由 Gemini 3.1 Pro 判斷任務性質，依各模型能力直接改寫下方與「進階」裡的模型設定';
         h3.appendChild(assignBtn); c3.appendChild(h3);
         var assignOut = mk('div'); assignOut.className = 'nova-assign-result'; assignOut.style.display = 'none'; c3.appendChild(assignOut);
-        var defGem = (function () { var o = by('Gemini'); var cur = (W.appState && appState.geminiModel) || ''; if (o.some(function (m) { return m.value === cur; })) return cur; var fl = o.filter(function (m) { return /flash/i.test(m.value) && !/lite/i.test(m.value); })[0]; return (fl || o[0] || {}).value || ''; })();
+        var defGem = (function () { if (W.appState && appState.currentModel === 'deepseek' && K('deepseek')) { var dsm = W._novaMigrateDeepseekId(appState.deepseekModel || 'deepseek-v4-pro'); if (by('DeepSeek').some(function (m) { return m.value === dsm; })) return dsm; }   // v1.2.0：主模型選 DeepSeek 時預設帶 DeepSeek
+            var o = by('Gemini'); var cur = (W.appState && appState.geminiModel) || ''; if (o.some(function (m) { return m.value === cur; })) return cur; var fl = o.filter(function (m) { return /flash/i.test(m.value) && !/lite/i.test(m.value); })[0]; return (fl || o[0] || {}).value || ''; })();
         var roleSel = function (provs, saved, fallback) { var s = optSel(provs, saved || fallback, '（自動選擇）'); if (!s.value && fallback) s.value = fallback; return s; };
-        var orch = roleSel(['Gemini', 'OpenAI'], pf.orchestrator, defGem), resr = roleSel(['Gemini', 'OpenAI'], pf.researcher, defGem), verf = roleSel(['Gemini', 'OpenAI', 'Grok'], pf.verifier, '');
+        var orch = roleSel(['Gemini', 'OpenAI', 'DeepSeek'], pf.orchestrator, defGem), resr = roleSel(['Gemini', 'OpenAI', 'DeepSeek'], pf.researcher, defGem), verf = roleSel(['Gemini', 'OpenAI', 'DeepSeek', 'Grok'], pf.verifier, '');
         c3.append(lab('🧠 專案經理 & 總編輯'), orch, lab('🔍 資料研究員'), resr, lab('⚖️ 邏輯審查委員'), verf);
 
         // 估算
@@ -527,7 +548,7 @@
             var system = '你是 AI 模型調度專家。依「研究任務的性質」把可用模型分派到各角色，只輸出一個 JSON 物件，不要任何說明文字或 Markdown。';
             var text = [
                 '【研究任務】' + (tp || '（只有上傳檔案）') + (fileNames.length ? '\n【參考檔案】' + fileNames.slice(0, 8).join('、') : ''),
-                '【引擎】Pro 深度研究引擎（多輪爬取＋反思＋分章長文）；專案經理/研究員只能選 Gemini 或 OpenAI 模型；報告深度：' + depth.value,
+                '【引擎】Pro 深度研究引擎（多輪爬取＋反思＋分章長文）；專案經理/研究員只能選 Gemini、OpenAI 或 DeepSeek 模型；報告深度：' + depth.value,
                 '【可用模型（只能從這些 value 挑，已排除沒有金鑰的供應商）】',
                 gp.concat(gkm).map(line).join('\n'),
                 '【角色說明】orchestrator＝專案經理＆總編輯（規劃／撰寫，決定文章品質）；researcher＝資料研究員（逐頁讀取抽事實，用量最大）；verifier＝邏輯審查委員（若選 Grok 則作為即時情報與交叉審查的 Grok 版本）。planner 規劃、writer 撰稿、critic 審稿（皆從 Gemini/OpenAI 選，留空字串＝沿用 orchestrator）；readerPool 讀取池／searcherPool 搜尋接地池（Gemini/OpenAI，可多選並行，各模型額度獨立，讀取量大請用便宜快速的 2~4 個）；grokPool 與 grokReview 只能是 Grok；strategy 為 chain|parallel|max；useGrok 布林。',

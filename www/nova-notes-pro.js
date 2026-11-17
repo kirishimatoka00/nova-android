@@ -1,4 +1,4 @@
-/* nova-notes-pro.js — v1.2.0 (2026-10-26)
+/* nova-notes-pro.js — v1.3.0 (2026-11-18)
  * 手機版筆記本對標桌面版：富文本編輯器（字體大小/文字色/螢光筆/表格儲存格色/框線色/字型統一）、
  * 標籤、雙向連結、AI 建議相關筆記（向量相似度）、貼圖 OCR（文字/表格，可選 Gemini/Grok 模型）、
  * 筆記關聯圖譜、標籤篩選、單篇/跨筆記 AI 分析模式（含 ###TAGS###/###RELATED### 解析）。
@@ -6,6 +6,8 @@
  * 載入位置：index.html 主腳本之後（同名函式以本檔為準）。
  *
  * 版本紀錄
+ *   v1.3.0 2026-11-18  App v2.6.151：筆記貼圖辨識加 DeepSeek（對標桌面 nova-app-main.js v1.24.0 ⑤）：deepseek-ocr＝DeepSeek OCR 專用介面（版面＋表格，
+ *                      按頁計費最便宜；HTML 表格自動轉 markdown，新增 _novaHtmlTablesToMd）、deepseek-flash＝V4.1 Flash 看圖（用同一段辨識提示詞）。選單在 index.html。
  *   v1.2.0 2026-10-26  App v2.6.99：筆記卡片對齊桌面 v3.80.8–13——匯出按鈕改 Word(.docx)／Markdown／HTML；按鈕只留圖示、合併同一排貼卡片底、預覽區吃剩餘空間（樣式與 _novaIconifyButtons 在 index.html）
  *   v1.1.1 2026-10-17  3D 函式庫載入網址升為 ?v=2（配合大腦圖譜移植；函式庫多開放 THREE 元件，介面不變）
  *   v1.1.0 2026-10-11  筆記 3D 圖譜：函式庫改本地打包（vendor/nova-graph3d.js，單一 three 實例，不需網路）、明確指定尺寸＋ResizeObserver、無 WebGL 或建立失敗改 2D 備援、顯示筆記／連結數；修正移植時漏宣告 _novaGraphInstance 造成的 ReferenceError（手機上整片空白的真正原因）
@@ -1072,11 +1074,42 @@
         // （沒有設定對應 API Key、網路/API 錯誤……），這兩種情況呼叫端
         // 都應該視同「這張圖片沒有可用的文字/表格內容」處理，error 只
         // 在真的發生錯誤時才有值，方便呼叫端要不要另外告知使用者。
+        // v1.3.0（App v2.6.151，對標桌面 nova-app-main.js v1.24.0 ⑤）：DeepSeek OCR 可能用 HTML 表格回傳 → 轉成 markdown 表格，讓下面的表格判斷照常運作
+        function _novaHtmlTablesToMd(text) {
+            return String(text || '').replace(/<table[\s\S]*?<\/table>/gi, function (tbl) {
+                try {
+                    const d = document.createElement('div'); d.innerHTML = tbl;
+                    const rows = Array.from(d.querySelectorAll('tr')).map(function (tr) { return Array.from(tr.querySelectorAll('th,td')).map(function (c) { return c.textContent.replace(/\s+/g, ' ').replace(/\|/g, '／').trim(); }); });
+                    if (!rows.length) return '';
+                    const w = Math.max.apply(null, rows.map(function (r) { return r.length; }));
+                    const line = function (r) { const x = r.slice(); while (x.length < w) x.push(''); return '| ' + x.join(' | ') + ' |'; };
+                    return '\n' + [line(rows[0]), '| ' + new Array(w).fill('---').join(' | ') + ' |'].concat(rows.slice(1).map(line)).join('\n') + '\n';
+                } catch (e) { return tbl.replace(/<[^>]+>/g, ' '); }
+            });
+        }
+        window._novaHtmlTablesToMd = _novaHtmlTablesToMd;
         async function _novaOcrRecognizeImage(dataUrl) {
             try {
                 const ocrModel = (typeof novaResolveSaved === 'function' ? novaResolveSaved : function (x) { return x; })(localStorage.getItem('nova_note_ocr_model') || NOVA_GEMINI_MODEL_DEFAULT);   // v3.60.0
                 const isGrok = ocrModel.indexOf('grok-') === 0;
                 const base64Data = dataUrl.split(',')[1] || '';
+                // v1.3.0：DeepSeek——deepseek-ocr＝DeepSeek OCR 專用介面（版面＋表格辨識，按頁計費、最便宜）；deepseek-flash＝V4.1 Flash 看圖
+                if (/^deepseek-/.test(ocrModel)) {
+                    if (!window.NovaDeepSeek || !window.NovaDeepSeek.key()) return { recognized: false, isTable: false, markdown: '', error: '尚未設定 DeepSeek API Key' };
+                    const mm = dataUrl.match(/^data:([^;]+);/);
+                    let dsText = '';
+                    if (ocrModel === 'deepseek-ocr') {
+                        const r = await window.NovaDeepSeek.ocr({ name: 'note-image.' + ((mm && mm[1].split('/')[1]) || 'png'), mime: (mm && mm[1]) || 'image/png', data: dataUrl, category: 'image' }, 'rich_layout_recognition');
+                        dsText = String(r.text || '').replace(/（這一頁的辨識結果可能不完整）/g, '').trim();
+                        if (/<table[\s>]/i.test(dsText)) dsText = _novaHtmlTablesToMd(dsText);
+                        if (!dsText.replace(/\s+/g, '')) dsText = 'NO_TEXT_DETECTED';
+                    } else {
+                        const r = await window.NovaDeepSeek.chat({ model: 'deepseek-flash', text: NOVA_NOTE_OCR_PROMPT, images: [{ data: dataUrl, mime: (mm && mm[1]) || 'image/png', name: '筆記圖片' }], thinking: 'none', timeoutMs: 120000 });
+                        dsText = String(r.text || '').trim();
+                    }
+                    if (!dsText || /^NO_TEXT_DETECTED/i.test(dsText)) return { recognized: false, isTable: false, markdown: '', error: null };
+                    return { recognized: true, isTable: !!_novaMdTableToHtml(dsText), markdown: dsText, error: null };
+                }
                 const mimeMatch = dataUrl.match(/^data:([^;]+);/);
                 const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
 

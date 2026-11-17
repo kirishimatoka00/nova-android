@@ -1,7 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════════════
    nova-experts-glue.js — NOVA Android 多專家協作／多專家會議／並行作業的「接線層」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.7.2
+   版本：v1.8.0
    版本紀錄：
+   v1.8.0 - App v2.6.151（對標桌面 nova-app-main.js v1.24.0 ④「專家模式」）：專家／各階段的模型下拉多 DeepSeek（V4 Pro／V4.1 Flash）；主模型選 DeepSeek 且有金鑰時，
+            預設模型跟著用 DeepSeek；callModel 的 DeepSeek 分支走 NovaDeepSeek.chat，專家勾選「網路搜尋」時用 DeepSeek 的聯網工具並帶回來源。
    v1.7.2 - App v2.6.130（搭配 nova-jev.js Android v1.7.0）：智慧分派在快速判斷沒把握、改由 AI 判斷時，把 AI 的結果記成那筆快速判斷的標註（NovaJev.label）。
    v1.7.1 - App v2.6.129。多 Bot 的 deps 多一個 memPropose：Bot 記到團隊記憶的事同時變成「記憶提案」（NovaMemory.propose，nova-memory.js v1.6.0），
             使用者在設定頁的記憶分頁同意後才進主記憶。記憶核心沒載入時不做任何事。
@@ -76,9 +78,11 @@ window.NovaExpertsGlue = (function () {
     // ── 模型解析 ──
     // ★ v3.54.0：主選單選的是 OpenAI 且有 OpenAI 金鑰時，「跟隨預設模型」就跟著用 OpenAI 子模型；其餘行為不變（Gemini）。
     function hasOpenAiKey() { return !!(appState.keys.openai || localStorage.getItem('nova_key_openai')); }
-    function hasLlmKey() { return !!(appState.keys.gemini || localStorage.getItem('nova_key_gemini') || hasOpenAiKey()); }
+    function hasDsKey() { return !!(appState.keys.deepseek || localStorage.getItem('nova_key_deepseek')); }   // v1.8.0
+    function hasLlmKey() { return !!(appState.keys.gemini || localStorage.getItem('nova_key_gemini') || hasOpenAiKey() || hasDsKey()); }
     function defaultModel() {
         if (appState.currentModel === 'gpt' && hasOpenAiKey()) return _novaDrResolveGptModel(appState.gptModel);
+        if (appState.currentModel === 'deepseek' && hasDsKey()) return window._novaMigrateDeepseekId(appState.deepseekModel || 'deepseek-v4-pro');   // v1.8.0
         return _novaDrResolveGeminiModel(appState.geminiModel, 'gemini-3.6-flash');
     }
     function resolveModel(name) {
@@ -86,6 +90,7 @@ window.NovaExpertsGlue = (function () {
         if (!n) return defaultModel();
         if (n.indexOf('grok-') === 0) return _novaDrResolveGrokModel(n);
         if (n.indexOf('gpt-') === 0) return _novaDrResolveGptModel(n);
+        if (/^deepseek[-:]/.test(n)) return window._novaMigrateDeepseekId(n.replace(/^deepseek:/, ''));   // v1.8.0
         return _novaDrResolveGeminiModel(n, defaultModel());
     }
 
@@ -170,6 +175,11 @@ window.NovaExpertsGlue = (function () {
         return { text: msg.content || '', sources: [] };
     }
     async function callModel(o) {
+        if (/^deepseek[-:]/.test(String(o.model))) {   // v1.8.0：DeepSeek（勾了網路搜尋就用 DeepSeek 的聯網工具）
+            if (!hasDsKey()) throw new Error('尚未設定 DeepSeek API Key（此專家／階段選了 DeepSeek 模型）');
+            const r = await NovaDeepSeek.chat({ model: o.model, system: o.system, text: o.text, search: !!o.search, timeoutMs: 180000 });
+            return { text: r.text, sources: (r.sources || []).map(function (x) { return { title: x.title || '', uri: x.uri || '' }; }) };
+        }
         if (String(o.model).indexOf('gpt-') === 0) return await callGpt(o);
         if (String(o.model).indexOf('grok-') === 0) {
             if (!appState.keys.grok) throw new Error('尚未設定 Grok API Key（此專家／階段選了 Grok 模型）');
@@ -307,6 +317,7 @@ window.NovaExpertsGlue = (function () {
         g.forEach(function (o) { sel.appendChild(new Option(o.label, o.value)); });
         k.forEach(function (o) { sel.appendChild(new Option(o.label, o.value)); });
         gp.forEach(function (o) { sel.appendChild(new Option('OpenAI ' + o.label, o.value)); });
+        _novaDrTextModelOptions('deepseek').forEach(function (o) { sel.appendChild(new Option(/deepseek/i.test(o.label) ? o.label : 'DeepSeek ' + o.label, o.value)); });   // v1.8.0
         sel.value = Array.from(sel.options).some(function (o) { return o.value === value; }) ? value : '';
         return sel;
     }

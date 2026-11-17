@@ -2,11 +2,16 @@
   ════════════════════════════════════════════════════════════════
   nova-deepseek.js — NOVA Android：DeepSeek 進階能力（聯網搜尋、讀網頁、OCR、文件解析、語音識別 ASR）
   ════════════════════════════════════════════════════════════════
-  目前版本：v1.0.0（Android）
-  最後更新：2026-11-17（App v2.6.147）
-  對標桌面 nova-deepseek.js v1.0.0（nova-desktop/src，2026-11-16）；函式介面相同，差異只在傳輸與設定介面。
+  目前版本：v1.1.0（Android）
+  最後更新：2026-11-18（App v2.6.151）
+  對標桌面 nova-deepseek.js v1.1.0（nova-desktop/src，2026-11-17）；函式介面相同，差異只在傳輸與設定介面。
 
   版本紀錄（只記這個檔案自己的變更）：
+  v1.1.0 - App v2.6.151（使用者要求：DeepSeek 導入各功能）：新增 NovaDeepSeek.chat()，程式照搬桌面 v1.1.0——各功能「指定模型」時共用的 DeepSeek 對話呼叫
+           （nova-llm.js v1.1.0 的 _novaCallModel、專家模式、深度研究、筆記辨識、Insight 都走這裡）。參數 {model, system, text|messages, images, json, search,
+           thinking, tools, maxTokens, timeoutMs}：模型名稱接受 deepseek-v4-pro／deepseek-flash（也接受 deepseek: 前綴）；PDF 一律 OCR、圖片在 V4.1 Flash 直接看圖、
+           在 V4 Pro 改用 OCR；json → json_object（提示詞沒有 json 字樣自動補一句）；search → 聯網工具自動嘗試；thinking（none／low／medium／high／max 或 false）；
+           帶函式工具時關閉思考。回傳 {text, sources, usage, model, toolCalls, finishReason, notes}。另外對外多 normModel、call、readJson、setPref。
   v1.0.0 - App v2.6.147 新增（使用者要求：參考 nova-desktop 的更新，把五項 DeepSeek 功能都接進 nova-android）。搭配 nova-app-main.js v1.5.6。
            ①② 聯網搜尋＋讀網頁：對話時宣告 DeepSeek 內建工具 deepseek_web_search／deepseek_read_url（伺服器端執行）；
               message.annotations（url_citation）與 message.server_tool_calls 轉成 NOVA 的來源清單。工具宣告格式官方沒寫死，
@@ -238,6 +243,94 @@
     }
 
 
+    function normModel(m) { m = String(m || '').replace(/^deepseek:/, ''); return /^deepseek-/.test(m) ? m : 'deepseek-v4-pro'; }
+    function isFlash(m) { return /flash/i.test(String(m || '')); }
+    function thinkingOf(t) {
+        if (t === false) return { thinking: { type: 'disabled' } };
+        var v = String(t == null ? '' : t).toLowerCase();
+        if (v === 'none' || v === 'off' || v === 'minimal' || v === 'disabled') return { thinking: { type: 'disabled' } };
+        var out = { thinking: { type: 'enabled' } };
+        if (v === 'low') out.reasoning_effort = 'low';
+        else if (v === 'max' || v === 'xhigh') out.reasoning_effort = 'max';
+        else if (v === 'medium' || v === 'high') out.reasoning_effort = 'high';
+        return out;
+    }
+    function imgData(im) {
+        if (!im) return null;
+        if (im.data && /^data:/.test(String(im.data))) return { data: String(im.data), mime: im.mime || (/^data:([^;,]+)/.exec(im.data) || [])[1] || 'image/png', name: im.name || '附件' };
+        if (im.b64) { var mime = im.mime || 'image/png'; return { data: 'data:' + mime + ';base64,' + im.b64, mime: mime, name: im.name || '附件' }; }
+        return null;
+    }
+    async function chat(o) {
+        o = o || {};
+        if (!key()) throw new Error('尚未設定 DeepSeek API Key（設定 → AI 模型金鑰）');
+        var model = normModel(o.model), notes = [];
+        var msgs = Array.isArray(o.messages) && o.messages.length ? o.messages.map(function (m) { return { role: m.role, content: m.content }; }) : [];
+        if (!msgs.length) {
+            if (o.system) msgs.push({ role: 'system', content: String(o.system) });
+            msgs.push({ role: 'user', content: String(o.text || '') });
+        } else if (o.system && msgs[0].role !== 'system') msgs.unshift({ role: 'system', content: String(o.system) });
+        // 附件：PDF 一律 OCR；圖片 → Flash 直接看圖，Pro 改用 OCR 轉文字
+        var atts = (o.images || []).map(imgData).filter(Boolean);
+        if (atts.length) {
+            var last = msgs[msgs.length - 1];
+            if (!last || last.role !== 'user') { last = { role: 'user', content: '' }; msgs.push(last); }
+            var baseText = typeof last.content === 'string' ? last.content : '';
+            var ocrTexts = [], visual = [];
+            for (var i = 0; i < atts.length; i++) {
+                var a = atts[i];
+                var isImg = /^image\//i.test(a.mime);
+                if (isImg && isFlash(model)) { visual.push(a); continue; }
+                try {
+                    var r = await ocr({ name: a.name + (isImg ? '' : (/pdf/i.test(a.mime) ? '.pdf' : '')), mime: a.mime, data: a.data, category: isImg ? 'image' : 'document' }, 'text_recognition');
+                    ocrTexts.push('【附件「' + a.name + '」的文字（DeepSeek OCR）】\n' + r.text);
+                } catch (e) { notes.push('附件「' + a.name + '」辨識失敗：' + String(e && e.message || e).slice(0, 120)); }
+            }
+            var t = baseText + (ocrTexts.length ? '\n\n' + ocrTexts.join('\n\n') : '');
+            last.content = visual.length ? [{ type: 'text', text: t }].concat(visual.map(function (v) { return { type: 'image_url', image_url: { url: v.data } }; })) : t;
+        }
+        var th = thinkingOf(o.tools && o.tools.length ? false : o.thinking);   // 帶函式工具時關閉思考（相容性較好）
+        var mk = function (m, tools) {
+            var b = { model: m, messages: msgs, stream: false };
+            Object.keys(th).forEach(function (k) { b[k] = th[k]; });
+            if (o.json && !tools) b.response_format = { type: 'json_object' };
+            if (o.maxTokens) b.max_tokens = o.maxTokens;
+            if (tools) b.tools = tools;
+            return b;
+        };
+        if (o.json) {   // 官方：json_object 模式提示詞裡要出現「json」字樣
+            var all = msgs.map(function (m) { return typeof m.content === 'string' ? m.content : ''; }).join(' ');
+            if (!/json/i.test(all)) { var lu = msgs[msgs.length - 1]; if (typeof lu.content === 'string') lu.content += '\n\n請只輸出 JSON。'; }
+        }
+        var ms = o.timeoutMs || 180000;
+        var post = async function (body, mdl) {
+            var res = await call('/chat/completions', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body) }, ms);
+            return readJson(res, 'DeepSeek（' + mdl + '）');
+        };
+        var data = null, usedWeb = false, fnTools = (o.tools && o.tools.length) ? o.tools : null;
+        if (o.search && !fnTools && webOn()) {
+            var plans = webPlan(model);
+            for (var k = 0; k < plans.length; k++) {
+                try {
+                    data = await post(mk(plans[k].model, plans[k].tools), plans[k].model);
+                    rememberWeb(plans[k].model, plans[k].vid); usedWeb = true;
+                    if (plans[k].model !== model) notes.push('V4 Pro 不支援聯網工具，這次改用 V4.1 Flash 搜尋');
+                    model = plans[k].model;
+                    break;
+                } catch (e) {
+                    if (!(e && e.status >= 400 && e.status < 500 && e.status !== 401 && e.status !== 402 && e.status !== 429)) throw e;
+                }
+            }
+            if (!data) notes.push('DeepSeek 聯網工具沒有啟用成功，改為不搜尋');
+        }
+        if (!data) data = await post(mk(model, fnTools), model);
+        var ch = (data.choices && data.choices[0]) || {}, msg = ch.message || {};
+        return {
+            text: String(msg.content || ''), sources: usedWeb ? webSources(msg) : [], usage: data.usage || null, model: model,
+            toolCalls: msg.tool_calls || [], finishReason: ch.finish_reason === 'length' ? 'MAX_TOKENS' : 'STOP', raw: data, notes: notes
+        };
+    }
+
     // ── 設定卡片（設定 → DeepSeek API Key 下方）──
     function sw(k, on) {
         return '<button type="button" data-ds="' + k + '" role="switch" aria-checked="' + (on ? 'true' : 'false') + '" style="width:44px;height:24px;border-radius:9999px;position:relative;flex:none;border:0;transition:background .15s;background:' + (on ? '#0ea5e9' : '#475569') + '">' +
@@ -276,7 +369,9 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountCard); else mountCard();
 
     window.NovaDeepSeek = {
-        version: '1.0.0',
+        chat: chat, normModel: normModel, call: call, readJson: readJson, isFlash: isFlash,
+        setPref: function (k, v) { try { localStorage.setItem(k, String(v)); } catch (e) { /* */ } },
+        version: '1.1.0',
         key: key, webOn: webOn, docsOn: docsOn, transcribeEngine: transcribeEngine,
         call: call, readJson: readJson, kindOf: kindOf,
         ocr: ocr, uploadFile: uploadFile, askWithFiles: askWithFiles,

@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <!--
-  ═══ presentation_generator v44（Android；2026-11-15，App v2.6.134）═══
+  ═══ presentation_generator v45（Android；2026-11-18，App v2.6.151）═══
+  v45：DeepSeek 導入簡報生成（對標桌面 v56）：首選文字模型、排版 LLM 加 DeepSeek V4 Pro／V4.1 Flash，審查模型加 V4.1 Flash（看圖；V4 Pro 不能看圖所以不列）。
+       金鑰讀共用的 nova_key_deepseek。新增 isDeepSeekModel()／callDeepSeekText()（手機沒有 sidecar，直連 api.deepseek.com）；大綱要求 JSON 時用 json_object。
+       大綱／HTML 生成／排版／callTextLLM／審查與開始前的金鑰檢查都加了 DeepSeek 分支；選 DeepSeek 失敗時跟 Grok／OpenAI 一樣自動降級到 Gemini。
   v44：在 Tailwind 前面載入 nova-interactions.js v1.0.0（本頁的 Gemini generateContent 呼叫自動改走 Interactions API；生圖照舊走 generateContent）。本檔其餘不變。
   v43：nova-subpage-light.css 連結改 ?v=1.1.0（B 案配色，對標桌面 v54～v55：白晝冷色藍灰＋單一鈷藍強調色，「開始生成」等漸層鈕白晝改鈷藍實心；黑夜藍灰底、灰字提亮）。本檔其餘不變。
   v42：模型清單新增 gemini-4-hydrogen（Gemini 4 Hydrogen）與 gemini-4-carbon（Gemini 4 Carbon），放在 4 Argon 前面（四個文字模型下拉都有）。
@@ -225,6 +228,10 @@
                                 <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
                                 <option value="gpt-4o-mini">GPT-4o mini</option>
                             </optgroup>
+                            <optgroup label="── DeepSeek 文字模型 ──">
+                                <option value="deepseek-v4-pro">DeepSeek V4 Pro（低成本推理）</option>
+                                <option value="deepseek-flash">DeepSeek V4.1 Flash</option>
+                            </optgroup>
                         </select>
                     </div>
 
@@ -269,6 +276,8 @@
                             <option value="grok-4.7">Grok 4.7</option>
                             <option value="gpt-6-luna">GPT-6 Luna</option>
                             <option value="gpt-6.1-sol">GPT-6.1 Sol</option>
+                            <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+                            <option value="deepseek-flash">DeepSeek V4.1 Flash</option>
                         </select>
                         <p class="text-[9px] text-slate-600 mt-1 leading-relaxed">文字模型→大綱內容；背景圖 LLM→視覺背景；排版 LLM→文字合成輸出</p>
                     </div>
@@ -483,6 +492,7 @@
                                     <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
                                     <option value="gpt-6-luna">GPT-6 Luna（支援看圖）</option>
                                     <option value="gpt-6.1-sol">GPT-6.1 Sol（支援看圖）</option>
+                                    <option value="deepseek-flash">DeepSeek V4.1 Flash（支援看圖）</option>
                                 </select>
                             </div>
                             <div>
@@ -825,6 +835,7 @@ function _loadKeysFromStorage() {
     AppState.googleApiKey = (ws && ws.gemini)   || localStorage.getItem('nova_key_gemini')  || '';
     AppState.xaiApiKey    = (ws && ws.grok)     || localStorage.getItem('nova_key_grok')    || '';
     AppState.openaiApiKey = (ws && ws.openai)   || localStorage.getItem('nova_key_openai')  || '';   // v38
+    AppState.deepseekApiKey = (ws && ws.deepseek) || localStorage.getItem('nova_key_deepseek') || '';   // v45
     AppState.serpApiKey   = (ws && ws.serpapi)  || localStorage.getItem('nova_key_serpapi') || '';
     AppState.gasUrl       = localStorage.getItem('nova_key_gas') || '';
 
@@ -1199,7 +1210,9 @@ Output complete HTML starting with <!DOCTYPE html>:`;
 
     // Route to Grok or Gemini based on model name
     let html = '';
-    if (isGptModel(layoutModel)) {
+    if (isDeepSeekModel(layoutModel)) {
+        html = await callDeepSeekText(layoutModel, sysPrompt, userPrompt, signal);   // v45
+    } else if (isGptModel(layoutModel)) {
         html = await callOpenAIText(layoutModel, sysPrompt, userPrompt, signal);   // v38
     } else if (isGrokModel(layoutModel)) {
         const xaiKey = AppState.xaiApiKey;
@@ -1901,6 +1914,38 @@ function isGptModel(modelName) {
     return !!modelName && String(modelName).toLowerCase().startsWith('gpt-');
 }
 // v38：OpenAI chat completions。只送 model＋messages，不送 temperature／max_tokens（新世代模型可能拒收舊參數）。
+// v45：DeepSeek（deepseek- 開頭；官方 OpenAI 相容 API，對標桌面 v56）。手機沒有 sidecar：直連 api.deepseek.com（App 內 fetch 走原生請求，沒有 CORS 問題）。
+//   json:true → response_format json_object（提示詞沒有 json 字樣時自動補一句）。V4 Pro 不能看圖（審查只列 V4.1 Flash）。
+function isDeepSeekModel(modelName) {
+    return !!modelName && /^deepseek[-:]/i.test(String(modelName));
+}
+async function callDeepSeekText(modelId, systemPrompt, userContent, signal, opts) {
+    opts = opts || {};
+    const key = AppState.deepseekApiKey || localStorage.getItem('nova_key_deepseek') || '';
+    if (!key) throw new Error('DeepSeek API Key 未設定，請在主程式設定頁填入');
+    const model = String(modelId).replace(/^deepseek:/i, '');
+    const messages = [];
+    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+    messages.push({ role: 'user', content: userContent });
+    const body = { model, messages, stream: false };
+    if (opts.json) {
+        body.response_format = { type: 'json_object' };
+        const all = (systemPrompt || '') + ' ' + (typeof userContent === 'string' ? userContent : '');
+        if (!/json/i.test(all) && typeof messages[messages.length - 1].content === 'string') messages[messages.length - 1].content += '\n\n請只輸出 JSON。';
+    }
+    if (opts.noThinking) body.thinking = { type: 'disabled' };
+    const resp = await fetch('https://api.deepseek.com/chat/completions', { method: 'POST', headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+    if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        let detail = errText.slice(0, 200);
+        try { detail = JSON.parse(errText).error.message || detail; } catch (e) {}
+        throw new Error(`DeepSeek API HTTP ${resp.status}（模型：${model}）: ${detail}`);
+    }
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('DeepSeek 回傳內容為空');
+    return text;
+}
 async function callOpenAIText(modelId, systemPrompt, userContent, signal) {
     const key = AppState.openaiApiKey;
     if (!key) throw new Error('OpenAI API Key 未設定，請在主程式設定頁填入');
@@ -2217,7 +2262,7 @@ async function callGeminiForOutline(topic, context) {
     const imageMode = document.getElementById('sel-image-mode').value;
 
     const GEMINI_FALLBACKS = ['gemini-3.1-pro-preview', 'gemini-3.6-flash', 'gemini-3-flash-preview'];
-    const MODEL_QUEUE = (isGrokModel(userModel) || isGptModel(userModel))
+    const MODEL_QUEUE = (isGrokModel(userModel) || isGptModel(userModel) || isDeepSeekModel(userModel))   // v45
         ? [userModel, ...GEMINI_FALLBACKS]
         : [userModel, 'gemini-3.1-pro-preview', 'gemini-3.6-flash', 'grok-4.3'];   // v38：原 grok-4-1-fast-reasoning 已退役
     const uniqueModels = [...new Set(MODEL_QUEUE)];
@@ -2302,6 +2347,9 @@ ${topic}
             if (isGrokModel(modelId)) {
                 if (!AppState.xaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 Grok Key`, 'warning'); continue; }
                 raw = await callGrokText(modelId, systemPrompt, userContent, AppState.abortController.signal);
+            } else if (isDeepSeekModel(modelId)) {   // v45
+                if (!AppState.deepseekApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 DeepSeek Key`, 'warning'); continue; }
+                raw = await callDeepSeekText(modelId, systemPrompt, userContent, AppState.abortController.signal, { json: true });
             } else if (isGptModel(modelId)) {
                 if (!AppState.openaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 OpenAI Key`, 'warning'); continue; }
                 raw = await callOpenAIText(modelId, systemPrompt, userContent, AppState.abortController.signal);   // v38
@@ -3064,6 +3112,10 @@ I. 只輸出純 HTML，不含任何 markdown 標記。
                 addLog(`🎨 HTML 生成：呼叫 ${modelId} (Grok)...`, 'ai');
                 const sysPrompt = '你是世界最頂級的 HTML/SVG 互動式投影片設計師。請嚴格按照使用者指令生成完整 HTML。';
                 html = await callGrokText(modelId, sysPrompt, prompt, AppState.abortController.signal);
+            } else if (isDeepSeekModel(modelId)) {   // v45
+                if (!AppState.deepseekApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 DeepSeek Key`, 'warning'); continue; }
+                addLog(`🎨 HTML 生成：呼叫 ${modelId} (DeepSeek)...`, 'ai');
+                html = await callDeepSeekText(modelId, '你是世界最頂級的 HTML/SVG 互動式投影片設計師。請嚴格按照使用者指令生成完整 HTML。', prompt, AppState.abortController.signal);
             } else if (isGptModel(modelId)) {
                 if (!AppState.openaiApiKey) { addLog(`⚠ 跳過 ${modelId}：未設定 OpenAI Key`, 'warning'); continue; }
                 addLog(`🎨 HTML 生成：呼叫 ${modelId} (OpenAI)...`, 'ai');
@@ -5708,7 +5760,15 @@ async function reviewSlideWithLLM(screenshotB64, slideData, reviewModel, slideHt
 pass=true 條件：score ≥ 85 且沒有 contrast/overlap/image_error 問題。`;
 
     try {
-        if (isGptModel(reviewModel) && AppState.openaiApiKey) {
+        if (isDeepSeekModel(reviewModel) && AppState.deepseekApiKey) {
+            // v45：DeepSeek V4.1 Flash 看圖審查（V4 Pro 不能看圖，選單只列 Flash）
+            const raw = await callDeepSeekText(reviewModel.replace(/v4-pro/i, 'flash'), '', [
+                { type: 'image_url', image_url: { url: screenshotB64 } },
+                { type: 'text', text: reviewPrompt }
+            ], AbortSignal.timeout(90000), { json: true, noThinking: true });
+            const m = String(raw || '').match(/\{[\s\S]*\}/);
+            return JSON.parse(m ? m[0] : '{}');
+        } else if (isGptModel(reviewModel) && AppState.openaiApiKey) {
             // v38：OpenAI vision（官方：gpt-6-luna 支援圖片輸入）。只送 model＋messages。
             const resp = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -6355,12 +6415,14 @@ async function startGeneration() {
 
     const selectedModel = document.getElementById('sel-text-model').value;
     const needsGpt    = isGptModel(selectedModel);
-    const needsGemini = !isGrokModel(selectedModel) && !needsGpt;
+    const needsDs     = isDeepSeekModel(selectedModel);   // v45
+    const needsGemini = !isGrokModel(selectedModel) && !needsGpt && !needsDs;
     const needsGrok   = isGrokModel(selectedModel);
 
     if (needsGemini && !AppState.googleApiKey) { showToast('❌ 請設定 Gemini API Key'); return; }
     if (needsGrok   && !AppState.xaiApiKey)    { showToast('❌ 請設定 Grok API Key'); return; }
     if (needsGpt    && !AppState.openaiApiKey) { showToast('❌ 請設定 OpenAI API Key'); return; }   // v38
+    if (needsDs     && !AppState.deepseekApiKey) { showToast('❌ 請設定 DeepSeek API Key'); return; }   // v45
     const topic = document.getElementById('inp-topic').value.trim();
     if (!topic) { showToast('❌ 請輸入主題'); return; }
 
@@ -6619,6 +6681,7 @@ function switchEditTab(tab) {
 async function callTextLLM(prompt, maxTokens) {
     maxTokens = maxTokens || 8192;
     const model  = (document.getElementById('sel-text-model') || {}).value || 'gemini-3.6-flash';
+    if (isDeepSeekModel(model)) return await callDeepSeekText(model, '', prompt, undefined);   // v45
     if (isGptModel(model)) return await callOpenAIText(model, '', prompt, undefined);   // v38
     const isGrok = model.startsWith('grok');
     const apiKey = isGrok ? AppState.xaiApiKey : AppState.googleApiKey;

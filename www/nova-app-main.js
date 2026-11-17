@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.9
+   目前版本：v1.5.10
    最後更新：2026-11-18
 
    版本紀錄：
+   v1.5.10 - App v2.6.151：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（DeepSeek 導入各功能，對標桌面 nova-app-main.js v1.24.0；改動在 nova-deepseek.js v1.1.0〔NovaDeepSeek.chat〕、
+             nova-llm.js v1.1.0、nova-lean-llm.js v1.1.0、nova-experts-glue.js v1.8.0、nova-dr-glue.js v1.2.0、nova-notes-pro.js v1.3.0、presentation_generator.html v45）；本檔程式沒有其他改動。
    v1.5.9 - App v2.6.150：draw.io 對話圖卡＋Mermaid＋雲端同步（對標桌面 nova-app-main.js v1.23.0／v1.26.0／v1.27.0；搭配 nova-drawio.js v1.1.0、nova-google.js v1.8.0）：
             ① formatMessage：```drawio／```draw.io／```mxgraph 與 ```mermaid（內容是 Mermaid 時）區塊換成圖卡佔位符 <div class="nova-drawio-card" data-enc data-msg>
                （原本 ```mermaid 會被畫成一行壞掉的行內程式碼）；renderMessages 呼叫 formatMessage 前記下目前訊息（window._novaFmtMsg），讓圖卡知道是不是剛產生的 AI 回覆。
@@ -122,10 +124,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.150';
+        const NOVA_APP_VERSION = '2.6.151';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.151', date: '2026-11-18', notes: [
+                'DeepSeek 導入各功能：主模型選 DeepSeek 時，Project Insight、NovaResearch、專案視窗、AI 思考等背景整理改用 DeepSeek；多專家協作、Pro 深度研究（規劃／撰稿／審稿／讀取池／搜尋池）、簡報產生器（文字、排版、看圖審查）的模型選單都多了 DeepSeek V4 Pro／V4.1 Flash。',
+                '筆記貼圖辨識可選 DeepSeek OCR（文字／表格專用、最便宜）或 DeepSeek V4.1 Flash（看圖）。',
+                '誠實說明：依官方文件與桌面版實作，沒有用真的 DeepSeek 金鑰實測。'
+            ] },
             { v: '2.6.150', date: '2026-11-18', notes: [
                 'draw.io 對話圖卡：AI 需要畫流程圖、架構圖時會直接在回覆裡產生可編輯的 draw.io 圖卡（預覽、開啟編輯、分享檔案、匯出 PNG）；對話裡的 Mermaid 圖也會變成圖卡（流程圖在手機上立即排版）。',
                 'draw.io 圖庫最多 60 張，每張自動備份到 Documents/NOVA/圖表/圖庫；可跟桌面版透過 Google Drive 同步（Google 整合 → Drive 同步 → draw.io 圖表）。匯出位置改成 Documents/NOVA/圖表/。',
