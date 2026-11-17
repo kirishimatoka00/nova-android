@@ -1,9 +1,16 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.10
+   目前版本：v1.5.11
    最後更新：2026-11-18
 
    版本紀錄：
+   v1.5.11 - App v2.6.152：Canvas 作品庫（搭配新檔 nova-artifacts.js v1.0.0；對標桌面 nova-app-main.js v1.25.0／v1.26.0）：
+             ① novaCanvas.open → NovaArtifacts.onCanvasOpen（存進作品庫）；streamUpdate（Canvas 開著時 AI 又產生程式碼）→ onCanvasStream（目前作品的新版本）；
+                Canvas 的 addMessage 攔截多呼叫 onAiMessage（有 nova-artifact 標記的程式碼歸到該作品）。
+             ② _doRender：設定 srcdoc 前記下 window._novaCanvasLastDocRaw（匯出 HTML 用），再注入作品內的 nova.ask／nova.store 橋接。
+             ③ formatMessage：```nova-edit 區塊換成修改卡佔位符 <div class="nova-artifact-edit" data-enc data-msg>（nova-artifacts.js 套用局部修改並顯示結果）。
+             ④ handleSendMessage：Canvas 開著，或這個對話一小時內有作品且訊息像要修改時，systemPromptAddon 附上作品編號、內容與 nova-edit 格式說明。
+             桌面的「Canvas 的 Python 改走 Python 引擎」手機沒有對應（沒有 Python 引擎），照舊用 Pyodide。NOVA_APP_VERSION 2.6.152、NOVA_CHANGELOG 一筆。
    v1.5.10 - App v2.6.151：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（DeepSeek 導入各功能，對標桌面 nova-app-main.js v1.24.0；改動在 nova-deepseek.js v1.1.0〔NovaDeepSeek.chat〕、
              nova-llm.js v1.1.0、nova-lean-llm.js v1.1.0、nova-experts-glue.js v1.8.0、nova-dr-glue.js v1.2.0、nova-notes-pro.js v1.3.0、presentation_generator.html v45）；本檔程式沒有其他改動。
    v1.5.9 - App v2.6.150：draw.io 對話圖卡＋Mermaid＋雲端同步（對標桌面 nova-app-main.js v1.23.0／v1.26.0／v1.27.0；搭配 nova-drawio.js v1.1.0、nova-google.js v1.8.0）：
@@ -124,10 +131,14 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.151';
+        const NOVA_APP_VERSION = '2.6.152';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.152', date: '2026-11-18', notes: [
+                'Canvas 作品庫（「+」選單 → 作品庫，或 Canvas 上方的作品列）：AI 做過的網頁、小工具、互動圖表會自動保存，可切換版本、釘選、改名、匯出（存到 Documents/NOVA/作品庫 並跳出分享）；修改作品時 AI 可以只改需要改的幾行。',
+                '作品頁面可以用 nova.ask 呼叫 AI、用 nova.store 保存資料（第一次使用 AI 前會先問你）。作品自動備份到 Documents/NOVA/作品庫，並可跟桌面版透過 Google Drive 同步（Google 整合 → Drive 同步 → Canvas 作品庫）。'
+            ] },
             { v: '2.6.151', date: '2026-11-18', notes: [
                 'DeepSeek 導入各功能：主模型選 DeepSeek 時，Project Insight、NovaResearch、專案視窗、AI 思考等背景整理改用 DeepSeek；多專家協作、Pro 深度研究（規劃／撰稿／審稿／讀取池／搜尋池）、簡報產生器（文字、排版、看圖審查）的模型選單都多了 DeepSeek V4 Pro／V4.1 Flash。',
                 '筆記貼圖辨識可選 DeepSeek OCR（文字／表格專用、最便宜）或 DeepSeek V4.1 Flash（看圖）。',
@@ -2299,6 +2310,15 @@ const _tempText2fix = tempText;
         //   換成佔位符，最後才呼叫 katex.renderToString；渲染失敗退回顯示跳脫後的原始碼。
         // ★ v1.5.9（App v2.6.150，對標桌面 nova-app-main.js v1.23.0／v1.27.0）：```drawio／```draw.io／```mxgraph 與 ```mermaid 區塊換成 draw.io 圖卡佔位符，
         //   由 nova-drawio.js 變成圖卡（Mermaid flowchart 本機排版，其他類型由模型轉）。要在 LaTeX 與跳脫之前抽出來。
+        // ★ v1.5.11（App v2.6.152，對標桌面 v1.25.0）：```nova-edit 區塊（Canvas 作品的局部修改）換成修改卡佔位符，由 nova-artifacts.js 套用並顯示結果
+        const _novaArtEditBlocks = [];
+        if (window.NovaArtifacts) {
+            tempText = tempText.replace(/```nova-edit[ \t]*\r?\n?([\s\S]*?)```/gi, function (match, raw) {
+                const idx = _novaArtEditBlocks.length;
+                _novaArtEditBlocks.push(raw);
+                return '\u0000NOVA_ARTEDIT_' + idx + '\u0000';
+            });
+        }
         const _novaDrawioBlocks = [];
         if (window.NovaDrawio) {
             tempText = tempText.replace(/```(?:drawio|draw\.io|mxgraph)[ \t]*\r?\n?([\s\S]*?)```/gi, function (match, raw) {
@@ -2414,6 +2434,15 @@ return html;
             });
         }
 
+        if (_novaArtEditBlocks.length > 0) {   // v1.5.11
+            const _mid2 = (window._novaFmtMsg && window._novaFmtMsg.id) || '';
+            finalHtml = finalHtml.replace(/\u0000NOVA_ARTEDIT_(\d+)\u0000/g, function (match, idxStr) {
+                const raw = _novaArtEditBlocks[parseInt(idxStr, 10)];
+                if (raw === undefined) return '';
+                let enc; try { enc = btoa(unescape(encodeURIComponent(raw))); } catch (e) { enc = ''; }
+                return '<div class="nova-artifact-edit" data-enc="' + enc + '" data-msg="' + escapeHtml(String(_mid2)) + '"></div>';
+            });
+        }
         if (_novaDrawioBlocks.length > 0) {   // v1.5.9
             const _mid = (window._novaFmtMsg && window._novaFmtMsg.id) || '';
             finalHtml = finalHtml.replace(/\u0000NOVA_DRAWIO_(\d+)\u0000/g, function (match, idxStr) {
@@ -16657,6 +16686,10 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
             const _isAnyCodeIntent = _isPythonCanvasIntent || _isReactOrHTMLCanvasIntent || _isTsxConvertMode;
             // v1.5.9：draw.io 畫圖工具（nova-drawio.js；對標桌面 v1.23.0／v1.27.0）——所有模型通用的文字慣例：回覆裡放 ```drawio 區塊，NOVA 自動畫成可編輯的圖並存檔。
             //   localStorage nova_drawio_chat_tool='0' 可關閉。內容固定（不隨訊息變動），不影響提示詞快取。
+            // v1.5.11：Canvas 開著，或這個對話一小時內有作品且訊息像要修改時，附上作品編號、內容與 nova-edit 格式說明（nova-artifacts.js）
+            if (window.NovaArtifacts) {
+                try { systemPromptAddon += await window.NovaArtifacts.promptAddon(text); } catch (e) { /* 作品庫讀取失敗不影響送出 */ }
+            }
             if (window.NovaDrawio && NovaDrawio.chatToolOn && NovaDrawio.chatToolOn()) {
                 systemPromptAddon += '\n【🧩 draw.io 畫圖工具】需要用「方塊＋箭頭」的圖說明時（流程圖、架構圖、組織圖、心智圖、時序圖、ER 圖、網路拓樸、泳道圖），'
                     + '在回覆裡放一個 ```drawio 區塊，內容寫「要畫的圖的描述」：圖的類型、方向、所有節點（文字照實寫）、每條連線的起點→終點與標籤、分組；越具體越好，不要寫 XML。'
@@ -19915,6 +19948,9 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                         + '<pre>' + esc + '</pre></body></html>';
                 }
 
+                // v1.5.11：記下完整頁面給作品庫「匯出 HTML」用（不含 nova 橋接），再注入作品內的 nova.ask／nova.store 橋接
+                window._novaCanvasLastDocRaw = doc;
+                try { if (window.NovaArtifacts) doc = window.NovaArtifacts.injectBridge(doc); } catch (e) { /* */ }
                 fr.srcdoc = doc;
                 fr.onload = function() {
                     const el2 = loading();
@@ -19982,6 +20018,8 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                     _lang = lang || 'html';
                     window._novaCanvasLastCode = code;
                     window._novaCanvasLastLang = _lang;
+                    // v1.5.11：存進作品庫（nova-artifacts.js；同一段程式碼不重複存，切換版本時不會重存）
+                    try { if (window.NovaArtifacts) window.NovaArtifacts.onCanvasOpen(code, _lang); } catch (e) { /* 作品庫失敗不影響顯示 */ }
 
                     // 更新標題與語言標籤
                     if (title()) title().textContent = 'Canvas 工作區';
@@ -20071,6 +20109,8 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
                     if (source()) source().value = code;
                     if (overlay() && overlay().style.display !== 'none') {
                         scheduleRender(false); // 防抖渲染
+                        // v1.5.11：Canvas 開著時 AI 再產生的程式碼 → 目前作品的新版本
+                        try { if (window.NovaArtifacts) window.NovaArtifacts.onCanvasStream(code, _lang); } catch (e) { /* */ }
                     }
                 }
             };
@@ -20083,6 +20123,7 @@ if (t.repeatInterval && t.repeatInterval > 0) { t.alertTime += t.repeatInterval;
             const _origAddMessage = window.addMessage;
             window.addMessage = function(text, sender, ...rest) {
                 if (sender === 'ai' && text) {
+                    try { if (window.NovaArtifacts) window.NovaArtifacts.onAiMessage(text); } catch (e) { /* v1.5.11：有 nova-artifact 標記的程式碼歸到該作品 */ }
                     const codeMatch = text.match(/```(html|css|javascript|js|jsx|tsx|vue|python|py|typescript|ts|svelte|php|ruby|go|rust|java|kotlin|swift|c|cpp|sql)([\s\S]*?)```/i);
                     if (codeMatch) {
                         const lang = codeMatch[1];
