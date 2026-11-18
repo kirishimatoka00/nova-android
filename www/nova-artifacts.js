@@ -2,11 +2,16 @@
   ════════════════════════════════════════════════════════════════
   nova-artifacts.js — NOVA Android：Canvas 作品庫（保存、版本、局部修改、作品內呼叫 AI、匯出、本機備份、雲端同步）
   ════════════════════════════════════════════════════════════════
-  目前版本：v1.0.0（Android）
-  最後更新：2026-11-18（App v2.6.152）
+  目前版本：v1.0.1（Android）
+  最後更新：2026-11-18（App v2.6.153）
   對標桌面 nova-artifacts.js v1.1.0（nova-desktop/src，2026-11-17）；作品庫、版本、nova-edit 局部修改、nova.ask／nova.store 橋接、雲端同步的程式與桌面相同。
 
   版本紀錄（只記這個檔案自己的變更）：
+  v1.0.1 - App v2.6.153：移植桌面 v1.1.1 修的兩個作品庫問題（使用者要求檢查 Android 是否也有；兩個都有）：
+           ① 存檔失敗「Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing」：資料庫連線被 WebView 關掉後程式還一直用舊連線。
+              現在監聽連線的 close／versionchange，失效就丟掉重開；交易建立失敗（InvalidStateError）或因連線關閉中止時，自動重開連線再試一次。程式照搬桌面。
+           ② 作品庫「改名」的輸入框被作品庫視窗擋在後面：v1.0.0 用 NOVA 的輸入框（#nova-input-modal，層級 99999），比作品庫（100001）低。
+              改成作品庫自己的輸入框（層級 100010），手機上放在畫面上方避免被鍵盤蓋住；確定／取消、Enter／Esc、點外面取消。名稱沒變就不存。
   v1.0.0 - App v2.6.152 新增（使用者要求：移植 nova-desktop 的 Canvas 作品庫）。借鏡 Claude 的 Artifact，建在 NOVA 原有的 Canvas 上（搭配 nova-app-main.js v1.5.11 的 Canvas 掛勾）：
            ① 作品庫：Canvas 每次開啟的程式碼都存成「作品」（IndexedDB nova-artifacts，跨對話保留）；同一段程式碼不重複存。「+」選單「作品庫」與 Canvas 的作品列都能開：
               搜尋、釘選、改名、匯出、刪除。
@@ -58,23 +63,39 @@
     var _dbp = null;
     function db() {
         if (_dbp) return _dbp;
-        _dbp = new Promise(function (res, rej) {
+        var p = _dbp = new Promise(function (res, rej) {
             var rq = indexedDB.open(DB_NAME, 1);
             rq.onupgradeneeded = function () { var d = rq.result; if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' }); };
-            rq.onsuccess = function () { res(rq.result); };
-            rq.onerror = function () { rej(rq.error); };
+            rq.onsuccess = function () {
+                var d = rq.result;
+                // v1.1.1：連線被關掉（瀏覽器強制關閉或別處要升級版本）→ 丟掉，下次重開
+                d.onclose = function () { if (_dbp === p) _dbp = null; };
+                d.onversionchange = function () { try { d.close(); } catch (e) { /* */ } if (_dbp === p) _dbp = null; };
+                res(d);
+            };
+            rq.onerror = function () { if (_dbp === p) _dbp = null; rej(rq.error); };
+            rq.onblocked = function () { /* 等其他連線關閉 */ };
         });
-        return _dbp;
+        return p;
     }
-    function tx(mode, fn) {
+    function isClosedErr(e) { var m = String(e && (e.name + ' ' + e.message) || ''); return /InvalidStateError|closing|closed|connection/i.test(m); }
+    function tx1(mode, fn) {
         return db().then(function (d) {
             return new Promise(function (res, rej) {
-                var t = d.transaction(STORE, mode), st = t.objectStore(STORE), out;
-                out = fn(st);
+                var t, st, out;
+                try { t = d.transaction(STORE, mode); st = t.objectStore(STORE); out = fn(st); }
+                catch (e) { rej(e); return; }
                 t.oncomplete = function () { res(out && out.result !== undefined ? out.result : out); };
                 t.onerror = function () { rej(t.error); };
-                t.onabort = function () { rej(t.error); };
+                t.onabort = function () { rej(t.error || new DOMException('transaction aborted (connection closed)', 'AbortError')); };
             });
+        });
+    }
+    function tx(mode, fn) {   // v1.1.1：連線已關閉 → 重開再試一次
+        return tx1(mode, fn).catch(function (e) {
+            if (!isClosedErr(e) && !(e && e.name === 'AbortError')) throw e;
+            _dbp = null;
+            return tx1(mode, fn);
         });
     }
     async function loadAll() {
@@ -460,7 +481,34 @@
 
     // ─────────────────────────── 作品庫視窗 ───────────────────────────
     function isLight() { return document.documentElement.classList.contains('theme-light'); }
-    function askText(label, def) { try { if (typeof window.novaPrompt === 'function') return Promise.resolve(window.novaPrompt(label, def)); } catch (e) { /* */ } return Promise.resolve(window.prompt ? window.prompt(label, def) : null); }
+    // v1.1.1：作品庫自己的輸入框（疊在作品庫上面；NOVA 的輸入框 #nova-input-modal 層級 99999，比作品庫 100001 低，會被擋住）
+    function askText(title, value) {
+        return new Promise(function (resolve) {
+            var light = document.documentElement.classList.contains('theme-light');
+            var bg = light ? '#ffffff' : '#0f172a', bd = light ? '#e2e8f0' : '#334155', tx0 = light ? '#0f172a' : '#e2e8f0';
+            var ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;inset:0;z-index:100010;background:rgba(2,6,23,.45);display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 14vh) 16px 16px';   // 手機：靠上，避免被鍵盤蓋住
+            ov.innerHTML = '<div style="width:min(420px,96vw);background:' + bg + ';color:' + tx0 + ';border:1px solid ' + bd + ';border-radius:14px;padding:16px;box-shadow:0 20px 50px rgba(0,0,0,.4)">'
+                + '<div style="font-weight:700;margin-bottom:10px">' + esc(title) + '</div>'
+                + '<input type="text" maxlength="80" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid ' + bd + ';background:transparent;color:inherit;font-size:14px;outline:none">'
+                + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">'
+                + '<button type="button" data-k="no" style="padding:6px 14px;border-radius:8px;border:1px solid ' + bd + ';background:none;color:inherit;cursor:pointer">取消</button>'
+                + '<button type="button" data-k="ok" style="padding:6px 14px;border-radius:8px;border:0;background:#3b82f6;color:#fff;font-weight:600;cursor:pointer">確定</button></div></div>';
+            document.body.appendChild(ov);
+            var inp = ov.querySelector('input');
+            inp.value = value || '';
+            var done = function (v) { document.removeEventListener('keydown', key, true); ov.remove(); resolve(v); };
+            var key = function (e) {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); }
+                else if (e.key === 'Enter' && document.activeElement === inp && !e.isComposing) { e.preventDefault(); e.stopPropagation(); done(inp.value); }
+            };
+            document.addEventListener('keydown', key, true);
+            ov.querySelector('[data-k=ok]').onclick = function () { done(inp.value); };
+            ov.querySelector('[data-k=no]').onclick = function () { done(null); };
+            ov.addEventListener('mousedown', function (e) { if (e.target === ov) done(null); });
+            setTimeout(function () { inp.focus(); inp.select(); }, 30);
+        });
+    }
     async function openLibrary() {
         closeLibrary();
         var L = isLight(), bg = L ? '#ffffff' : '#0f172a', bd = L ? '#e2e8f0' : '#1e293b', tx = L ? '#0f172a' : '#e2e8f0', sub = L ? '#64748b' : '#94a3b8', card = L ? '#f8fafc' : '#111c33';
@@ -514,7 +562,7 @@
                     if (!a) return;
                     if (act === 'open') { closeLibrary(); openArtifact(id); }
                     else if (act === 'pin') { a.pinned = !a.pinned; await save(a); render(); }
-                    else if (act === 'rename') { var nn = await askText('作品名稱', a.title); if (nn && nn.trim()) { a.title = nn.trim().slice(0, 80); await save(a); render(); updateHeader(); } }
+                    else if (act === 'rename') { var nn = await askText('作品名稱', a.title); if (nn && nn.trim() && nn.trim() !== a.title) { a.title = nn.trim().slice(0, 80); await save(a); render(); updateHeader(); } }
                     else if (act === 'export') exportMenu(b, a);
                     else if (act === 'del') {
                         if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = '再按一次確定刪除'; return; }
@@ -792,7 +840,7 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
     window.NovaArtifacts = {
-        version: '1.0.0', desktopBase: '1.1.0', _capfs: capfs,
+        version: '1.0.1', desktopBase: '1.1.1', _capfs: capfs,
         backupNow: async function () { Object.keys(await loadAll()).forEach(bkMark); clearTimeout(BK.timer); return bkFlush(); },
         backupInfo: function () { return { dir: BK.dir, last: BK.last, error: BK.err, pending: Object.keys(BK.dirty).length }; },
         restoreFromBackup: bkRestore, openBackupFolder: openFolder, syncNow: syncNow, remove: remove,
