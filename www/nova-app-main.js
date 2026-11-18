@@ -1,9 +1,10 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.12
+   目前版本：v1.5.13
    最後更新：2026-11-18
 
    版本紀錄：
+   v1.5.13 - App v2.6.154：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（作品庫雲端另存 .html 在 nova-artifacts.js v1.1.0）；本檔程式沒有其他改動。
    v1.5.12 - App v2.6.153：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（作品庫兩個問題修正在 nova-artifacts.js v1.0.1）；本檔程式沒有其他改動。
    v1.5.11 - App v2.6.152：Canvas 作品庫（搭配新檔 nova-artifacts.js v1.0.0；對標桌面 nova-app-main.js v1.25.0／v1.26.0）：
              ① novaCanvas.open → NovaArtifacts.onCanvasOpen（存進作品庫）；streamUpdate（Canvas 開著時 AI 又產生程式碼）→ onCanvasStream（目前作品的新版本）；
@@ -132,10 +133,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.153';
+        const NOVA_APP_VERSION = '2.6.154';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.154', date: '2026-11-18', notes: [
+                '作品庫雲端另存 .html：每個作品自動在 Google Drive「NOVA 作品庫」資料夾存一個可以直接打開的網頁，跟桌面版共用同一個資料夾。作品庫底部可關閉（雲端另存 .html），按「🔗 雲端資料夾」直接打開。需要已連結 Google 帳號。'
+            ] },
             { v: '2.6.153', date: '2026-11-18', notes: [
                 '修正作品庫兩個問題（同桌面版）：按釘選、改名等操作偶爾出現「作品庫存檔失敗：The database connection is closing」——資料庫連線被關閉時現在會自動重開再試；作品庫的「改名」輸入框被作品庫視窗擋在後面——改用疊在作品庫上面的輸入框。'
             ] },

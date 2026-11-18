@@ -2,11 +2,21 @@
   ════════════════════════════════════════════════════════════════
   nova-artifacts.js — NOVA Android：Canvas 作品庫（保存、版本、局部修改、作品內呼叫 AI、匯出、本機備份、雲端同步）
   ════════════════════════════════════════════════════════════════
-  目前版本：v1.0.1（Android）
-  最後更新：2026-11-18（App v2.6.153）
+  目前版本：v1.1.0（Android）
+  最後更新：2026-11-18（App v2.6.154）
   對標桌面 nova-artifacts.js v1.1.0（nova-desktop/src，2026-11-17）；作品庫、版本、nova-edit 局部修改、nova.ask／nova.store 橋接、雲端同步的程式與桌面相同。
 
   版本紀錄（只記這個檔案自己的變更）：
+  v1.1.0 - App v2.6.154：雲端另存可直接開啟的 .html，跟桌面共用同一個 Google Drive 資料夾（使用者要求；對標桌面 v1.2.0）：
+           ① 「我的雲端硬碟」根目錄的「NOVA 作品庫」資料夾（已有就用現成的，跟桌面同一個），每個作品存「<作品名>_<編號>.html」。
+              HTML／SVG＝原始碼（片段補成完整網頁）；React＝附 React 18＋Babel（unpkg，打開時要網路）的獨立網頁；JavaScript／CSS 包進網頁；Python 等＝顯示原始碼。
+           ② 時機：作品庫「☁️ 立即同步到雲端」（先同步 NOVA_Artifacts_Sync.json，再更新資料夾，並確認資料夾還在）、以及 Drive 自動同步跑完時。
+              只上傳有變動的（內容雜湊）；改名＝同一個雲端檔案改檔名；作品刪除＝雲端檔案移到垃圾桶。另一台（桌面或手機）上傳過同一個作品時，
+              用檔名裡的編號找到它並更新，不重複建立；資料夾被刪掉會重建並全部重傳。
+           ③ 作品庫底部新增「雲端另存 .html」勾選框（預設開）與「🔗 雲端資料夾」。設定與對照存在 localStorage nova_artifacts_drive_html、nova_artifacts_drive（與桌面同名）。
+           【和桌面不同】桌面走 Python 引擎的 /google/drive/* 端點；手機直接呼叫 Google Drive API（NovaGoogle 的已授權請求，完整 Drive 權限，看得到桌面建的資料夾），
+             換成同樣形狀的 gd()，其餘同步邏輯照搬。沒連 Google 時略過、不報錯。
+           【限制】只在電腦瀏覽器用模擬的 Drive API 測過；兩台同時第一次建立資料夾的極少數情況可能各建一個。
   v1.0.1 - App v2.6.153：移植桌面 v1.1.1 修的兩個作品庫問題（使用者要求檢查 Android 是否也有；兩個都有）：
            ① 存檔失敗「Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing」：資料庫連線被 WebView 關掉後程式還一直用舊連線。
               現在監聽連線的 close／versionchange，失效就丟掉重開；交易建立失敗（InvalidStateError）或因連線關閉中止時，自動重開連線再試一次。程式照搬桌面。
@@ -263,7 +273,10 @@
             merge: function (k, a, b) { return mergeArt(a, b); },
             collect: syncCollect,
             apply: async function (x) { await syncApply(x.put || {}, x.del || []); },
-            after: function () { try { if (document.getElementById('nart-lib-ov') && _libRender) _libRender(); window.dispatchEvent(new CustomEvent('nova-artifacts-synced')); } catch (e) { /* */ } }
+            after: function () {
+                try { if (document.getElementById('nart-lib-ov') && _libRender) _libRender(); window.dispatchEvent(new CustomEvent('nova-artifacts-synced')); } catch (e) { /* */ }
+                if (drvOn()) drvMirror().catch(function (e) { console.warn('[NovaArtifacts] Drive 資料夾更新失敗：', e); });   // v1.1.0
+            }
         });
     }
     async function syncNow() {
@@ -271,11 +284,155 @@
         regSync();
         try {
             var r = await ds.sync('artifacts', { device: 'android' });
+            if (drvOn()) {   // v1.1.0（對標桌面 v1.2.0）：再更新 Drive「NOVA 作品庫」資料夾
+                try {
+                    var mr = await drvMirror({ verify: true });
+                    if (!mr.skipped) toast('「' + DRV_FOLDER + '」資料夾：' + (mr.uploaded ? '更新 ' + mr.uploaded + ' 個作品' : '都是最新') + (mr.trashed ? '、移除 ' + mr.trashed + ' 個' : '') + (mr.errors.length ? '；' + mr.errors.length + ' 個失敗（' + mr.errors[0].slice(0, 60) + '）' : ''), 6000);
+                } catch (e) { toast('「' + DRV_FOLDER + '」資料夾更新失敗：' + (e && e.message || e), 6000); }
+            }
             toast('作品庫' + (r.skipped ? (r.skipped === 'disabled' ? '雲端同步已關閉（Google 整合 → Drive 同步 → Canvas 作品庫）' : '：' + (r.text || '這次略過')) : '雲端同步完成：' + (r.text || '沒有變動')), 5000);
             return r;
         } catch (e) { toast('作品庫雲端同步失敗：' + (e && e.message || e), 6000); return { error: String(e && e.message || e) }; }
     }
     var _libRender = null;
+
+    // ─────────────────────────── v1.1.0（對標桌面 v1.2.0）：Google Drive「NOVA 作品庫」資料夾（每個作品一個 .html）───────────────────────────
+    var DRV_FOLDER = 'NOVA 作品庫', DRV_KEY = 'nova_artifacts_drive', DRV_ON = 'nova_artifacts_drive_html';
+    function drvOn() { try { return localStorage.getItem(DRV_ON) !== '0'; } catch (e) { return true; } }
+    function drvMap() { try { var m = JSON.parse(localStorage.getItem(DRV_KEY) || '{}') || {}; m.files = m.files || {}; return m; } catch (e) { return { files: {} }; } }
+    function drvSave(m) { try { localStorage.setItem(DRV_KEY, JSON.stringify(m)); } catch (e) { /* */ } }
+    // 手機沒有 Python 引擎：直接呼叫 Google Drive API（NovaGoogle 的已授權請求；授權範圍是完整 Drive，看得到桌面建的資料夾）。
+    //   gd() 對外的形狀跟桌面引擎的 /google/drive/* 端點相同，下面的同步邏輯照搬桌面。
+    var GDV = 'https://www.googleapis.com/drive/v3/files', GDU = 'https://www.googleapis.com/upload/drive/v3/files';
+    function gok() { var G = window.NovaGoogle; try { return !!(G && G._raw && G._connected && G._connected()); } catch (e) { return false; } }   // 權限不足時 Drive 會回 403，會顯示在同步結果裡
+    async function gfetch(url, opts) {
+        var G = window.NovaGoogle;
+        if (!gok()) { var e0 = new Error('還沒連結 Google 帳號（Google 整合 → 連接）'); e0.status = 401; throw e0; }
+        var r = await G._raw(url, opts || {});
+        var txt = ''; try { txt = await r.text(); } catch (e) { /* */ }
+        var j = {}; try { j = txt ? JSON.parse(txt) : {}; } catch (e) { j = { raw: txt }; }
+        if (!r.ok) { var er = new Error(String((j.error && (j.error.message || j.error)) || ('HTTP ' + r.status))); er.status = r.status; throw er; }
+        return j;
+    }
+    function qEsc(t) { return String(t).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+    function mpBody(meta, content, mime) {
+        var bd = 'nova' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        return { bd: bd, body: '--' + bd + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(meta) + '\r\n--' + bd + '\r\nContent-Type: ' + (mime || 'text/html') + '; charset=UTF-8\r\n\r\n' + content + '\r\n--' + bd + '--' };
+    }
+    async function gd(path, body) {
+        var u = new URL('https://x' + path), q = function (k) { return u.searchParams.get(k); };
+        if (u.pathname === '/google/drive/list') {
+            var cond = ['trashed=false'];
+            if (q('file_type') === 'folder') cond.push("mimeType='application/vnd.google-apps.folder'");
+            if (q('folder_id')) cond.push("'" + qEsc(q('folder_id')) + "' in parents");
+            if (q('query')) cond.push("name contains '" + qEsc(q('query')) + "'");
+            var j = await gfetch(GDV + '?q=' + encodeURIComponent(cond.join(' and ')) + '&fields=' + encodeURIComponent('files(id,name,webViewLink,createdTime)') + '&orderBy=createdTime&pageSize=' + Math.min(100, +(q('max_results') || 20)));
+            return { files: (j.files || []).map(function (f) { return { id: f.id, name: f.name, link: f.webViewLink }; }) };
+        }
+        if (u.pathname === '/google/drive/create_folder') {
+            var c = await gfetch(GDV + '?fields=id,webViewLink', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: body.name, mimeType: 'application/vnd.google-apps.folder', parents: ['root'] }) });
+            return { folder_id: c.id, link: c.webViewLink };
+        }
+        if (u.pathname === '/google/drive/write') {
+            var meta = { name: body.name, mimeType: body.mime_type || 'text/html' };
+            if (body.file_id) {
+                var m1 = mpBody({ name: body.name }, body.content, body.mime_type);
+                var w1 = await gfetch(GDU + '/' + encodeURIComponent(body.file_id) + '?uploadType=multipart&fields=id', { method: 'PATCH', headers: { 'Content-Type': 'multipart/related; boundary=' + m1.bd }, body: m1.body });
+                return { file_id: w1.id };
+            }
+            if (body.folder_id) meta.parents = [body.folder_id];
+            var m2 = mpBody(meta, body.content, body.mime_type);
+            var w2 = await gfetch(GDU + '?uploadType=multipart&fields=id', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + m2.bd }, body: m2.body });
+            return { file_id: w2.id };
+        }
+        if (u.pathname === '/google/drive/delete') {   // 跟桌面一樣：移到垃圾桶（30 天內可救回）
+            await gfetch(GDV + '/' + encodeURIComponent(body.file_id) + '?fields=id', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) });
+            return { ok: true };
+        }
+        throw new Error('不支援的 Drive 操作：' + u.pathname);
+    }
+    function htmlShell(title, head, body) {
+        return '<!DOCTYPE html>\n<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title>' + (head || '') + '</head><body>' + body + '</body></html>\n';
+    }
+    function reactDoc(a, code) {
+        var src = String(code)
+            .replace(/^\s*import\s+React\s*(,\s*\{[^}]*\})?\s*from\s*['"]react['"];?\s*$/gm, function (m0, named) { return named ? 'const ' + named.replace(/^\s*,\s*/, '').replace(/\bas\b/g, ':') + ' = React;' : ''; })
+            .replace(/^\s*import\s*(\{[^}]*\})\s*from\s*['"]react['"];?\s*$/gm, function (m0, named) { return 'const ' + named.replace(/\bas\b/g, ':') + ' = React;'; })
+            .replace(/^\s*import\s+[^;]*?from\s*['"]react-dom(\/client)?['"];?\s*$/gm, '')
+            .replace(/^\s*import\s+[^\n]*$/gm, function (m0) { return '// （略過）' + m0.trim(); })
+            .replace(/export\s+default\s+function\s+([A-Za-z_$][\w$]*)/, 'window.__NovaApp = function $1')
+            .replace(/export\s+default\s+([A-Za-z_$][\w$]*)\s*;?/, 'window.__NovaApp = $1;')
+            .replace(/^\s*export\s+/gm, '');
+        if (!/__NovaApp/.test(src)) { var fm = /function\s+(App|Main|Root)\s*\(/.exec(src) || /const\s+(App|Main|Root)\s*=/.exec(src); if (fm) src += '\nwindow.__NovaApp = ' + fm[1] + ';'; }
+        src += '\nif (window.__NovaApp) ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(window.__NovaApp));';
+        return htmlShell(a.title,
+            '<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>'
+            + '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="https://cdn.tailwindcss.com"></script>'
+            + '<script>Object.assign(window, React);</script>',
+            '<div id="root"></div><script type="text/babel" data-presets="react,typescript" data-type="module">\n' + src.replace(/<\/script/gi, '<\\/script') + '\n</script>');
+    }
+    function docFor(a) {
+        var v = latest(a), code = stripMarker(v.code), lang = normLang(a.lang);
+        if (lang === 'html' || lang === 'svg') return /<!DOCTYPE|<html/i.test(code) ? code : htmlShell(a.title, '', code);
+        if (lang === 'jsx' || lang === 'tsx' || lang === 'react') return reactDoc(a, code);
+        if (lang === 'javascript') return htmlShell(a.title, '', '<script>\n' + code.replace(/<\/script/gi, '<\\/script') + '\n</script>');
+        if (lang === 'css') return htmlShell(a.title, '<style>\n' + code + '\n</style>', '<p>（CSS 作品）</p>');
+        return htmlShell(a.title, '<style>body{font-family:system-ui,sans-serif;margin:24px;background:#0f172a;color:#e2e8f0}pre{background:#020617;padding:16px;border-radius:10px;overflow:auto;font:13px/1.5 Consolas,monospace}</style>',
+            '<h2>' + esc(a.title) + '</h2><p style="color:#94a3b8">' + esc(extOf(lang).toUpperCase()) + ' 作品（請在 NOVA 的 Canvas 執行；這裡只顯示原始碼）</p><pre>' + esc(code) + '</pre>');
+    }
+    async function drvFolder(m, verify) {
+        if (m.folderId && !verify) return m.folderId;
+        var j = await gd('/google/drive/list?query=' + encodeURIComponent(DRV_FOLDER) + '&file_type=folder&max_results=20');
+        var f = (j.files || []).filter(function (x) { return x.name === DRV_FOLDER; })[0];
+        if (f && f.id === m.folderId) return m.folderId;
+        if (!f) { var c = await gd('/google/drive/create_folder', { name: DRV_FOLDER }); f = { id: c.folder_id, link: c.link }; }
+        if (m.folderId && m.folderId !== f.id) m.files = {};   // 資料夾換了（原本的被刪）→ 全部重傳
+        m.folderId = f.id; m.link = f.link || m.link || ''; drvSave(m);
+        return m.folderId;
+    }
+    var _drvBusy = null;
+    function drvMirror(opts) { if (_drvBusy) return _drvBusy; _drvBusy = drvMirror0(opts || {}).finally(function () { _drvBusy = null; }); return _drvBusy; }
+    async function drvMirror0(opts) {
+        if (!drvOn()) return { skipped: 'off' };
+        if (!gok()) return { skipped: 'no-google' };   // 手機：沒連 Google 就略過
+        var m = drvMap(), c = await loadAll(), ids = Object.keys(c).filter(function (id) { return validArt(c[id]); });
+        var folder = await drvFolder(m, !!opts.verify);
+        var up = 0, trashed = 0, errs = [];
+        for (var i = 0; i < ids.length; i++) {
+            var a = c[ids[i]], id = a.id, doc = docFor(a), name = baseName(a) + '_' + id + '.html', h = hashText(name + '\n' + doc), rec = m.files[id];
+            if (rec && rec.h === h) continue;
+            try {
+                if (!rec || !rec.fileId) {   // 另一台已經上傳過？用編號找
+                    var L = await gd('/google/drive/list?folder_id=' + encodeURIComponent(folder) + '&query=' + encodeURIComponent(id) + '&max_results=10');
+                    var ex = (L.files || []).filter(function (x) { return String(x.name || '').slice(-(id.length + 6)) === '_' + id + '.html'; })[0];
+                    rec = ex ? { fileId: ex.id } : null;
+                }
+                var r = null;
+                if (rec && rec.fileId) {
+                    try { r = await gd('/google/drive/write', { file_id: rec.fileId, name: name, content: doc, mime_type: 'text/html' }); }
+                    catch (e) { if (e.status === 404 || /not ?found|找不到/i.test(e.message)) r = null; else throw e; }
+                }
+                if (!r) r = await gd('/google/drive/write', { name: name, content: doc, mime_type: 'text/html', folder_id: folder });
+                m.files[id] = { fileId: r.file_id, h: h, name: name }; drvSave(m); up++;
+            } catch (e) {
+                errs.push(a.title + '：' + e.message);
+                if (e.status === 401 || e.status === 403 || /授權|登入|credential|token/i.test(e.message)) break;
+            }
+        }
+        var gone = Object.keys(m.files).filter(function (id) { return !c[id]; });
+        for (var j2 = 0; j2 < gone.length; j2++) {
+            try { await gd('/google/drive/delete', { file_id: m.files[gone[j2]].fileId }); trashed++; } catch (e) { if (!(e.status === 404)) { errs.push('刪除雲端檔案：' + e.message); continue; } }
+            delete m.files[gone[j2]]; drvSave(m);
+        }
+        m.last = Date.now(); drvSave(m);
+        return { uploaded: up, trashed: trashed, errors: errs, link: m.link, total: ids.length };
+    }
+    async function openDriveFolder() {
+        var m = drvMap(), url = m.link || (m.folderId ? 'https://drive.google.com/drive/folders/' + m.folderId : '');
+        if (!url) { toast('還沒有上傳過；先按「☁️ 立即同步到雲端」'); return; }
+        try { var B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser; if (B && B.open) { await B.open({ url: url }); return; } } catch (e) { /* 落到 window.open */ }
+        window.open(url, '_blank', 'noopener');
+    }
     async function list() {
         var c = await loadAll();
         return Object.keys(c).map(function (k) { return c[k]; }).sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updated - a.updated; });
@@ -520,7 +677,8 @@
             + '<button id="nart-x" style="padding:6px 10px;border-radius:8px;border:1px solid ' + bd + ';background:none;color:' + tx + ';cursor:pointer;font-size:12px">✕ 關閉</button></div>'
             + '<div id="nart-list" style="overflow:auto;padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px"></div>'
             + '<div style="padding:8px 16px;border-top:1px solid ' + bd + ';font-size:11px;color:' + sub + ';display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="flex:1;min-width:240px">Canvas 開過的程式碼都會自動存進來；同一個作品的修改會存成版本（最多 50 版）。<span id="nart-bkinfo"></span></span>'
-            + ['folder:📁 備份資料夾', 'cloud:☁️ 立即同步到雲端', 'restore:⟳ 從備份還原'].map(function (x) { var p = x.split(':'); return '<button data-lib="' + p[0] + '" style="padding:4px 9px;border-radius:7px;border:1px solid ' + bd + ';background:none;color:' + tx + ';font-size:11px;cursor:pointer">' + p[1] + '</button>'; }).join('')
+            + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer" title="每個作品另存一個 .html 到 Google Drive「NOVA 作品庫」資料夾（跟桌面版共用）"><input type="checkbox" id="nart-drvon"' + (drvOn() ? ' checked' : '') + '>雲端另存 .html</label>'
+            + ['folder:📁 備份資料夾', 'cloud:☁️ 立即同步到雲端', 'drive:🔗 雲端資料夾', 'restore:⟳ 從備份還原'].map(function (x) { var p = x.split(':'); return '<button data-lib="' + p[0] + '" style="padding:4px 9px;border-radius:7px;border:1px solid ' + bd + ';background:none;color:' + tx + ';font-size:11px;cursor:pointer">' + p[1] + '</button>'; }).join('')
             + '</div></div>';
         document.body.appendChild(ov);
         ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeLibrary(); });
@@ -536,11 +694,14 @@
                 var act = b.getAttribute('data-lib');
                 if (act === 'folder') { await bkFlush(); openFolder(); }
                 else if (act === 'cloud') { b.disabled = true; b.textContent = '☁️ 同步中…'; await syncNow(); b.disabled = false; b.textContent = '☁️ 立即同步到雲端'; render(); }
+                else if (act === 'drive') { openDriveFolder(); }
                 else if (act === 'restore') { if (!tfs()) { toast('這個環境沒有本機備份'); return; } var r = await bkRestore(); toast(r.restored ? '已從備份還原 ' + r.restored + ' 個作品' : '備份裡沒有比這台更新的作品'); render(); }
                 bkInfo();
             };
         });
         bkInfo();
+        var dcb = document.getElementById('nart-drvon');
+        if (dcb) dcb.onchange = function () { try { localStorage.setItem(DRV_ON, dcb.checked ? '1' : '0'); } catch (e) { /* */ } toast(dcb.checked ? '之後同步會在 Google Drive「' + DRV_FOLDER + '」資料夾另存每個作品的 .html' : '已關閉雲端另存 .html（已上傳的檔案不會刪除）'); };
         var render = async function () {
             var q = (document.getElementById('nart-q').value || '').trim().toLowerCase();
             var items = (await list()).filter(function (a) { return !q || a.title.toLowerCase().indexOf(q) >= 0 || latest(a).code.toLowerCase().indexOf(q) >= 0; });
@@ -840,7 +1001,7 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 
     window.NovaArtifacts = {
-        version: '1.0.1', desktopBase: '1.1.1', _capfs: capfs,
+        version: '1.1.0', desktopBase: '1.2.0', _capfs: capfs, driveMirror: drvMirror, openDriveFolder: openDriveFolder, _docFor: docFor, _gd: gd,
         backupNow: async function () { Object.keys(await loadAll()).forEach(bkMark); clearTimeout(BK.timer); return bkFlush(); },
         backupInfo: function () { return { dir: BK.dir, last: BK.last, error: BK.err, pending: Object.keys(BK.dirty).length }; },
         restoreFromBackup: bkRestore, openBackupFolder: openFolder, syncNow: syncNow, remove: remove,
