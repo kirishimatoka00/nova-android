@@ -1,9 +1,11 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.13
-   最後更新：2026-11-18
+   目前版本：v1.5.14
+   最後更新：2026-11-21
 
    版本紀錄：
+   v1.5.14 - App v2.6.155：NOVA_CHANGELOG 補回 2.6.108 與 2.6.124～2.6.128 六筆的 { v, date, notes } 外框（新增紀錄時只插了說明字串、漏了外框，
+            這六筆變成陣列裡的裸字串；日期依 git log：2.6.108＝2026-11-01、2.6.124＝2026-11-08，其餘 2026-11-09）。說明文字逐字不動。NOVA_APP_VERSION 2.6.155、NOVA_CHANGELOG 一筆。本檔程式沒有其他改動。
    v1.5.13 - App v2.6.154：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（作品庫雲端另存 .html 在 nova-artifacts.js v1.1.0）；本檔程式沒有其他改動。
    v1.5.12 - App v2.6.153：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（作品庫兩個問題修正在 nova-artifacts.js v1.0.1）；本檔程式沒有其他改動。
    v1.5.11 - App v2.6.152：Canvas 作品庫（搭配新檔 nova-artifacts.js v1.0.0；對標桌面 nova-app-main.js v1.25.0／v1.26.0）：
@@ -133,10 +135,13 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.154';
+        const NOVA_APP_VERSION = '2.6.155';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.155', date: '2026-11-21', notes: [
+                '更新紀錄整理：2.6.108 與 2.6.124～2.6.128 這六版的說明原本沒有版本號與日期（新增紀錄時漏了外框），現在補回，查歷史時可以直接對到版本。只整理紀錄，App 功能沒有改變。'
+            ] },
             { v: '2.6.154', date: '2026-11-18', notes: [
                 '作品庫雲端另存 .html：每個作品自動在 Google Drive「NOVA 作品庫」資料夾存一個可以直接打開的網頁，跟桌面版共用同一個資料夾。作品庫底部可關閉（雲端另存 .html），按「🔗 雲端資料夾」直接打開。需要已連結 Google 帳號。'
             ] },
@@ -248,11 +253,21 @@
                 '記憶跨裝置同步相容：同步檔格式不變，只多了選用欄位；另一台還沒更新的裝置（桌面 v3.123 以前、手機 v2.6.128 以前）照常同步、不會出錯，新資料也不會因為經過舊版裝置而遺失。私密記憶沒有變動。',
                 '手機版與桌面版的差異（誠實說明）：手機沒有常駐大腦，記憶整理是 App 開著時在背景做；AI 的 memory_remember／memory_forget 工具只在桌面有，手機用「記住，…」這句話與設定頁管理。本次只在沙盒用假的模型回應驗證，沒有在實機與真實雲端同步檔上測過。',
             ] },
-                '手機當控制台＋多 Bot 格式對齊桌面（對標桌面 v3.122.0～v3.123.0；nova-remote.js v1.1.0、nova-bots.js v1.2.0-android.1〔移植桌面 v1.6.0〕、nova-experts-glue.js v1.7.0；僅 www）：① 電腦遙控上方多一個「🧠」按鈕、設定頁多「🧠 收件匣／待批准」：直接打開電腦上的收件匣控制台（nova-console.html），可以允許／拒絕 Bot 想做的高風險動作（寄信、刪檔、執行指令…）、看收件匣與成品、交辦工作給電腦上的 Bot、看工作狀態、收回「永遠允許」規則；電腦需要 desktop-patch v3.122.0 以上。② 多 Bot 引擎改移植桌面 v1.6.0：桌面新增的設定（工具呼叫方式、哨兵審查、向量記憶、團隊共用記憶）手機存設定或同步時會原樣保留，不再被蓋回預設值；手機也能用團隊共用記憶（team_recall／team_remember），並跟電腦同步。手機沒有常駐大腦，所以工具呼叫、高風險確認、記憶挑選的行為跟以前一樣。',
-                'index.html 瘦身（對標桌面 v3.121.0 ⑨；僅 www）：原本 index.html 約 1.76MB，其中約 1.30MB 的主程式內嵌腳本逐字搬到新檔 nova-app-main.js，原位置改成同一位置、同一順序的 <script src>，執行順序與全域變數行為不變；之後主程式、版本號與這份更新紀錄都改在 nova-app-main.js。index.html 與主程式檔版本不一致時（WebView 用到舊快取）主控台會警告；主程式檔載入失敗時畫面上會直接顯示原因，不會只剩空白畫面。',
-                '資安補強（對標桌面 v3.121.0 ①；新增 vendor/purify.min.js〔DOMPurify 3.4.17〕；僅 www）：① escapeHtml 多跳脫引號；② AI 回覆裡的連結只放行 http(s)／mailto／tel／sms 等安全協定，網址跳脫後才放進 href（擋 javascript: 與屬性跳脫）；③ AI 產生的「在 Canvas 執行」按鈕只接受單一字串，串了程式碼的一律停用（原本按下去會執行 AI 寫的任意 JS）；④ HTML 筆記（含同步、匯入來的）顯示與編輯前先用 DOMPurify 消毒，搜尋來源、雲端備份連結、App 跳轉連結也一併檢查；⑤ 加基本 CSP（object-src none、base-uri self）。副作用：舊的「收藏對話」筆記裡若有可點的按鈕（例如 Canvas 執行），在筆記裡會變成不能按；真的有問題可在主控台設 localStorage nova_sanitize=0 暫時關閉消毒。',
-                '同步密語＝金鑰加密同步（對標桌面 v3.121.0；nova-datasync.js v1.4.0、nova-google.js v1.7.0、nova-experts-glue.js v1.6.0；僅 www）：Google 整合 →「Drive 同步」分頁新增「🔐 同步密語」。手機與電腦設定同一組密語（至少 8 個字，只存在本機、不上傳、不進備份）後，研發 API 金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定改用加密檔 NOVA_Secrets_Sync.json 同步（PBKDF2＋AES-GCM），原本的同步檔不再帶明文，雲端舊明文會在下次同步移除；密語不同會中止、不覆蓋。另外與桌面一致：清空研發金鑰／Jev／TDX 金鑰現在會傳到另一台。注意：只在一台設密語時，另一台會收到「刪除明文金鑰」——兩台請都設定。尚未在實機驗證（加密格式已用桌面版程式交叉測試互通）。',
-                '移植桌面版 v3.117～v3.119（新檔 nova-transit.js v1.0.0；nova-bots.js v1.5.0、nova-bots-ui.js v1.4.0、nova-google.js v1.6.0、nova-experts-glue.js v1.5.0、nova-datasync.js v1.3.0；僅 www）：① 大眾運輸：用 TDX 官方 API 查高鐵／台鐵時刻票價座位誤點、捷運（含輕軌）票價首末班即時到站、公車到站與班表（金鑰在 多專家 → 多 Bot → 交通 API 填 Client ID／Secret，按「測試連線」）；多 Bot 管理頁「＋ 建立大眾運輸專家」一鍵建立專家並勾好工具；一般對話（非多 Bot）只要設了金鑰、問到班次／票價等交通問題，就自動帶入交通工具。② Bot 設定可勾的工具變多：python_run／shell_run／mcp_call／skill_run（進階動作，每次確認，總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、核心記憶、行事曆新增修改、Google 文件寫入；缺 Termux／Google 授權／金鑰的工具會暫時不給 Bot，補齊後自動可用。③ 同步：TDX 金鑰、模式選擇、Jev API Key 也會跟著同步（明文存在你自己的 Drive 同步檔；金鑰刪除不會傳播）。限制：Outlook、瀏覽器、桌面操作與 Bot 排程手機仍不支援；行事曆需在 Google Cloud 啟用 Calendar API、加 calendar.events 權限並重新連接；兩台都要更新才會互通；尚未在實機與真實 TDX 驗證。',
+            { v: '2.6.128', date: '2026-11-09', notes: [
+                '手機當控制台＋多 Bot 格式對齊桌面（對標桌面 v3.122.0～v3.123.0；nova-remote.js v1.1.0、nova-bots.js v1.2.0-android.1〔移植桌面 v1.6.0〕、nova-experts-glue.js v1.7.0；僅 www）：① 電腦遙控上方多一個「🧠」按鈕、設定頁多「🧠 收件匣／待批准」：直接打開電腦上的收件匣控制台（nova-console.html），可以允許／拒絕 Bot 想做的高風險動作（寄信、刪檔、執行指令…）、看收件匣與成品、交辦工作給電腦上的 Bot、看工作狀態、收回「永遠允許」規則；電腦需要 desktop-patch v3.122.0 以上。② 多 Bot 引擎改移植桌面 v1.6.0：桌面新增的設定（工具呼叫方式、哨兵審查、向量記憶、團隊共用記憶）手機存設定或同步時會原樣保留，不再被蓋回預設值；手機也能用團隊共用記憶（team_recall／team_remember），並跟電腦同步。手機沒有常駐大腦，所以工具呼叫、高風險確認、記憶挑選的行為跟以前一樣。'
+            ] },
+            { v: '2.6.127', date: '2026-11-09', notes: [
+                'index.html 瘦身（對標桌面 v3.121.0 ⑨；僅 www）：原本 index.html 約 1.76MB，其中約 1.30MB 的主程式內嵌腳本逐字搬到新檔 nova-app-main.js，原位置改成同一位置、同一順序的 <script src>，執行順序與全域變數行為不變；之後主程式、版本號與這份更新紀錄都改在 nova-app-main.js。index.html 與主程式檔版本不一致時（WebView 用到舊快取）主控台會警告；主程式檔載入失敗時畫面上會直接顯示原因，不會只剩空白畫面。'
+            ] },
+            { v: '2.6.126', date: '2026-11-09', notes: [
+                '資安補強（對標桌面 v3.121.0 ①；新增 vendor/purify.min.js〔DOMPurify 3.4.17〕；僅 www）：① escapeHtml 多跳脫引號；② AI 回覆裡的連結只放行 http(s)／mailto／tel／sms 等安全協定，網址跳脫後才放進 href（擋 javascript: 與屬性跳脫）；③ AI 產生的「在 Canvas 執行」按鈕只接受單一字串，串了程式碼的一律停用（原本按下去會執行 AI 寫的任意 JS）；④ HTML 筆記（含同步、匯入來的）顯示與編輯前先用 DOMPurify 消毒，搜尋來源、雲端備份連結、App 跳轉連結也一併檢查；⑤ 加基本 CSP（object-src none、base-uri self）。副作用：舊的「收藏對話」筆記裡若有可點的按鈕（例如 Canvas 執行），在筆記裡會變成不能按；真的有問題可在主控台設 localStorage nova_sanitize=0 暫時關閉消毒。'
+            ] },
+            { v: '2.6.125', date: '2026-11-09', notes: [
+                '同步密語＝金鑰加密同步（對標桌面 v3.121.0；nova-datasync.js v1.4.0、nova-google.js v1.7.0、nova-experts-glue.js v1.6.0；僅 www）：Google 整合 →「Drive 同步」分頁新增「🔐 同步密語」。手機與電腦設定同一組密語（至少 8 個字，只存在本機、不上傳、不進備份）後，研發 API 金鑰、TDX、Jev、Insight 的 Windy／aisstream／政府鏡頭／FMP 設定改用加密檔 NOVA_Secrets_Sync.json 同步（PBKDF2＋AES-GCM），原本的同步檔不再帶明文，雲端舊明文會在下次同步移除；密語不同會中止、不覆蓋。另外與桌面一致：清空研發金鑰／Jev／TDX 金鑰現在會傳到另一台。注意：只在一台設密語時，另一台會收到「刪除明文金鑰」——兩台請都設定。尚未在實機驗證（加密格式已用桌面版程式交叉測試互通）。'
+            ] },
+            { v: '2.6.124', date: '2026-11-08', notes: [
+                '移植桌面版 v3.117～v3.119（新檔 nova-transit.js v1.0.0；nova-bots.js v1.5.0、nova-bots-ui.js v1.4.0、nova-google.js v1.6.0、nova-experts-glue.js v1.5.0、nova-datasync.js v1.3.0；僅 www）：① 大眾運輸：用 TDX 官方 API 查高鐵／台鐵時刻票價座位誤點、捷運（含輕軌）票價首末班即時到站、公車到站與班表（金鑰在 多專家 → 多 Bot → 交通 API 填 Client ID／Secret，按「測試連線」）；多 Bot 管理頁「＋ 建立大眾運輸專家」一鍵建立專家並勾好工具；一般對話（非多 Bot）只要設了金鑰、問到班次／票價等交通問題，就自動帶入交通工具。② Bot 設定可勾的工具變多：python_run／shell_run／mcp_call／skill_run（進階動作，每次確認，總開關預設關、各裝置自己決定）、firecrawl_*（需金鑰）、核心記憶、行事曆新增修改、Google 文件寫入；缺 Termux／Google 授權／金鑰的工具會暫時不給 Bot，補齊後自動可用。③ 同步：TDX 金鑰、模式選擇、Jev API Key 也會跟著同步（明文存在你自己的 Drive 同步檔；金鑰刪除不會傳播）。限制：Outlook、瀏覽器、桌面操作與 Bot 排程手機仍不支援；行事曆需在 Google Cloud 啟用 Calendar API、加 calendar.events 權限並重新連接；兩台都要更新才會互通；尚未在實機與真實 TDX 驗證。'
+            ] },
             { v: '2.6.123', date: '2026-11-08', notes: [
                 '模型列表更新（主程式、簡報產生器 presentation_generator v41、AI 思考 nova-thoughts v1.0.1、nova-llm v1.0.1；僅 www）：新增 gemini-4-argon（Gemini 子模型選單、設定頁模型清單、簡報的首選文字／排版／背景生成／審查、AI 思考；新增斜線指令 /g4a）、grok-4.7 與 grok-build-0.1（設定頁模型清單原本缺，現在補齊；簡報首選文字補 grok-build-0.1）。移除 gemini-2.5-pro、gemini-2.5-flash（所有下拉選單、斜線指令 /g2.5f、/g2.5p、AI 思考清單）。原本寫死用這兩個型號的預設與備援（翻譯、模型 404 備援、簡報的排版／審稿修正／聯網搜尋／配圖提示／自訂配色／內容備援）改用 gemini-3.1-pro-preview（Pro 用途）或 gemini-3.6-flash／3.8-flash；舊設定、舊備份裡存的 2.5 Pro／Flash 會自動轉成這兩個。保留 gemini-2.5-flash-lite 與 gemini-2.5-flash-image（沒有被要求移除）。gemini-4-argon 的 API 細節（思考參數、是否要 v1alpha、是否不吃 temperature）沒有官方資料可核對，先照一般 Gemini 呼叫；若實機呼叫報錯請回報錯誤訊息。尚未在實機驗證。'
             ] },
@@ -313,7 +328,9 @@
                 '依需求取捨：不做船位（AIS）；航班預設關閉，開啟後預設只查「台灣周邊」，可勾選東亞／東南亞／歐洲／北美或自訂中心＋半徑（單點最大 250 海浬），每 45 秒更新；不接 Windy、不接政府鏡頭、不做衛星、不做個股基本面。預判是單次模型呼叫的精簡版（桌面為分析員辯論＋審查），結果存成桌面可開啟的格式。',
                 '雲端同步：與桌面共用 Drive 的 NOVA_Insight_Sync.json（預判、個股、虛擬交易、日誌、自訂鏡頭等），規則與研發同步相同（三方比對、大量刪除安全網）；桌面傳來但手機沒有介面的資料（劇本、校準、研究…）會原樣保留並回傳，不會被手機弄丟（nova-datasync.js v1.1.0）。頻道清單、圖層、航班區域為本機設定，不同步。【未在真機驗證：地圖顯示、各網路來源、Drive 連線只用模擬資料測過】'
             ] },
-                'NovaResearch（研發情報×實驗系統）移植到手機（階段 1~2；對標桌面 nova_research.py v1.1.0＋nova-research.js v1.1.0＋nova-data-sync.js v1.0.0；僅 www，不需重新打包原生）：+選單新增「研發」鈕→全螢幕頁，橫向膠囊分頁——專案（因子／目標／假說／標準色 Lab，三個範本）、情報（OpenAlex／Semantic Scholar／Crossref／PubMed／arXiv＋Lens／EPO／PatentsView 專利，去重合併，AI 摘要）、監看（定期重跑搜尋只收新的，App 開著時每 5 分鐘檢查到期的）、材料（內建 43 筆起點清單、PubChem 補資料與 GHS、22 項受限物質快篩）、實驗（每筆實驗一張卡片，輸入離開欄位即存檔，Lab 自動算 ΔE00）、最佳化（拉丁超立方／全因子／面心 CCD，高斯過程＋期望改善量建議下一批）、報告（AI 專案報告，可存成筆記）。資料存手機「文件/NOVA_Research」，與桌面同結構；Drive 同步檔 NOVA_Research_Sync.json 與桌面互通（三方比對、刪除傳播、大量刪除保護），在原本 Drive 同步後自動接著跑，並在資料改動 4 秒後、App 回到前景時觸發。引擎層純函式（色差、desirability、DoE、高斯過程）已用桌面 Python 模組逐項對照數值一致。金鑰（Lens／EPO／PatentsView…）只存本機不同步。沒有做：RDKit 描述符、CSV 匯入匯出。【未在真機驗證；網路來源與 Drive 實際連線沒連過真實服務】',
+            { v: '2.6.108', date: '2026-11-01', notes: [
+                'NovaResearch（研發情報×實驗系統）移植到手機（階段 1~2；對標桌面 nova_research.py v1.1.0＋nova-research.js v1.1.0＋nova-data-sync.js v1.0.0；僅 www，不需重新打包原生）：+選單新增「研發」鈕→全螢幕頁，橫向膠囊分頁——專案（因子／目標／假說／標準色 Lab，三個範本）、情報（OpenAlex／Semantic Scholar／Crossref／PubMed／arXiv＋Lens／EPO／PatentsView 專利，去重合併，AI 摘要）、監看（定期重跑搜尋只收新的，App 開著時每 5 分鐘檢查到期的）、材料（內建 43 筆起點清單、PubChem 補資料與 GHS、22 項受限物質快篩）、實驗（每筆實驗一張卡片，輸入離開欄位即存檔，Lab 自動算 ΔE00）、最佳化（拉丁超立方／全因子／面心 CCD，高斯過程＋期望改善量建議下一批）、報告（AI 專案報告，可存成筆記）。資料存手機「文件/NOVA_Research」，與桌面同結構；Drive 同步檔 NOVA_Research_Sync.json 與桌面互通（三方比對、刪除傳播、大量刪除保護），在原本 Drive 同步後自動接著跑，並在資料改動 4 秒後、App 回到前景時觸發。引擎層純函式（色差、desirability、DoE、高斯過程）已用桌面 Python 模組逐項對照數值一致。金鑰（Lens／EPO／PatentsView…）只存本機不同步。沒有做：RDKit 描述符、CSV 匯入匯出。【未在真機驗證；網路來源與 Drive 實際連線沒連過真實服務】'
+            ] },
             { v: '2.6.107', date: '2026-11-01', notes: [
                 '排程管理新增「進度註解」，對標桌面版 v3.86.0 ②（nova-schedule-pro.js v1.2.0；僅 www，不需重新打包原生）：每筆排程下方可自己加註解，輸入框按 Enter（輸入法選字中的 Enter 不算）或按「加入」，帶時間戳記，可逐則刪除；存在每筆待辦的 progressNotes，隨 saveToDB 一起存／同步（整筆為單位）；重畫列表時保留未送出的輸入。index.html 只更新版本字串與 script 版本號。【未在真機驗證】'
             ] },
