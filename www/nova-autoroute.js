@@ -1,7 +1,10 @@
 /* ═════════════════════════════════════════════
    nova-autoroute.js — NOVA Android 一般對話「智慧分派」（跟 index.html 放同一個資料夾 www/）
-   版本：v1.1.3
+   版本：v1.1.4
    版本紀錄：
+   v1.1.4 - App v2.6.156（對標桌面 nova-presend.js v1.0.0／desktop-patch v3.123.0）：shouldTry 多一個條件 ctx.voice——語音辨識自動送出的那一則
+            （nova-app-main.js 在送出計時器設 window._novaVoiceTurnPending）直接回 false，不再多花一次 Jev／LLM 判斷「要不要派專家／改自主任務」。
+            手打、按送出的訊息照舊判斷。
    v1.1.3 - App v2.6.130（搭配 nova-jev.js Android v1.7.0）：Jev／Gemini Decision 沒把握、改由輕量 Gemini 判斷時，把 Gemini 的結果記成那筆快速判斷的標註
             （NovaJev.label('dispatch', …)），設定頁用它算智慧分派的一致率與建議門檻。快速判斷有把握直接採用的不標註。
    v1.1.2 - App v2.6.89。私密對話不做智慧分派判斷。
@@ -71,6 +74,7 @@
         ctx = ctx || {};
         var t = String(text || '').trim();
         if (!t || t.charAt(0) === '/') return false;
+        if (ctx.voice) return false;   // v1.1.4：語音自動送出的那一則不判斷（省一次 LLM 往返，語音直接走一般對話；對標桌面 nova-presend.js v1.0.0）
         if (window.novaPrivIsCur && novaPrivIsCur()) return false;   // v1.1.2：私密對話不做智慧分派判斷（不經 Gemini／OpenAI／Jev）
         if (ctx.hasFile || appState.isLiveMode || appState.pendingAnalyzeContextId) return false;
         if (appState.translateMode && appState.translateMode !== 'off') return false;

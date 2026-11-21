@@ -1,9 +1,15 @@
 /* ═══════════════════════════════════════════════════════════
    nova-app-main.js — NOVA Android 主程式（跟 index.html 放同一個資料夾 www/）
-   目前版本：v1.5.14
+   目前版本：v1.5.15
    最後更新：2026-11-21
 
    版本紀錄：
+   v1.5.15 - App v2.6.156（對標桌面 desktop-patch v3.135.0／v3.145.0、nova-presend.js v1.0.0）：
+            ① 語音輪：handleSendMessage 一開始讀取並清除 window._novaVoiceTurnPending（語音辨識的送出計時器在呼叫前設定）→ _novaIsVoiceTurn；
+               NovaAutoRoute.shouldTry 多傳 voice（nova-autoroute.js v1.1.4 直接回 false），通用意圖分類的 LLM 呼叫在語音輪略過（只用正則）。
+            ② 內建工具多 social_recent（nova-social.js v1.0.0）：提到「最近／討論／網友／口碑／Reddit…」（NovaSocial.looksLikeSocial）或工具迴圈被強制時才宣告；
+               novaFcShouldAuto 對較嚴格的關鍵字（NovaSocial.wantsAuto）即使「自動使用工具」沒開也走工具迴圈（Gemini／Grok）；設定 → 工具 的內建清單多一個開關。
+            ③ 主動研究（nova-proactive-research.js v1.0.0）不需要改這個檔（模組自己掛設定卡片與計時器）。NOVA_APP_VERSION 2.6.156、NOVA_CHANGELOG 一筆。
    v1.5.14 - App v2.6.155：NOVA_CHANGELOG 補回 2.6.108 與 2.6.124～2.6.128 六筆的 { v, date, notes } 外框（新增紀錄時只插了說明字串、漏了外框，
             這六筆變成陣列裡的裸字串；日期依 git log：2.6.108＝2026-11-01、2.6.124＝2026-11-08，其餘 2026-11-09）。說明文字逐字不動。NOVA_APP_VERSION 2.6.155、NOVA_CHANGELOG 一筆。本檔程式沒有其他改動。
    v1.5.13 - App v2.6.154：只改 NOVA_APP_VERSION 與 NOVA_CHANGELOG 一筆（作品庫雲端另存 .html 在 nova-artifacts.js v1.1.0）；本檔程式沒有其他改動。
@@ -135,10 +141,15 @@
                 if (el) el.textContent = t; showToast(t, 4000);
             } catch (e) { if (el) el.textContent = '❌ ' + e.message; showToast('❌ ' + e.message); }
         };
-        const NOVA_APP_VERSION = '2.6.155';
+        const NOVA_APP_VERSION = '2.6.156';
         // v1.4.4：DeepSeek 舊型號 → 現行型號（官方：deepseek-v4-flash／deepseek-v4-flash-vision-exp 已退役，改由 V4.1 Flash〔deepseek-flash〕服務；deepseek-chat／deepseek-reasoner 是更舊的別名）
         window._novaMigrateDeepseekId = function (v) { v = String(v || ''); return /^deepseek-(v4-flash|v4-flash-vision-exp|chat|reasoner)$/.test(v) ? 'deepseek-flash' : (v || 'deepseek-v4-pro'); };
         const NOVA_CHANGELOG = [
+            { v: '2.6.156', date: '2026-11-21', notes: [
+                '主動研究（唯讀，對標桌面 desktop-patch v3.135.0 的 nova-proactive.js；新檔 nova-proactive-research.js v1.0.0；僅 www）：設定 → Agent 與自主任務 → AI 自主任務 最下方新增「🔭 主動研究」卡片（預設關閉）。列出關注主題（一行一個：主題｜關注重點｜每幾小時），NOVA 開著時每 10 分鐘檢查一次，到期就用 Gemini Flash＋Google 搜尋查上次之後的新進展；只查資料、不執行任何動作。重要程度達到門檻時發手機通知（點通知會打開這張卡片），「高」可另推 Telegram。每則附「建議動作」，按「▶ 交給自主任務」只會把 /ap 指令放進輸入框，要自己按送出。需要 Gemini 金鑰。常駐背景時 Android 可能暫停計時器，到期主題會在下次打開 NOVA 時補跑。【未在真機用真金鑰驗證】',
+                '社群近況研究（對標桌面 desktop-patch v3.145.0 的 nova_social.py；新檔 nova-social.js v1.0.0；僅 www）：查某個主題最近幾天在 Reddit、Hacker News、GitHub、YouTube、Polymarket 的熱門討論，依讚數／留言／星數／觀看／下注金額＋相關度＋新鮮度排序，同一件事跨平台合併，免金鑰。對話中問「最近大家怎麼看…」「…的口碑」「Reddit 上怎麼說」時，Gemini／Grok 會自己呼叫（設定 → 整合 → 工具 的內建工具可關閉）；同一頁多一張試搜卡片，可確認哪些平台在你的網路連得到。手機沒有 yt-dlp，YouTube 改成直接讀搜尋頁，YouTube 改版就可能讀不到。OpenAI、DeepSeek 等不走工具迴圈的模型不會自動查。【沙盒連不到這些平台，只用假資料測過排序、合併與 YouTube 解析】',
+                '語音輸入不做智慧分派（對標桌面 nova-presend.js v1.0.0）：語音辨識自動送出的那句話，不再多花一次 Jev／Gemini 判斷「要不要派專家／改用自主任務」，也不再呼叫輕量模型做意圖分類（只用關鍵字判斷），語音回覆更快。手打、按送出的訊息照舊判斷。'
+            ] },
             { v: '2.6.155', date: '2026-11-21', notes: [
                 '更新紀錄整理：2.6.108 與 2.6.124～2.6.128 這六版的說明原本沒有版本號與日期（新增紀錄時漏了外框），現在補回，查歷史時可以直接對到版本。只整理紀錄，App 功能沒有改變。'
             ] },
@@ -8868,6 +8879,16 @@ msg.files : (msg.file ? [msg.file] : []);
                     });
                 }
             } catch (e) { console.warn('[NOVA][TravelAgent] 工具載入略過', e); }
+            // v1.5.15（App v2.6.156）：社群近況研究（nova-social.js）——提到「最近／討論／網友／口碑／Reddit…」或工具迴圈被強制啟動時才帶，不需要金鑰
+            try {
+                const SO = window.NovaSocial;
+                if (SO && (window._novaFcForce || SO.looksLikeSocial(window._novaFcCurText))) {
+                    SO.declarations().forEach(function (d) {
+                        out.push({ name: d.name, label: d.label, description: d.description, parameters: d.parameters, readOnly: true,
+                            run: async function (a) { const r = await SO.run(d.name, a || {}); return { success: !(r && r.ok === false), text: SO.format(r) }; } });
+                    });
+                }
+            } catch (e) { console.warn('[NOVA][社群近況] 工具載入略過', e); }
             return out.filter(function (t) { return !window.novaFcCfg.isOff('builtin:' + t.name); });
         } });
         // v2.6.70：給自主模式等其他功能直接呼叫的搜尋入口（走上面的 web_search 內建工具）
@@ -9031,7 +9052,8 @@ msg.files : (msg.file ? [msg.file] : []);
             try {
                 const _tvHit = !!(window.NovaTravelCore && window.NovaTravelCore.looksLikeTravel(text) && !window.novaFcCfg.isOff('builtin:travel_nearby'));   // v1.4.7：TravelAgent
                 const _trHit = !!(window.NovaTransit && window.NovaTransit.hasKeys() && window.NovaTransit.looksLikeTransit(text));
-                if (hasFile || (!_tvHit && !_trHit)) return false;
+                const _soHit = !!(window.NovaSocial && window.NovaSocial.wantsAuto(text) && !window.novaFcCfg.isOff('builtin:social_recent'));   // v1.5.15：社群近況研究
+                if (hasFile || (!_tvHit && !_trHit && !_soHit)) return false;
                 if (appState.currentModel !== 'gemini' && appState.currentModel !== 'grok') return false;
                 if (appState.translateMode !== 'off' || appState.isLiveMode) return false;
                 return true;
@@ -9055,7 +9077,7 @@ msg.files : (msg.file ? [msg.file] : []);
             const cr = document.getElementById('fc-cache-round'); if (cr) cr.value = window.novaFcCfg.cacheRound();
             // 內建
             const bl = document.getElementById('fc-builtin-list');
-            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）'], ['transit_thsr', '高鐵時刻票價（TDX）'], ['transit_tra', '台鐵時刻票價（TDX）'], ['transit_metro', '捷運票價首末班（TDX）'], ['transit_bus', '公車動態班表（TDX）'], ['travel_where_am_i', 'TravelAgent 我的位置與天氣'], ['travel_nearby', 'TravelAgent 附近設施（2 公里）'], ['travel_route', 'TravelAgent 路線規劃']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
+            if (bl) { bl.textContent = ''; [['get_current_datetime', '目前日期時間'], ['kb_search', '搜尋向量資料庫（知識庫）'], ['transit_thsr', '高鐵時刻票價（TDX）'], ['transit_tra', '台鐵時刻票價（TDX）'], ['transit_metro', '捷運票價首末班（TDX）'], ['transit_bus', '公車動態班表（TDX）'], ['travel_where_am_i', 'TravelAgent 我的位置與天氣'], ['travel_nearby', 'TravelAgent 附近設施（2 公里）'], ['travel_route', 'TravelAgent 路線規劃'], ['social_recent', '社群近況研究（Reddit／HN／GitHub／YouTube／Polymarket）']].forEach(function (x) { bl.appendChild(_fcCheckRow('builtin:' + x[0], x[1])); }); }
             // 技能
             const sl = document.getElementById('fc-skill-list');
             if (sl) {
@@ -15950,6 +15972,8 @@ window.startMultiAgentResearch = async function() {
         }
 
         async function handleSendMessage() {
+            const _novaIsVoiceTurn = !!window._novaVoiceTurnPending;   // v1.5.15（App v2.6.156）：這一則是不是語音自動送出（由語音辨識的送出計時器設定；對標桌面 v3.123.0）
+            window._novaVoiceTurnPending = false;
             if(appState.isThinking) return;
 
             // 補回被誤刪的排程間隔計算函數，供鬧鐘與一般行程邏輯使用
@@ -15983,7 +16007,7 @@ window.startMultiAgentResearch = async function() {
                 return;
             }
             // ★ v2.6.58：一般對話「智慧分派」——設定（多專家 → 並行作業）開啟後，先判斷這句話該不該派專家並行作業（預設關閉＝完全不影響）
-            if (window.NovaAutoRoute && NovaAutoRoute.shouldTry(text, { hasFile: !!(appState.chatFiles && appState.chatFiles.length) })) {
+            if (window.NovaAutoRoute && NovaAutoRoute.shouldTry(text, { hasFile: !!(appState.chatFiles && appState.chatFiles.length), voice: _novaIsVoiceTurn })) {
                 const _arHandled = await NovaAutoRoute.run(text, input);
                 if (_arHandled) return;
             }
@@ -16414,7 +16438,7 @@ if (appState.deepDiveMode) { systemPromptAddon = "【深度探究模式開啟 - 
 
                 const _ambiguousCandidate = _ambiguousActionCandidate || _ambiguousLocationCandidate;
 
-                if (_ambiguousCandidate && appState.currentModel === 'gemini' && !(window.novaPrivIsCur && novaPrivIsCur() && !appState.keys.grok)) {   // v2.6.89：私密對話只用 Grok 判斷，沒 Grok 金鑰就不判斷
+                if (_ambiguousCandidate && !_novaIsVoiceTurn && appState.currentModel === 'gemini' && !(window.novaPrivIsCur && novaPrivIsCur() && !appState.keys.grok)) {   // v2.6.89：私密對話只用 Grok 判斷，沒 Grok 金鑰就不判斷
                     const _privCls = !!(window.novaPrivIsCur && novaPrivIsCur());
                     const _sysPrompt = '你是一個多任務語意分類器。分析使用者輸入，判斷它屬於以下哪些類別（可多選，大多數情況只會符合 0 或 1 個類別）：\n'
                         + '1. isImageGen：要求生成一張圖片/照片/插圖（非圖表、流程圖、程式碼示意圖）\n'
@@ -19204,7 +19228,7 @@ ${evts.map(e=>`• ${e.start.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'
                     if (document.getElementById('recording-status').classList.contains('hidden')) { 
                         if (voiceTimer) clearTimeout(voiceTimer); 
                         voiceTimer = setTimeout(() => { 
-                            if(input.value.trim() !== '' && !appState.isThinking) handleSendMessage(); 
+                            if(input.value.trim() !== '' && !appState.isThinking) { window._novaVoiceTurnPending = true; handleSendMessage(); }   // v1.5.15：標記語音輪 
                         }, appState.voiceTimeout * 1000); 
                     }
                 };
